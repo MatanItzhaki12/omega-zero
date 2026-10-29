@@ -292,7 +292,7 @@ fn a_press_with_the_shelf_showing_through_ends_it_and_is_the_shelfs() {
     let (_d, mut a) = opened();
     run_to(&mut a, LEAD_MS + SCRIPT_MS + OUT_MS + 100.0);
     assert!(a.opening_shown());
-    a.apply(Action::GbaDown(Btn::Start));
+    a.apply(Action::QuickMenu);
     assert!(!a.opening_shown());
     assert!(
         matches!(a.phase(), Phase::Settings { .. }),

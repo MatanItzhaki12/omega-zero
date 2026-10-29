@@ -3,7 +3,7 @@ use crate::common;
 use common::tmp_root;
 use omega_store::{
     atomic_write, read_app_state, write_app_state, AppState, BackdropStyle, Font, Platform,
-    BACKDROP_COLOURS, FF_SPEEDS, FF_SPEED_DEFAULT,
+    ScreenFilter, BACKDROP_COLOURS, FF_SPEEDS, FF_SPEED_DEFAULT,
 };
 use tempfile::tempdir;
 
@@ -197,6 +197,7 @@ fn a_card_from_before_the_settings_keeps_all_its_values() {
             ff_speed: FF_SPEED_DEFAULT,
             ff_sound: false,
             colour_correction: false,
+            screen_filter: ScreenFilter::Lcd,
             wifi: false,
             ssh: true,
             bluetooth: false,
@@ -232,6 +233,44 @@ fn the_quick_menu_settings_round_trip_as_their_own_lines() {
     ] {
         assert!(text.lines().any(|l| l == line), "no {line} in {text:?}");
     }
+}
+
+#[test]
+fn every_screen_filter_round_trips_as_its_own_word() {
+    for (filter, word) in [
+        (ScreenFilter::Lcd, "screen_filter=lcd"),
+        (ScreenFilter::Grid, "screen_filter=grid"),
+        (ScreenFilter::Off, "screen_filter=off"),
+    ] {
+        let d = tmp_root();
+        let s = AppState {
+            clock_set: true,
+            screen_filter: filter,
+            ..AppState::default()
+        };
+        write_app_state(d.path(), &s).unwrap();
+        assert_eq!(read_app_state(d.path()), s, "{word} did not come back");
+        let text = std::fs::read_to_string(d.path().join("Config/omega-zero.state")).unwrap();
+        assert!(text.lines().any(|l| l == word), "no {word} in {text:?}");
+    }
+}
+
+#[test]
+fn a_card_from_before_the_filter_draws_the_lcd_it_always_did() {
+    let d = tmp_root();
+    std::fs::write(
+        d.path().join("Config/omega-zero.state"),
+        "cart=
+brightness=5
+blue_light=0
+volume=60
+muted=0
+clock_set=1
+utc_offset_min=0
+",
+    )
+    .unwrap();
+    assert_eq!(read_app_state(d.path()).screen_filter, ScreenFilter::Lcd);
 }
 
 #[test]

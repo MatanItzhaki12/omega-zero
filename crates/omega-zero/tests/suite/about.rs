@@ -224,7 +224,7 @@ fn on_settings() -> (TempDir, App) {
     let [_, _, w, h] = modal_rect();
     a.set_about_modal(Lone { tex: MODAL, w, h });
     a.set_backdrop_face(PATTERN, out_w() + 40, BackdropStyle::Grid, 0);
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     a.finish_slide();
     (d, a)
 }

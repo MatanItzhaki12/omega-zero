@@ -176,6 +176,48 @@ impl Shelf {
         self.faces = faces;
     }
 
+    /// Puts `cart` on the row at `at`, drawn on `face`, as a favorite starred on another shelf
+    /// is. The cart picked stays the one picked.
+    pub fn insert(&mut self, at: usize, cart: Cart, face: Option<TexId>) {
+        let at = at.min(self.carts.len());
+        if let Some(face) = face.filter(|_| self.faces.len() >= at) {
+            self.faces.insert(at, face);
+        }
+        self.models
+            .insert(at.min(self.models.len()), model_of(&cart));
+        self.discs
+            .insert(at.min(self.discs.len()), disc::stack_of(&cart));
+        self.carts.insert(at, cart);
+        if self.carts.len() > 1 && at <= self.index {
+            self.select(self.index + 1);
+        }
+    }
+
+    /// Takes the cart at `at` off the row, as a favorite unstarred is. The cart after it, or
+    /// before it at the end, is picked in its place where it was the one picked.
+    pub fn remove(&mut self, at: usize) -> Option<Cart> {
+        if at >= self.carts.len() {
+            return None;
+        }
+        if at < self.faces.len() {
+            self.faces.remove(at);
+        }
+        if at < self.models.len() {
+            self.models.remove(at);
+        }
+        if at < self.discs.len() {
+            self.discs.remove(at);
+        }
+        let cart = self.carts.remove(at);
+        self.held = None;
+        let index = match self.index {
+            i if i > at => i - 1,
+            i => i.min(self.carts.len().saturating_sub(1)),
+        };
+        self.select(index);
+        Some(cart)
+    }
+
     /// The model the cart `stem` is drawn with, once models are set: a game on several discs
     /// all its discs in one model.
     pub fn mesh_for(&self, stem: &str) -> Option<MeshId> {

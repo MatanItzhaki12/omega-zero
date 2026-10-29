@@ -43,13 +43,38 @@ fn a_select_held_past_the_window_reaches_the_game_then() {
 fn a_game_button_under_select_hands_select_over_first() {
     let mut g = Gestures::new();
     assert!(g.feed(Down(Select), 0).is_empty());
-    assert_eq!(g.feed(Down(A), 100), vec![GbaDown(Select), GbaDown(A)]);
-    assert_eq!(g.feed(Up(A), 200), vec![GbaUp(A)]);
+    assert_eq!(g.feed(Down(X), 100), vec![GbaDown(Select), GbaDown(X)]);
+    assert_eq!(g.feed(Up(X), 200), vec![GbaUp(X)]);
     assert!(
         g.tick(SELECT_CHORD_MS).is_empty(),
         "SELECT was pressed twice"
     );
     assert_eq!(g.feed(Up(Select), 900), vec![GbaUp(Select)]);
+}
+
+#[test]
+fn select_a_and_select_b_step_the_screen_filter_as_on_slot() {
+    let mut g = Gestures::new();
+    g.feed(Down(Select), 0);
+    assert_eq!(g.feed(Down(A), 100), vec![FilterNext]);
+    assert!(
+        g.feed(Up(A), 150).is_empty(),
+        "the game never saw A go down"
+    );
+    assert_eq!(g.feed(Down(B), 200), vec![FilterPrev]);
+    assert!(
+        g.feed(Up(B), 250).is_empty(),
+        "the game never saw B go down"
+    );
+    assert!(
+        g.feed(Up(Select), 300).is_empty(),
+        "the game never saw SELECT"
+    );
+    assert_eq!(
+        g.feed(Down(A), 400),
+        vec![GbaDown(A)],
+        "A alone is the game's"
+    );
 }
 
 #[test]

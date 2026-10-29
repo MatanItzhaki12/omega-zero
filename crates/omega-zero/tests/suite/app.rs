@@ -911,8 +911,7 @@ fn settings_opens_from_the_shelf_and_nowhere_else() {
         "not on the shelf: {:?}",
         s.app().phase()
     );
-    s.app_mut()
-        .apply(omega_input::Action::GbaDown(omega_input::Btn::Start));
+    s.app_mut().apply(omega_input::Action::QuickMenu);
     assert!(matches!(
         s.app().phase(),
         omega_zero::app::Phase::Settings { .. }
@@ -921,8 +920,7 @@ fn settings_opens_from_the_shelf_and_nowhere_else() {
     s.app_mut()
         .apply(omega_input::Action::GbaDown(omega_input::Btn::B));
     s.app_mut().apply(omega_input::Action::Insert);
-    s.app_mut()
-        .apply(omega_input::Action::GbaDown(omega_input::Btn::Start));
+    s.app_mut().apply(omega_input::Action::QuickMenu);
     assert!(
         !matches!(s.app().phase(), omega_zero::app::Phase::Settings { .. }),
         "a menu opened over a seated cart"
@@ -937,8 +935,7 @@ fn both_b_and_menu_take_the_about_screen_back_to_settings() {
         omega_input::Action::QuickMenu,
     ] {
         let (mut s, _motor) = common::session_with_platform(d.path());
-        s.app_mut()
-            .apply(omega_input::Action::GbaDown(omega_input::Btn::Start));
+        s.app_mut().apply(omega_input::Action::QuickMenu);
         for _ in 0..omega_ui::SettingsRow::About.index() {
             s.app_mut()
                 .apply(omega_input::Action::GbaDown(omega_input::Btn::Down));

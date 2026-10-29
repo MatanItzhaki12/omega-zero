@@ -57,6 +57,8 @@ pub enum SettingsRow {
     FastForward,
     FastForwardSound,
     ColourCorrection,
+    /// What a Game Boy or GBA game at 3x is drawn through: LCD, GRID or OFF.
+    ScreenFilter,
     Rumble,
     Labels,
     DateTime,
@@ -69,10 +71,11 @@ pub enum SettingsRow {
 }
 
 impl SettingsRow {
-    pub const ALL: [SettingsRow; 10] = [
+    pub const ALL: [SettingsRow; 11] = [
         SettingsRow::FastForward,
         SettingsRow::FastForwardSound,
         SettingsRow::ColourCorrection,
+        SettingsRow::ScreenFilter,
         SettingsRow::Rumble,
         SettingsRow::Labels,
         SettingsRow::DateTime,
@@ -91,6 +94,7 @@ impl SettingsRow {
             SettingsRow::FastForward => "Fast Forward",
             SettingsRow::FastForwardSound => "Fast Forward Sound",
             SettingsRow::ColourCorrection => "Colour Correction",
+            SettingsRow::ScreenFilter => "Screen Filter",
             SettingsRow::Rumble => "Rumble",
             SettingsRow::Labels => "Labels",
             SettingsRow::DateTime => "Date & Time",
@@ -106,6 +110,7 @@ impl SettingsRow {
             SettingsRow::FastForward
             | SettingsRow::FastForwardSound
             | SettingsRow::ColourCorrection
+            | SettingsRow::ScreenFilter
             | SettingsRow::Rumble
             | SettingsRow::Labels => SettingsGroup::Configs,
             SettingsRow::DateTime
@@ -138,6 +143,7 @@ impl SettingsRow {
             SettingsRow::FastForward
                 | SettingsRow::FastForwardSound
                 | SettingsRow::ColourCorrection
+                | SettingsRow::ScreenFilter
                 | SettingsRow::Rumble
         )
     }
@@ -172,16 +178,20 @@ pub enum QuickValue {
     Speed6,
     On,
     Off,
+    Lcd,
+    Grid,
 }
 
 impl QuickValue {
-    pub const ALL: [QuickValue; 6] = [
+    pub const ALL: [QuickValue; 8] = [
         QuickValue::Speed2,
         QuickValue::Speed3,
         QuickValue::Speed4,
         QuickValue::Speed6,
         QuickValue::On,
         QuickValue::Off,
+        QuickValue::Lcd,
+        QuickValue::Grid,
     ];
 
     pub fn index(self) -> usize {
@@ -197,6 +207,8 @@ impl QuickValue {
             QuickValue::Speed6 => "6X",
             QuickValue::On => "ON",
             QuickValue::Off => "OFF",
+            QuickValue::Lcd => "LCD",
+            QuickValue::Grid => "GRID",
         }
     }
 
@@ -207,6 +219,15 @@ impl QuickValue {
             4 => Some(QuickValue::Speed4),
             6 => Some(QuickValue::Speed6),
             _ => None,
+        }
+    }
+
+    /// A screen filter as its row prints it.
+    pub fn filter(filter: omega_store::ScreenFilter) -> QuickValue {
+        match filter {
+            omega_store::ScreenFilter::Lcd => QuickValue::Lcd,
+            omega_store::ScreenFilter::Grid => QuickValue::Grid,
+            omega_store::ScreenFilter::Off => QuickValue::Off,
         }
     }
 

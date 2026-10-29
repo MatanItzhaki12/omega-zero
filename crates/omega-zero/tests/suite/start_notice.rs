@@ -325,7 +325,7 @@ fn a_press_with_the_shelf_showing_through_ends_it_and_is_the_shelfs() {
     press(&mut a, Btn::A);
     run_for(&mut a, OUT_MS + REVEAL_MS / 3.0);
     assert!(a.start_notice_shown());
-    a.apply(Action::GbaDown(Btn::Start));
+    a.apply(Action::QuickMenu);
     assert!(!a.start_notice_due());
     assert!(
         matches!(a.phase(), Phase::Settings { .. }),

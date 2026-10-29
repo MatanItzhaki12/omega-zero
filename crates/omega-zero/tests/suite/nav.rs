@@ -324,7 +324,7 @@ fn every_move_between_screens_slides_the_way_it_goes() {
     slid(&a, &shelf, Dir::Back, &Phase::Controls);
 
     for close in [Btn::B, Btn::Start] {
-        press(&mut a, Btn::Start);
+        a.apply(Action::QuickMenu);
         slid(&a, &settings(SettingsRow::FastForward), Dir::Aside, &shelf);
         press(&mut a, close);
         slid(
@@ -334,7 +334,7 @@ fn every_move_between_screens_slides_the_way_it_goes() {
             &settings(SettingsRow::FastForward),
         );
     }
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     a.apply(Action::QuickMenu);
     slid(
         &a,
@@ -343,7 +343,7 @@ fn every_move_between_screens_slides_the_way_it_goes() {
         &settings(SettingsRow::FastForward),
     );
 
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     press(&mut a, Btn::Down);
     assert!(a.slide().is_none(), "moving the bar slid the screen");
 
@@ -379,7 +379,7 @@ fn every_move_between_screens_slides_the_way_it_goes() {
 #[test]
 fn ssh_and_the_passphrase_slide_in_over_network_and_back() {
     let (_d, mut a) = on_shelf();
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     walk_to(&mut a, SettingsRow::Network);
     press(&mut a, Btn::A);
     // X asks the radio to look, and the next tick hears what it found
@@ -427,7 +427,7 @@ fn ssh_and_the_passphrase_slide_in_over_network_and_back() {
 #[test]
 fn the_account_keyboard_slides_in_and_its_password_step_does_not() {
     let (_d, mut a) = on_shelf();
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     walk_to(&mut a, SettingsRow::Labels);
     press(&mut a, Btn::A);
     press(&mut a, Btn::A);
@@ -451,7 +451,7 @@ fn the_account_keyboard_slides_in_and_its_password_step_does_not() {
 #[test]
 fn a_press_during_a_slide_finishes_it_and_acts() {
     let (_d, mut a) = on_shelf();
-    a.apply_at(Action::GbaDown(Btn::Start), 5_000);
+    a.apply_at(Action::QuickMenu, 5_000);
     assert!(a.slide().is_some());
     a.apply_at(Action::GbaDown(Btn::Down), 5_050);
     assert!(a.slide().is_none(), "the press left the slide running");
@@ -467,7 +467,7 @@ fn a_press_during_a_slide_finishes_it_and_acts() {
         Dir::FromAside,
         &settings(SettingsRow::FastForwardSound),
     );
-    a.apply_at(Action::GbaDown(Btn::Start), 5_120);
+    a.apply_at(Action::QuickMenu, 5_120);
     slid(
         &a,
         &settings(SettingsRow::FastForward),
@@ -480,7 +480,7 @@ fn a_press_during_a_slide_finishes_it_and_acts() {
 #[test]
 fn a_release_does_not_end_a_slide() {
     let (_d, mut a) = on_shelf();
-    a.apply(Action::GbaDown(Btn::Start));
+    a.apply(Action::QuickMenu);
     a.apply(Action::GbaUp(Btn::Start));
     assert!(a.slide().is_some(), "START's own release ended its slide");
     a.finish_slide();
@@ -498,7 +498,7 @@ fn a_release_does_not_end_a_slide() {
 #[test]
 fn a_slide_ends_when_its_time_is_up() {
     let (_d, mut a) = on_shelf();
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     a.update((SLIDE_MS - 20) as f32 / 1000.0);
     assert!(a.slide().is_some(), "it ended early");
     a.update(0.04);
@@ -508,7 +508,7 @@ fn a_slide_ends_when_its_time_is_up() {
 #[test]
 fn a_volume_press_during_a_slide_leaves_it_sliding() {
     let (_d, mut a) = on_shelf();
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     a.apply(Action::VolumeDown);
     assert!(a.slide().is_some(), "the volume ended the slide");
 }
@@ -557,7 +557,7 @@ fn halfway_to_settings_and_back_the_carts_and_settings_go_the_other_way_round() 
     let w = out_w() as f32;
 
     let at: Millis = 10_000;
-    a.apply_at(Action::GbaDown(Btn::Start), at);
+    a.apply_at(Action::QuickMenu, at);
     a.finish_slide();
     let rest_label = x_of(&frame(&a), label).expect("Settings' modal is not drawn");
 
@@ -584,7 +584,7 @@ fn halfway_to_settings_and_back_the_carts_and_settings_go_the_other_way_round() 
 
     // START: the carts go out to the left, Settings comes in from the right
     a.finish_slide();
-    a.apply_at(Action::GbaDown(Btn::Start), at + 2_000);
+    a.apply_at(Action::QuickMenu, at + 2_000);
     a.tick_ms(at + 2_000 + SLIDE_MS / 2);
     let out = frame(&a);
     let half = offsets(Dir::Aside, End::Leaving, 0.5, w);
@@ -676,7 +676,7 @@ fn halfway_to_network_settings_still_goes_out_to_the_right_and_comes_back_from_i
     let (_d, mut a) = on_shelf();
     fake_settings_faces(&mut a);
     let label = TexId::from_raw(100);
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     a.finish_slide();
     walk_to(&mut a, SettingsRow::Network);
     let rest = x_of(&frame(&a), label).expect("Settings' modal is not drawn");
@@ -713,7 +713,7 @@ fn the_backdrop_stays_still_under_a_slide() {
     a.set_backdrop_face(pattern, out_w() + 40, style, a.backdrop().colour);
     let still = x_of(&frame(&a), pattern);
     assert!(still.is_some(), "the shelf has no pattern under it");
-    a.apply(Action::GbaDown(Btn::Start));
+    a.apply(Action::QuickMenu);
     let out = frame(&a);
     let drawn = out
         .iter()

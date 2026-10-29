@@ -177,7 +177,7 @@ impl Rig {
 
     fn open_menu_at(&mut self, row: SettingsRow) {
         if self.a.settings_row().is_none() {
-            self.press(Btn::Start);
+            self.a.apply(Action::QuickMenu);
         }
         assert!(self.a.settings_row().is_some(), "START opened no Settings");
         for _ in SettingsRow::ALL {

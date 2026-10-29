@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased: Slot's buttons, favorites and the screen filter
+
+The buttons are Slot's again, a FAVORITES shelf stands first, and the LCD over a game can be
+turned off.
+
+- On the shelf MENU opens Settings, START picks the core (X still does too), and Y stars the cart
+  or takes its star off. The bar says MENU SETTINGS.
+- Starred carts stand on a FAVORITES shelf of their own, the first of the shelves, in name order,
+  across every system. They are kept in `Config/favorites.txt`, one `gba/<name>` to a line, the
+  file Slot writes, so a card that ran Slot keeps its favorites.
+- A tap of MENU in a game opens MENU over it, the game paused and dimmed behind: Resume, Save
+  State, Load State, States, Screen Filter, Colour Correction and Exit Game. A second tap straight
+  after still opens the save states, and holding MENU still ejects.
+- Screen Filter, in Settings' CONFIGS and in MENU, draws a Game Boy or GBA game through the LCD it
+  always had, a plain grid between its pixels, or nothing. SELECT+A and SELECT+B step through them
+  in a game, as on Slot. It is kept as `screen_filter` in `omega-zero.state`.
+
 ## omega-zero 1.2.0
 
 Supafaust runs SNES games, a game that takes the console down can no longer trap it at boot, and

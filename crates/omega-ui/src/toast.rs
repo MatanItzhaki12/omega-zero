@@ -20,6 +20,11 @@ pub enum Toast {
     OneDisc,
     /// The DISC screen swapped disc `n`, counting from 1, into the drive.
     Disc(u8),
+    /// SELECT+A or SELECT+B in a game moved to this screen filter.
+    Filter(omega_store::ScreenFilter),
+    /// Y on the shelf starred the cart, or took its star off.
+    Favorited,
+    Unfavorited,
 }
 
 /// What the toast says once disc `n` is in, for every disc a PlayStation game can have.
@@ -37,7 +42,7 @@ const DISC_IN: [&str; 9] = [
 
 impl Toast {
     /// Every toast there is, a disc's once, as disc 1.
-    pub const ALL: [Toast; 11] = [
+    pub const ALL: [Toast; 14] = [
         Toast::StateSaved,
         Toast::StateLoaded,
         Toast::NeedsGpsp,
@@ -49,6 +54,9 @@ impl Toast {
         Toast::ColourOff,
         Toast::OneDisc,
         Toast::Disc(1),
+        Toast::Filter(omega_store::ScreenFilter::Lcd),
+        Toast::Favorited,
+        Toast::Unfavorited,
     ];
 
     /// Its place in `ALL`: every disc's toast is the one place.
@@ -65,6 +73,9 @@ impl Toast {
             Toast::ColourOff => 8,
             Toast::OneDisc => 9,
             Toast::Disc(_) => 10,
+            Toast::Filter(_) => 11,
+            Toast::Favorited => 12,
+            Toast::Unfavorited => 13,
         }
     }
 
@@ -79,6 +90,8 @@ impl Toast {
             | Toast::BiosMismatch => "LINK",
             Toast::ColourOn | Toast::ColourOff => "COLOUR",
             Toast::OneDisc | Toast::Disc(_) => "DISC",
+            Toast::Filter(_) => "FILTER",
+            Toast::Favorited | Toast::Unfavorited => "FAVORITES",
         }
     }
 
@@ -99,6 +112,11 @@ impl Toast {
                 .get(usize::from(n).wrapping_sub(1))
                 .copied()
                 .unwrap_or("Disc inserted"),
+            Toast::Filter(omega_store::ScreenFilter::Lcd) => "LCD",
+            Toast::Filter(omega_store::ScreenFilter::Grid) => "Grid",
+            Toast::Filter(omega_store::ScreenFilter::Off) => "Off",
+            Toast::Favorited => "Added",
+            Toast::Unfavorited => "Removed",
         }
     }
 

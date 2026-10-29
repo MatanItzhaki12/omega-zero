@@ -1,4 +1,4 @@
-//! Settings, opened with START on the shelf: a modal holding CONFIGS, whose values left and
+//! Settings, opened with MENU on the shelf: a modal holding CONFIGS, whose values left and
 //! right change in place, and GENERAL, whose rows open a screen of their own.
 
 use omega_input::{Action, Btn};
@@ -30,6 +30,7 @@ impl App {
             SettingsRow::FastForward => QuickValue::speed(self.state.ff_speed),
             SettingsRow::FastForwardSound => Some(QuickValue::flag(self.state.ff_sound)),
             SettingsRow::ColourCorrection => Some(QuickValue::flag(self.state.colour_correction)),
+            SettingsRow::ScreenFilter => Some(QuickValue::filter(self.state.screen_filter)),
             SettingsRow::Rumble => Some(QuickValue::flag(self.state.rumble)),
             SettingsRow::Labels
             | SettingsRow::DateTime
@@ -131,6 +132,7 @@ impl App {
             SettingsRow::FastForward
             | SettingsRow::FastForwardSound
             | SettingsRow::ColourCorrection
+            | SettingsRow::ScreenFilter
             | SettingsRow::Rumble => return,
         };
         self.go(to, Dir::Deeper);
@@ -151,6 +153,7 @@ impl App {
                 s.colour_correction = !s.colour_correction;
                 self.colour_pending = Some(s.colour_correction);
             }
+            SettingsRow::ScreenFilter => s.screen_filter = s.screen_filter.step(right),
             SettingsRow::Rumble => s.rumble = !s.rumble,
             SettingsRow::Labels
             | SettingsRow::DateTime

@@ -141,7 +141,7 @@ fn a_slow_frame_slows_the_fade_rather_than_skipping_part_of_it() {
 fn a_press_ends_the_fade_at_once_and_is_then_handled() {
     let (_d, mut a) = booted_on_the_shelf();
     frames(&mut a, 4);
-    a.apply(Action::GbaDown(Btn::Start));
+    a.apply(Action::QuickMenu);
     assert_eq!(a.boot_logo_alpha(), None);
     assert!(
         logo(&a).is_none(),
@@ -213,7 +213,7 @@ fn a_first_boot_on_the_clock_shows_no_logo_then_nor_on_the_shelf_after_it() {
 fn coming_back_to_the_shelf_never_brings_the_logo_back() {
     let (_d, mut a) = booted_on_the_shelf();
     frames(&mut a, 40);
-    a.apply(Action::GbaDown(Btn::Start));
+    a.apply(Action::QuickMenu);
     a.apply(Action::GbaUp(Btn::Start));
     a.finish_slide();
     a.apply(Action::GbaDown(Btn::B));

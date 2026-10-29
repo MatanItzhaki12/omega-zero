@@ -509,7 +509,7 @@ fn the_lone_panels_stand_on_the_backdrop_and_slide_with_their_screens() {
         match row {
             None => a.apply(Action::SelectTap),
             Some(row) => {
-                press(&mut a, Btn::Start);
+                a.apply(Action::QuickMenu);
                 a.finish_slide();
                 while a.settings_row() != Some(row) {
                     press(&mut a, Btn::Down);

@@ -38,6 +38,7 @@ mod sync_labels;
 mod sync_link;
 mod sync_network;
 mod sync_opening;
+mod sync_pause;
 mod sync_power;
 mod sync_settings;
 mod sync_start_notice;
@@ -60,6 +61,7 @@ use sync_labels::sync_labels;
 use sync_link::{sync_link, LinkTexes};
 use sync_network::{sync_network, NetworkTexes};
 use sync_opening::{sync_opening, TerminalRows};
+use sync_pause::{sync_pause, PauseTex};
 use sync_power::{sync_power, PowerPanels};
 use sync_settings::{sync_settings, SettingsTexes};
 use sync_start_notice::sync_start_notice;
@@ -88,6 +90,7 @@ pub struct Frontend {
     link: LinkTexes,
     /// The DISC screen's panel and bar.
     disc: DiscTexes,
+    pause: PauseTex,
     core_asked: Option<String>,
     core_board_tex: Option<TexId>,
     core_lid_tex: Option<TexId>,
@@ -180,6 +183,7 @@ impl Frontend {
             cutter: LabelCutter::spawn(),
             link: LinkTexes::default(),
             disc: DiscTexes::default(),
+            pause: PauseTex::default(),
             core_asked: None,
             core_board_tex: None,
             core_lid_tex: None,
@@ -322,6 +326,11 @@ impl Frontend {
             _ => platform.picture(),
         };
         let screen = crate::video_mode::screen_for(platform, self.session.app().video_mode, size);
+        compositor.set_game_mask(match self.session.app().screen_filter() {
+            omega_store::ScreenFilter::Lcd => omega_gfx::Mask::Lcd,
+            omega_store::ScreenFilter::Grid => omega_gfx::Mask::Grid,
+            omega_store::ScreenFilter::Off => omega_gfx::Mask::Off,
+        });
         compositor.set_game_view(screen.view);
         compositor.set_still_view(screen.still);
         let picture = crate::video_mode::picture_rect(platform, screen.view);
@@ -370,6 +379,7 @@ impl Frontend {
         );
         sync_link(self.session.app_mut(), compositor, &mut self.link);
         sync_disc(self.session.app_mut(), compositor, &mut self.disc);
+        sync_pause(self.session.app_mut(), compositor, &mut self.pause);
         sync_switcher(
             self.session.app_mut(),
             compositor,

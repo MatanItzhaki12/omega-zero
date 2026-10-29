@@ -42,6 +42,9 @@ pub enum Action {
     GameMenu,
     MuteToggle,
     ColourCorrectionToggle,
+    /// SELECT+A and SELECT+B, as on Slot: the next screen filter, and the one before.
+    FilterNext,
+    FilterPrev,
     PowerPress,
     PowerTap,
     PowerHold,
@@ -281,6 +284,8 @@ impl Gestures {
             Btn::L1 => (16, Action::LoadState),
             Btn::R1 => (32, Action::SaveState),
             Btn::Y if self.keys.colour => (64, Action::ColourCorrectionToggle),
+            Btn::A => (512, Action::FilterNext),
+            Btn::B => (1024, Action::FilterPrev),
             Btn::L2 if self.keys.game_l2_r2 && self.keys.rewind => (L2_CHORD, Action::RewindStart),
             Btn::R2 if self.keys.game_l2_r2 => (R2_CHORD, Action::FfStart),
             _ => return None,

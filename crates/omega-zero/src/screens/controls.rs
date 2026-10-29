@@ -41,10 +41,11 @@ impl ControlsView {
     pub fn new(platform: Platform) -> Self {
         let mut shelf = vec![("A", "PLAY"), ("HOLD A", "CLEAN START")];
         if Core::for_platform(platform).len() > 1 {
-            shelf.push(("X", "CORE"));
+            shelf.push(("START", "CORE"));
         }
         shelf.extend([
-            ("START", "SETTINGS"),
+            ("Y", "FAVORITE"),
+            ("MENU", "SETTINGS"),
             ("SELECT", "CONTROLS"),
             ("◀▶", "BROWSE"),
             ("▲▼", "LETTER"),
@@ -63,7 +64,11 @@ impl ControlsView {
             }
             game.extend([("R2", "FAST FORWARD"), ("R2 ×2", "LATCH FAST FWD")]);
         }
-        game.extend([("MENU ×2", "SAVE STATES"), ("HOLD MENU", "EJECT")]);
+        game.extend([
+            ("MENU", "GAME MENU"),
+            ("MENU ×2", "SAVE STATES"),
+            ("HOLD MENU", "EJECT"),
+        ]);
         match platform {
             Platform::Gba | Platform::Gb | Platform::Gbc => game.push(("SELECT+MENU", "LINK")),
             Platform::Ps1 => game.push(("SELECT+MENU", "DISC")),
@@ -77,6 +82,9 @@ impl ControlsView {
         ]);
         if platform.colour_correction() {
             game.push(("SELECT+Y", "COLOUR"));
+        }
+        if matches!(platform, Platform::Gba | Platform::Gb | Platform::Gbc) {
+            game.push(("SELECT+A B", "SCREEN FILTER"));
         }
         if platform.owns_shoulders() {
             game.push(("L1 R1", "PICTURE SIZE"));
@@ -190,7 +198,17 @@ impl App {
     /// What the Controls screen says, while it is open: for the system of the shelf it was
     /// opened on.
     pub fn controls_view(&self) -> Option<ControlsView> {
-        let platform = self.shelves[self.shelf_at].0;
+        // FAVORITES holds every system's carts: it shows the controls of the one picked
+        let platform = self.shelves[self.shelf_at]
+            .0
+            .platform()
+            .or_else(|| {
+                self.shelf()
+                    .carts
+                    .get(self.shelf().index)
+                    .map(|c| c.platform)
+            })
+            .unwrap_or_default();
         matches!(self.phase, Phase::Controls).then(|| ControlsView::new(platform))
     }
 

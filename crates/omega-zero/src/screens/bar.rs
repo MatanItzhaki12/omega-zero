@@ -61,7 +61,7 @@ pub const SCAN: Hint<'static> = Hint {
 /// Which pair of actions the bar shows at its ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Actions {
-    /// The shelf's: SELECT CONTROLS on the left, START SETTINGS on the right.
+    /// The shelf's: SELECT CONTROLS on the left, MENU SETTINGS on the right.
     Shelf,
     /// A menu's: B RETURN and A CONFIRM.
     Menu,
@@ -88,7 +88,7 @@ impl Actions {
     pub fn action(self, side: Side) -> (&'static str, &'static str) {
         match (self, side) {
             (Actions::Shelf, Side::Left) => ("CONTROLS", "SELECT"),
-            (Actions::Shelf, Side::Right) => ("SETTINGS", "START"),
+            (Actions::Shelf, Side::Right) => ("SETTINGS", "MENU"),
             (Actions::Menu | Actions::Switcher, Side::Left) => ("RETURN", "B"),
             (Actions::Menu | Actions::Confirm, Side::Right) => ("CONFIRM", "A"),
             (Actions::Confirm, Side::Left) => ("", ""),
@@ -196,6 +196,8 @@ impl App {
                 Some(Actions::Menu),
                 picker_swap(&picker, now),
             )?,
+            // the MENU panel over a game has a menu's B RETURN and A CONFIRM
+            (None, _) if self.pause_menu_open() => (Actions::Menu, 0),
             (None, _) => (actions_on(&self.phase)?, 0),
         };
         let drop = match self.phase {

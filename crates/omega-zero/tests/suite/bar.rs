@@ -232,7 +232,7 @@ fn the_shelf_shows_controls_and_settings_and_a_menu_return_and_confirm() {
         "the hints do not start at CONTROLS's end"
     );
 
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     a.finish_slide();
     assert!(matches!(a.phase(), Phase::Settings { .. }));
     let out = frame(&a);
@@ -279,7 +279,7 @@ fn the_bar_draws_nothing_between_its_actions_but_the_hints_and_the_shelfs_pill()
              pill"
         );
         for app in [&mut a, &mut bare] {
-            press(app, Btn::Start);
+            app.apply(Action::QuickMenu);
             app.finish_slide();
         }
     }
@@ -431,8 +431,12 @@ fn the_pill_sinks_and_rises_with_the_shelfs_actions_as_the_shelf_slides_to_a_men
     let (_d, mut a) = on_shelf();
     pill_up(&mut a);
     let top = BarLayout::top(out_h());
-    for (btn, way) in [(Btn::Start, "leaving"), (Btn::B, "coming back")] {
-        press(&mut a, btn);
+    // MENU opens Settings from the shelf, as on Slot; B comes back
+    for (open, way) in [(true, "leaving"), (false, "coming back")] {
+        match open {
+            true => a.apply(Action::QuickMenu),
+            false => press(&mut a, Btn::B),
+        }
         let mut moved = false;
         for _ in 0..24 {
             let out = frame(&a);
@@ -541,7 +545,7 @@ fn players_sink(p: f32) -> f32 {
 fn the_shelfs_actions_sink_and_a_menus_rise_as_flow_does() {
     let (_d, mut a) = on_shelf();
     let start: Millis = 10_000;
-    a.apply_at(Action::GbaDown(Btn::Start), start);
+    a.apply_at(Action::QuickMenu, start);
     let mut seen = Vec::new();
     for t in [0.0, 0.25, 0.5, 0.75, 1.0] {
         a.tick_ms(start + (t * SLIDE_MS as f32) as Millis);
@@ -578,7 +582,7 @@ fn the_shelfs_actions_sink_and_a_menus_rise_as_flow_does() {
 #[test]
 fn going_back_to_the_shelf_swaps_them_the_other_way() {
     let (_d, mut a) = on_shelf();
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     a.finish_slide();
     let start: Millis = 20_000;
     a.apply_at(Action::GbaDown(Btn::B), start);
@@ -592,7 +596,7 @@ fn going_back_to_the_shelf_swaps_them_the_other_way() {
 #[test]
 fn between_two_menus_the_actions_stay_put() {
     let (_d, mut a) = on_shelf();
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     a.finish_slide();
     while a.settings_row() != Some(SettingsRow::Network) {
         press(&mut a, Btn::Down);
@@ -810,7 +814,7 @@ fn a_signed_in_account_puts_y_sign_out_on_the_bar() {
 fn the_bars_hints_change_halfway_through_a_slide() {
     let (_d, mut a) = on_shelf();
     a.tick_ms(1_000);
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     a.finish_slide();
     while a.settings_row() != Some(SettingsRow::Network) {
         press(&mut a, Btn::Down);
@@ -861,7 +865,7 @@ fn a_new_colour_in_background_retints_the_top_bar() {
     );
     assert_eq!(top_bar_fill(&a), Some(night.housing));
 
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     a.finish_slide();
     while a.settings_row() != Some(SettingsRow::Background) {
         press(&mut a, Btn::Down);

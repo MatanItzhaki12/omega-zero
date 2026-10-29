@@ -49,7 +49,7 @@ fn press(a: &mut App, btn: Btn) {
 }
 
 fn open_at(a: &mut App, row: SettingsRow) {
-    press(a, Btn::Start);
+    a.apply(Action::QuickMenu);
     for _ in 0..row.index() {
         press(a, Btn::Down);
     }
@@ -60,11 +60,11 @@ fn open_at(a: &mut App, row: SettingsRow) {
 #[test]
 fn start_opens_settings_with_its_top_row_selected_every_time() {
     let (_d, mut a, _) = on_carousel();
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     assert_eq!(a.settings_row(), Some(SettingsRow::FastForward));
     press(&mut a, Btn::Down);
     press(&mut a, Btn::Start);
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     assert_eq!(
         a.settings_row(),
         Some(SettingsRow::FastForward),
@@ -73,15 +73,10 @@ fn start_opens_settings_with_its_top_row_selected_every_time() {
 }
 
 #[test]
-fn menu_opens_nothing_on_the_carousel() {
+fn menu_opens_settings_on_the_carousel_as_on_slot() {
     let (_d, mut a, _) = on_carousel();
     a.apply(Action::QuickMenu);
-    assert!(
-        matches!(a.phase(), Phase::Shelf),
-        "MENU still opened {:?}",
-        a.phase()
-    );
-    assert_eq!(a.settings_row(), None);
+    assert_eq!(a.settings_row(), Some(SettingsRow::FastForward));
 }
 
 #[test]
@@ -98,7 +93,7 @@ fn start_b_or_menu_closes_it_back_onto_the_carousel_where_you_were() {
             Some("Fusion"),
             "the carousel never moved"
         );
-        press(&mut a, Btn::Start);
+        a.apply(Action::QuickMenu);
         a.apply(close);
         assert!(
             matches!(a.phase(), Phase::Shelf),
@@ -127,7 +122,7 @@ fn settings_is_only_on_the_carousel() {
 #[test]
 fn up_and_down_move_the_bar_and_wrap_at_the_ends() {
     let (_d, mut a, _) = on_carousel();
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     press(&mut a, Btn::Up);
     assert_eq!(
         a.settings_row(),
@@ -138,6 +133,7 @@ fn up_and_down_move_the_bar_and_wrap_at_the_ends() {
         SettingsRow::FastForward,
         SettingsRow::FastForwardSound,
         SettingsRow::ColourCorrection,
+        SettingsRow::ScreenFilter,
         SettingsRow::Rumble,
         SettingsRow::Labels,
         SettingsRow::DateTime,
@@ -193,6 +189,8 @@ fn rumble_and_fast_forward_sound_flip_on_either_arrow_and_save() {
     );
     press(&mut a, Btn::Right);
     assert_eq!(card(&d), (false, true));
+    // past Colour Correction and Screen Filter to Rumble
+    press(&mut a, Btn::Down);
     press(&mut a, Btn::Down);
     press(&mut a, Btn::Down);
     press(&mut a, Btn::Right);
@@ -364,7 +362,7 @@ fn the_first_boot_clock_still_has_no_way_back() {
     let (mut a, _) = app_booting_with_clock(d.path());
     press(&mut a, Btn::B);
     a.apply(Action::QuickMenu);
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     assert!(
         matches!(a.phase(), Phase::SetClock { .. }),
         "left the first boot clock: {:?}",
@@ -405,7 +403,7 @@ fn brightness_and_volume_still_answer_over_settings() {
 /// and 111, and each row 200 and its index.
 fn fake_faces(a: &mut App) -> SettingsFaces {
     let id = TexId::from_raw;
-    let frame = settings_frame(5, palette(0));
+    let frame = settings_frame(omega_ui::configs_in(&a.settings_rows()), palette(0));
     let mut faces = SettingsFaces::new(&frame, id(100), [(id(110), [42, 11]), (id(111), [42, 11])]);
     for row in a.settings_rows() {
         faces.rows[row.index()] = Some((id(200 + row.index()), [270, ROW_H]));
@@ -442,7 +440,7 @@ fn at_2x([x, y, w, h]: [u32; 4]) -> [f32; 4] {
 fn the_modal_fills_the_page_and_the_lit_title_follows_the_cursor() {
     let (_d, mut a, _) = on_carousel();
     let faces = fake_faces(&mut a);
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     a.finish_slide();
     for row in a.settings_rows() {
         assert_eq!(a.settings_row(), Some(row));
@@ -532,6 +530,7 @@ fn the_rows_say_what_is_set_in_flows_capitals() {
             text("4X"),
             text("ON"),
             text("OFF"),
+            text("LCD"),
             text("ON"),
             None,
             clock_text,

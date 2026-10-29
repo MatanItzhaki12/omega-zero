@@ -163,7 +163,7 @@ impl Rig {
     }
 
     fn open_network(&mut self) {
-        self.press(Btn::Start);
+        self.a.apply(Action::QuickMenu);
         assert!(self.a.settings_row().is_some(), "START opened no Settings");
         while self.a.settings_row() != Some(SettingsRow::Network) {
             self.press(Btn::Down);

@@ -172,7 +172,7 @@ fn holding_power_opens_the_menu_over_the_shelf_a_menu_and_a_game() {
     );
 
     let (_d, mut a) = on_shelf();
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     a.finish_slide();
     press(&mut a, Btn::Down);
     a.apply(Action::PowerHold);
@@ -314,7 +314,7 @@ fn in_a_game_the_backdrop_takes_the_games_place_until_the_menu_has_gone() {
 #[test]
 fn up_and_down_go_round_and_b_goes_back_to_where_power_was_held() {
     let (_d, mut a) = on_shelf();
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     a.finish_slide();
     while a.settings_row() != Some(SettingsRow::Network) {
         press(&mut a, Btn::Down);
@@ -594,7 +594,7 @@ fn the_bar_sinks_away_as_the_screen_after_the_choice_slides_in() {
 #[test]
 fn holding_power_during_a_slide_ends_it() {
     let (_d, mut a) = on_shelf();
-    press(&mut a, Btn::Start);
+    a.apply(Action::QuickMenu);
     assert!(a.slide().is_some());
     a.apply(Action::PowerHold);
     assert!(

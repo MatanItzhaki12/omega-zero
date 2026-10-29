@@ -24,7 +24,7 @@ pub use grade::{blue_light_gain, BLUE_LIGHT_MAX};
 pub use headless::HeadlessSurface;
 #[cfg(feature = "host")]
 pub use host::{host_rotation, HostSurface};
-pub use lcd3x::{lcd3x_mask, mask_texture_rgba8};
+pub use lcd3x::{lcd3x_mask, mask_texture_rgba8, Mask};
 pub use pipeline::{Filter, GameView, SCALE, SRC_H, SRC_W, WHOLE_TEXTURE};
 pub use power::{screen_brightness, screen_glow, screen_rect_in, screen_scale, screen_width};
 pub use surface::{

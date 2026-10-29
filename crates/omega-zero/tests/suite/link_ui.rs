@@ -137,7 +137,7 @@ fn the_game_menu_does_not_open_on_the_shelf() {
     app.apply(Action::GameMenu);
     assert!(!app.game_menu_open(), "the shelf raised the in-game menu");
     assert!(matches!(app.phase(), Phase::Shelf));
-    app.apply(Action::GbaDown(Btn::Start));
+    app.apply(Action::QuickMenu);
     assert!(
         matches!(app.phase(), Phase::Settings { .. }),
         "the shelf lost its quick menu"

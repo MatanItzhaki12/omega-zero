@@ -1,5 +1,5 @@
 use crate::canvas::{out_h, out_w};
-use crate::lcd3x::mask_texture_rgba8;
+use crate::lcd3x::Mask;
 use crate::power::{screen_brightness, screen_glow, screen_rect_in};
 use crate::quad::Quad;
 use crate::shaders::{GAME_FRAG, GAME_SHARP_FRAG, RECT_VERT};
@@ -71,6 +71,8 @@ pub struct GamePass {
     /// The game texture's width and height, the last picture's.
     size: (u32, u32),
     mask: gl::types::GLuint,
+    /// The cell the mask texture holds now.
+    mask_kind: Mask,
     power: f32,
     view: Option<GameView>,
     still: Option<GameView>,
@@ -91,7 +93,7 @@ impl GamePass {
             gl::NEAREST,
             gl::REPEAT,
             gl::RGBA,
-            Some(&mask_texture_rgba8()),
+            Some(&Mask::default().texture_rgba8()),
         );
         unsafe {
             gl::UseProgram(lcd);
@@ -123,10 +125,36 @@ impl GamePass {
             game,
             size: (SRC_W, SRC_H),
             mask,
+            mask_kind: Mask::default(),
             power: 1.0,
             view: None,
             still: None,
         })
+    }
+
+    /// What a game at 3x is drawn through from now on. The 3x3 texture is written again only
+    /// when it changes.
+    pub fn set_mask(&mut self, mask: Mask) {
+        if mask == self.mask_kind {
+            return;
+        }
+        self.mask_kind = mask;
+        let cell = mask.texture_rgba8();
+        unsafe {
+            gl::BindTexture(gl::TEXTURE_2D, self.mask);
+            gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
+            gl::TexSubImage2D(
+                gl::TEXTURE_2D,
+                0,
+                0,
+                0,
+                3,
+                3,
+                gl::RGBA,
+                gl::UNSIGNED_BYTE,
+                cell.as_ptr() as *const std::ffi::c_void,
+            );
+        }
     }
 
     pub fn set_power(&mut self, t: f32) {

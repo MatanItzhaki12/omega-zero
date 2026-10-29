@@ -93,6 +93,7 @@ mod screen;
 mod settings;
 mod sfx;
 mod single;
+mod slot_controls;
 mod ssh;
 mod ssh_password;
 mod start_notice;

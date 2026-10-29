@@ -167,6 +167,11 @@ impl Compositor {
         self.game.set_source_rect(rect);
     }
 
+    /// What a game at 3x is drawn through: the LCD, a grid, or nothing.
+    pub fn set_game_mask(&mut self, mask: crate::Mask) {
+        self.game.set_mask(mask);
+    }
+
     pub fn set_game_view(&mut self, view: GameView) {
         self.game.set_view(view);
     }

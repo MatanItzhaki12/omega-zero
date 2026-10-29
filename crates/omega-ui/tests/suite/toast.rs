@@ -1,3 +1,4 @@
+use omega_store::ScreenFilter;
 use omega_ui::kit::gauge::GAUGE_H;
 use omega_ui::kit::palette::palette;
 use omega_ui::kit::toast::TOAST_H;
@@ -90,6 +91,9 @@ fn the_banner_says_what_happened_and_never_what_is_on_screen() {
             Toast::ColourOff,
             Toast::OneDisc,
             Toast::Disc(1),
+            Toast::Filter(ScreenFilter::Lcd),
+            Toast::Favorited,
+            Toast::Unfavorited,
         ],
         "a banner was added or dropped"
     );
@@ -97,6 +101,21 @@ fn the_banner_says_what_happened_and_never_what_is_on_screen() {
         assert_eq!(t.index(), i, "{t:?} does not answer to its own place");
     }
     assert_eq!(Toast::Disc(3).index(), Toast::Disc(1).index());
+    assert_eq!(
+        Toast::Filter(ScreenFilter::Off).index(),
+        Toast::Filter(ScreenFilter::Lcd).index()
+    );
+}
+
+#[test]
+fn the_filter_and_favorite_toasts_say_what_changed() {
+    assert_eq!(Toast::Filter(ScreenFilter::Lcd).text(), "LCD");
+    assert_eq!(Toast::Filter(ScreenFilter::Grid).text(), "Grid");
+    assert_eq!(Toast::Filter(ScreenFilter::Off).text(), "Off");
+    assert_eq!(Toast::Filter(ScreenFilter::Grid).label(), "FILTER");
+    assert_eq!(Toast::Favorited.text(), "Added");
+    assert_eq!(Toast::Unfavorited.text(), "Removed");
+    assert_eq!(Toast::Favorited.label(), "FAVORITES");
 }
 
 #[test]

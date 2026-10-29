@@ -1,7 +1,7 @@
 //! Settings (settings_menu.rs).
 
 use omega_gfx::{out_h, out_w};
-use omega_store::{parse_stamp, FF_SPEEDS};
+use omega_store::{parse_stamp, ScreenFilter, FF_SPEEDS};
 use omega_ui::kit::layout::modal_rect;
 use omega_ui::kit::modal::{modal_face, CUT};
 use omega_ui::kit::palette::{palette, Palette};
@@ -32,8 +32,11 @@ fn flow_rows(lit: SettingsRow) -> Vec<RowShown> {
         SettingsRow::Bluetooth => Some("8BITDO SN30 PRO"),
         _ => None,
     };
+    // flow.html's screenshots were taken before Screen Filter joined CONFIGS: they hold the
+    // rows the kit drew then, which are drawn just as they were
     SettingsRow::ALL
         .into_iter()
+        .filter(|row| *row != SettingsRow::ScreenFilter)
         .map(|row| RowShown {
             row,
             value: value(row).map(str::to_string),
@@ -137,7 +140,7 @@ fn configs_is_as_tall_as_its_rows_and_general_takes_the_rest() {
 
 #[test]
 fn every_row_stands_in_its_own_panels_well() {
-    let frame = settings_frame(5, palette(NIGHT));
+    let frame = settings_frame(omega_ui::configs_in(&SettingsRow::ALL), palette(NIGHT));
     let rects = settings_row_rects(&SettingsRow::ALL, frame.wells);
     for (row, [x, y, w, h]) in &rects {
         let [wx, wy, ww, wh] = frame.wells[row.group().index()];
@@ -169,7 +172,7 @@ fn without_a_radio_the_rows_after_network_close_up_and_the_panels_stay() {
         .filter(|r| *r != SettingsRow::Network)
         .collect();
     let frame = settings_frame(omega_ui::configs_in(&rows), palette(NIGHT));
-    let all = settings_frame(5, palette(NIGHT));
+    let all = settings_frame(omega_ui::configs_in(&SettingsRow::ALL), palette(NIGHT));
     assert_eq!(frame.wells, all.wells, "hiding Network moved a panel");
     let rects = settings_row_rects(&rows, frame.wells);
     let y = |row: SettingsRow| rects.iter().find(|(r, _)| *r == row).unwrap().1[1];
@@ -287,6 +290,7 @@ fn the_rows_left_and_right_change_step_between_arrows_and_the_rows_that_open_end
             SettingsRow::FastForward,
             SettingsRow::FastForwardSound,
             SettingsRow::ColourCorrection,
+            SettingsRow::ScreenFilter,
             SettingsRow::Rumble
         ]
     );
@@ -382,7 +386,8 @@ fn a_sync_bakes_the_frame_once_and_a_row_only_when_it_changes() {
 
     // the clock's minute: Date & Time alone
     let mut later = faster.clone();
-    later[SettingsRow::DateTime.index()].value = Some("OCT 10 16:01".into());
+    let date = later.iter_mut().find(|s| s.row == SettingsRow::DateTime);
+    date.expect("Date & Time is shown").value = Some("OCT 10 16:01".into());
     let plan = baked.rebake(NIGHT, &later);
     let rebaked: Vec<SettingsRow> = plan.rows.iter().map(|s| s.row).collect();
     assert_eq!(rebaked, [SettingsRow::DateTime]);
@@ -402,7 +407,7 @@ fn a_sync_bakes_the_frame_once_and_a_row_only_when_it_changes() {
     // a new palette: everything
     let plan = baked.rebake(AMBER, &moved);
     assert!(plan.frame);
-    assert_eq!(plan.rows.len(), SettingsRow::ALL.len());
+    assert_eq!(plan.rows.len(), moved.len());
 
     // the radio goes: Network's face is dropped, nothing baked
     let radioless: Vec<RowShown> = moved
@@ -461,6 +466,7 @@ fn the_rows_run_in_the_order_the_user_chose() {
             "Fast Forward",
             "Fast Forward Sound",
             "Colour Correction",
+            "Screen Filter",
             "Rumble",
             "Labels",
             "Date & Time",
@@ -491,7 +497,7 @@ fn the_configs_come_first_and_the_handheld_itself_after() {
         .iter()
         .take_while(|g| **g == SettingsGroup::Configs)
         .count();
-    assert_eq!(configs, 5, "{groups:?}");
+    assert_eq!(configs, 6, "{groups:?}");
     assert!(
         groups[configs..]
             .iter()
@@ -525,8 +531,13 @@ fn a_hidden_row_is_stepped_over_both_ways() {
 fn the_values_read_as_flow_prints_them() {
     assert_eq!(
         QuickValue::ALL.map(QuickValue::text),
-        ["2X", "3X", "4X", "6X", "ON", "OFF"]
+        ["2X", "3X", "4X", "6X", "ON", "OFF", "LCD", "GRID"]
     );
+    assert_eq!(QuickValue::filter(ScreenFilter::Lcd), QuickValue::Lcd);
+    assert_eq!(QuickValue::filter(ScreenFilter::Grid), QuickValue::Grid);
+    assert_eq!(QuickValue::filter(ScreenFilter::Off), QuickValue::Off);
+    assert!(SettingsRow::ScreenFilter.carets());
+    assert!(!SettingsRow::ScreenFilter.opens());
     assert_eq!(QuickValue::flag(true), QuickValue::On);
     assert_eq!(QuickValue::flag(false), QuickValue::Off);
 }

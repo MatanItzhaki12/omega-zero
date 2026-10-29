@@ -98,11 +98,12 @@ fn a_select_tap_in_a_game_opens_nothing() {
 }
 
 /// The shelf's lines for a system with a core to pick, the GBA's and the SNES's.
-const SHELF_WITH_CORES: [(&str, &str); 8] = [
+const SHELF_WITH_CORES: [(&str, &str); 9] = [
     ("A", "PLAY"),
     ("HOLD A", "CLEAN START"),
-    ("X", "CORE"),
-    ("START", "SETTINGS"),
+    ("START", "CORE"),
+    ("Y", "FAVORITE"),
+    ("MENU", "SETTINGS"),
     ("SELECT", "CONTROLS"),
     ("◀▶", "BROWSE"),
     ("▲▼", "LETTER"),
@@ -126,6 +127,7 @@ fn controls_says_what_the_shelf_and_a_gba_game_do_with_each_button() {
             ("L2", "REWIND"),
             ("R2", "FAST FORWARD"),
             ("R2 ×2", "LATCH FAST FWD"),
+            ("MENU", "GAME MENU"),
             ("MENU ×2", "SAVE STATES"),
             ("HOLD MENU", "EJECT"),
             ("SELECT+MENU", "LINK"),
@@ -134,6 +136,7 @@ fn controls_says_what_the_shelf_and_a_gba_game_do_with_each_button() {
             ("SELECT+L1", "LOAD STATE"),
             ("SELECT+R1", "SAVE STATE"),
             ("SELECT+Y", "COLOUR"),
+            ("SELECT+A B", "SCREEN FILTER"),
             ("VOL+ VOL-", "MUTE"),
             ("HOLD POWER", "POWER MENU"),
         ]
@@ -145,7 +148,7 @@ fn a_game_boy_has_no_core_to_pick_and_leaves_l1_and_r1_to_the_picture() {
     for platform in [Platform::Gb, Platform::Gbc] {
         let view = ControlsView::new(platform);
         assert!(
-            !view.groups[0].lines.contains(&("X", "CORE")),
+            !view.groups[0].lines.contains(&("START", "CORE")),
             "{platform:?} offers a core to pick"
         );
         assert_eq!(view.groups[0].lines.len(), SHELF_WITH_CORES.len() - 1);
@@ -154,6 +157,7 @@ fn a_game_boy_has_no_core_to_pick_and_leaves_l1_and_r1_to_the_picture() {
             ("L2", "REWIND"),
             ("SELECT+MENU", "LINK"),
             ("SELECT+Y", "COLOUR"),
+            ("SELECT+A B", "SCREEN FILTER"),
             ("L1 R1", "PICTURE SIZE"),
         ] {
             assert!(game.contains(&line), "{platform:?} has no {line:?}");
@@ -171,6 +175,7 @@ fn a_snes_game_rewinds_and_fast_forwards_but_neither_links_nor_corrects_colour()
             ("L2", "REWIND"),
             ("R2", "FAST FORWARD"),
             ("R2 ×2", "LATCH FAST FWD"),
+            ("MENU", "GAME MENU"),
             ("MENU ×2", "SAVE STATES"),
             ("HOLD MENU", "EJECT"),
             ("SELECT+▲▼", "BRIGHTNESS"),
@@ -186,12 +191,13 @@ fn a_snes_game_rewinds_and_fast_forwards_but_neither_links_nor_corrects_colour()
 #[test]
 fn a_playstation_game_fast_forwards_on_select_r2_and_swaps_discs() {
     let view = ControlsView::new(Platform::Ps1);
-    assert!(!view.groups[0].lines.contains(&("X", "CORE")));
+    assert!(!view.groups[0].lines.contains(&("START", "CORE")));
     assert_eq!(
         view.groups[1].lines,
         [
             ("SELECT+R2", "FAST FORWARD"),
             ("SELECT+R2 ×2", "LATCH FAST FWD"),
+            ("MENU", "GAME MENU"),
             ("MENU ×2", "SAVE STATES"),
             ("HOLD MENU", "EJECT"),
             ("SELECT+MENU", "DISC"),
