@@ -38,6 +38,7 @@ mod sync_labels;
 mod sync_link;
 mod sync_network;
 mod sync_opening;
+mod sync_options;
 mod sync_pause;
 mod sync_power;
 mod sync_settings;
@@ -61,14 +62,13 @@ use sync_labels::sync_labels;
 use sync_link::{sync_link, LinkTexes};
 use sync_network::{sync_network, NetworkTexes};
 use sync_opening::{sync_opening, TerminalRows};
+use sync_options::{sync_options, sync_title, OptionsTex, TitleTex};
 use sync_pause::{sync_pause, PauseTex};
 use sync_power::{sync_power, PowerPanels};
 use sync_settings::{sync_settings, SettingsTexes};
 use sync_start_notice::sync_start_notice;
 use sync_switcher::{sync_switcher, Switcher};
 use sync_top_bar::{sync_top_bar, TopBarTexes};
-
-const DOZE_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// How many bytes of the faces the label workers hand back are uploaded in one frame, the rest
 /// left for the frames after, so a burst of them does not hold a frame up: four Game Boy Advance
@@ -91,6 +91,8 @@ pub struct Frontend {
     /// The DISC screen's panel and bar.
     disc: DiscTexes,
     pause: PauseTex,
+    options: OptionsTex,
+    title: TitleTex,
     core_asked: Option<String>,
     core_board_tex: Option<TexId>,
     core_lid_tex: Option<TexId>,
@@ -170,9 +172,9 @@ impl Frontend {
     pub fn boot(platform: Box<dyn Platform>) -> Self {
         let now = Instant::now();
         let mut session = Session::boot(platform.root().to_path_buf());
-        session
-            .app_mut()
-            .set_power(Power::new(platform, DOZE_TIMEOUT));
+        // Settings > Shelf > Lid Power Off, 3 minutes until it is changed
+        let timeout = session.app().lid_timeout();
+        session.app_mut().set_power(Power::new(platform, timeout));
         Frontend {
             session,
             start: now,
@@ -184,6 +186,8 @@ impl Frontend {
             link: LinkTexes::default(),
             disc: DiscTexes::default(),
             pause: PauseTex::default(),
+            options: OptionsTex::default(),
+            title: TitleTex::default(),
             core_asked: None,
             core_board_tex: None,
             core_lid_tex: None,
@@ -264,6 +268,10 @@ impl Frontend {
             }
         }
         self.session.app_mut().set_faces(faces);
+        // the star every favorite wears, a texel to an art pixel
+        let star = omega_ui::star_face();
+        let star = compositor.create_texture_nearest(star.w, star.h, &star.rgba);
+        self.session.app_mut().set_mark_face(star);
         // the core picker's parts are pixel art, a texel to an art pixel, kept sharp at 2x
         let mut sprite = |f: CartFace| compositor.create_texture_nearest(f.w, f.h, &f.rgba);
         let sockets = omega_store::Core::ALL
@@ -380,6 +388,8 @@ impl Frontend {
         sync_link(self.session.app_mut(), compositor, &mut self.link);
         sync_disc(self.session.app_mut(), compositor, &mut self.disc);
         sync_pause(self.session.app_mut(), compositor, &mut self.pause);
+        sync_options(self.session.app_mut(), compositor, &mut self.options);
+        sync_title(self.session.app_mut(), compositor, &mut self.title);
         sync_switcher(
             self.session.app_mut(),
             compositor,

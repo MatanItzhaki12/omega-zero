@@ -131,10 +131,10 @@ fn up_and_down_move_the_bar_and_wrap_at_the_ends() {
     );
     for want in [
         SettingsRow::FastForward,
-        SettingsRow::FastForwardSound,
         SettingsRow::ColourCorrection,
         SettingsRow::ScreenFilter,
-        SettingsRow::Rumble,
+        SettingsRow::Gameplay,
+        SettingsRow::Shelf,
         SettingsRow::Labels,
         SettingsRow::DateTime,
         SettingsRow::Network,
@@ -156,7 +156,9 @@ fn fast_forward_steps_through_its_speeds_and_saves_each_one() {
         (Btn::Left, 4),
         (Btn::Left, 3),
         (Btn::Left, 2),
-        (Btn::Left, 2),
+        (Btn::Left, 0),
+        (Btn::Left, 0),
+        (Btn::Right, 2),
         (Btn::Right, 3),
         (Btn::Right, 4),
         (Btn::Right, 6),
@@ -174,31 +176,30 @@ fn fast_forward_steps_through_its_speeds_and_saves_each_one() {
 }
 
 #[test]
-fn rumble_and_fast_forward_sound_flip_on_either_arrow_and_save() {
+fn rumble_and_fast_forward_sound_flip_on_either_arrow_in_gameplay_and_save() {
+    use omega_zero::options::OptionRow;
     let (d, mut a, _) = on_carousel();
     let card = |d: &TempDir| {
         let s = read_app_state(d.path());
         (s.ff_sound, s.rumble)
     };
-    open_at(&mut a, SettingsRow::FastForwardSound);
+    open_at(&mut a, SettingsRow::Gameplay);
+    press(&mut a, Btn::A);
+    a.finish_slide();
+    assert!(matches!(a.phase(), Phase::Options(_)), "{:?}", a.phase());
     press(&mut a, Btn::Left);
     assert_eq!(card(&d), (true, true));
-    assert_eq!(
-        a.settings_value(SettingsRow::FastForwardSound),
-        Some(QuickValue::On)
-    );
+    assert_eq!(a.option_text(OptionRow::FastForwardSound), "ON");
     press(&mut a, Btn::Right);
     assert_eq!(card(&d), (false, true));
-    // past Colour Correction and Screen Filter to Rumble
-    press(&mut a, Btn::Down);
-    press(&mut a, Btn::Down);
     press(&mut a, Btn::Down);
     press(&mut a, Btn::Right);
     assert_eq!(card(&d), (false, false));
     assert!(!a.rumble_enabled());
-    assert_eq!(a.settings_value(SettingsRow::Rumble), Some(QuickValue::Off));
     press(&mut a, Btn::Left);
     assert_eq!(card(&d), (false, true));
+    press(&mut a, Btn::B);
+    assert_eq!(a.settings_row(), Some(SettingsRow::Gameplay));
 }
 
 #[test]
@@ -528,10 +529,10 @@ fn the_rows_say_what_is_set_in_flows_capitals() {
         said(&a),
         [
             text("4X"),
-            text("ON"),
             text("OFF"),
             text("LCD"),
-            text("ON"),
+            None,
+            None,
             None,
             clock_text,
             text("OFF"),

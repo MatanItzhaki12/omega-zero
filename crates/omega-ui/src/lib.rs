@@ -14,6 +14,7 @@ mod keyboard;
 pub mod kit;
 mod label_cut;
 pub mod link_art;
+mod mark;
 mod models;
 mod motion;
 pub mod network;
@@ -58,7 +59,9 @@ pub use cart::{
     GB_LABEL_W, GB_LABEL_X, GB_LABEL_Y, LABEL_H, LABEL_W, LABEL_X, LABEL_Y,
 };
 pub use chrome::{edge, housing, set_theme, ChromeColours, BAR_H};
-pub use clock::{clock_label, date_time_text, hhmm, zone_text, ClockPicker, Field};
+pub use clock::{
+    clock_label, clock_text, date_time_text, date_time_text_in, hhmm, zone_text, ClockPicker, Field,
+};
 pub use dive::{alert_face, CartDive, ALERT_H, ALERT_W};
 pub use draw::{out_h, out_w, Draw, MeshId, TexId};
 pub use footer::Printed;
@@ -77,6 +80,7 @@ pub use kit::gauge::GaugeIcon;
 pub use label_cut::{
     cut_label, cut_path, keep_size, label_uncut, shrink_label, wears_label, CUT_DIR,
 };
+pub use mark::{star_face, STAR_PX};
 pub use models::disc::{
     push_disc, push_disc_alone, push_stack, stack_of, DiscStack, StackDive, StackMeshes, DISC_PX,
     MAX_STACK, STACK_DIVE,

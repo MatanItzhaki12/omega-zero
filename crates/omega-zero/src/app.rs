@@ -28,7 +28,7 @@ use crate::bluetooth_screen::{Bluetooth, BluetoothScreen};
 use crate::boot_fade::BootFade;
 use crate::core_picker::{Chip, CorePicker, Outcome, Press};
 use crate::disc_screen::{DiscBar, DiscScreen};
-use crate::favorites::{favorite_carts, read_favorites, ShelfKind};
+use crate::favorites::{favorite_carts, read_favorites, read_recents, ShelfKind};
 use crate::label_screen::{Labels, LabelsScreen};
 use crate::label_sync::{label_jobs, Account, LabelJobs, NoKey, Want};
 use crate::link_kind::{link_carried, link_kind, serial_option, LinkKind};
@@ -37,6 +37,7 @@ use crate::link_screen::{LinkBar, LinkSprites};
 use crate::link_start::{link_port, LinkFail, LinkProgress, LinkStarter, LinkStep};
 use crate::nav::{even, offsets, Dir, End, Offsets, Slide, SLIDE_MS};
 use crate::opening::Opening;
+use crate::options::OptionsScreen;
 use crate::pause_menu::PauseMenu;
 use crate::persist::{self, Snapshot};
 use crate::screens::bar::BarFaces;
@@ -256,6 +257,8 @@ pub enum Phase {
     Info(InfoScreen),
     Labels(LabelsScreen),
     Background(BackgroundScreen),
+    /// The GAMEPLAY or SHELF panel, opened from Settings.
+    Options(OptionsScreen),
     Doze {
         cart: Option<String>,
     },
@@ -406,6 +409,14 @@ pub struct App {
     /// The notice that the last start of a game took omega-zero down, from the boot that found
     /// it noted until it is put away.
     pub(crate) start_notice: Option<StartNotice>,
+    /// The games put in last, the latest first, as Config/recents.txt lists them.
+    pub(crate) recents: Vec<(Platform, String)>,
+    /// The GAMEPLAY or SHELF panel, once baked.
+    pub(crate) options_panel: Option<Lone>,
+    /// Frame blending or the Game Boy's palette changed, for the game in play to take.
+    pub(crate) core_options_pending: bool,
+    /// The picked cart's name over the shelf, baked, with its size in art pixels.
+    pub(crate) title_face: Option<(TexId, u32, u32)>,
 }
 
 fn shelves_of(carts: Vec<Cart>, favorites: &[(Platform, String)]) -> Vec<(ShelfKind, Shelf)> {
@@ -417,12 +428,16 @@ fn shelves_of(carts: Vec<Cart>, favorites: &[(Platform, String)]) -> Vec<(ShelfK
             row.push(cart);
         }
     }
-    std::iter::once((ShelfKind::Favorites, Shelf::new(starred)))
-        .chain(
-            rows.into_iter()
-                .map(|(platform, carts)| (ShelfKind::System(platform), Shelf::new(carts))),
-        )
-        .collect()
+    [
+        (ShelfKind::Recents, Shelf::new(Vec::new())),
+        (ShelfKind::Favorites, Shelf::new(starred)),
+    ]
+    .into_iter()
+    .chain(
+        rows.into_iter()
+            .map(|(platform, carts)| (ShelfKind::System(platform), Shelf::new(carts))),
+    )
+    .collect()
 }
 
 impl App {
@@ -459,6 +474,10 @@ impl App {
             boot_fade: None,
             opening: None,
             start_notice: None,
+            recents: Vec::new(),
+            options_panel: None,
+            core_options_pending: false,
+            title_face: None,
             phase: Phase::Shelf,
             shelves,
             favorites,
@@ -555,6 +574,13 @@ impl App {
         app.ssh.start(app.state.ssh, Some(root));
         app.bluetooth.start(app.state.bluetooth);
         app.labels = Labels::new(label_jobs(root), Account::load(root));
+        app.recents = read_recents(root);
+        app.refresh_recents();
+        app.refresh_marks();
+        // RECENTS, when shown, is the shelf a boot comes up on, as on Slot
+        if app.state.show_recents && !app.shelves[0].1.carts.is_empty() {
+            app.shelf_at = 0;
+        }
         if let Some(fell) = persist::take_starting(root) {
             eprintln!("omega-zero: {fell} took omega-zero down as it started; it is not resumed");
             app.hold_resume = true;
@@ -899,7 +925,7 @@ impl App {
     pub fn keys(&self) -> Keys {
         Keys {
             game_l2_r2: self.platform.game_owns_l2_r2(),
-            rewind: self.platform.rewinds(),
+            rewind: self.platform.rewinds() && self.state.rewind,
             colour: self.platform.colour_correction(),
         }
     }
@@ -969,7 +995,43 @@ impl App {
     }
 
     pub fn may_fast_forward(&self) -> bool {
-        !self.link_active()
+        !self.link_active() && self.state.ff_speed != 0
+    }
+
+    /// Whether held X and Y are turbo A and B, as Settings > Gameplay has it.
+    pub fn turbo_on(&self) -> bool {
+        self.state.turbo
+    }
+
+    /// The options frame blending and the Game Boy's palette set on the game in play: blending
+    /// on the GBA's and the Game Boys' cores, the palette on an original Game Boy game on mGBA.
+    pub fn core_extras(&self) -> Vec<(&'static str, &'static str)> {
+        let mut set = Vec::new();
+        if matches!(self.platform, Platform::Gba | Platform::Gb | Platform::Gbc) {
+            set.extend(self.state.blending.option(self.core));
+        }
+        if self.platform == Platform::Gb && self.core == Core::Mgba {
+            match self.state.gb_colors {
+                omega_store::GbColors::Auto => set.extend([
+                    ("mgba_gb_colors_preset", "1"),
+                    ("mgba_gb_colors", "GBC Dark Green →A"),
+                ]),
+                omega_store::GbColors::Palette(p) => set.extend([
+                    ("mgba_gb_colors_preset", "0"),
+                    ("mgba_gb_colors", p.core_name()),
+                ]),
+            }
+        }
+        set
+    }
+
+    pub(crate) fn queue_core_options(&mut self) {
+        self.core_options_pending = true;
+    }
+
+    /// Whether `core_extras` changed since the game in play last took them.
+    pub fn take_core_options(&mut self) -> bool {
+        std::mem::take(&mut self.core_options_pending)
     }
 
     pub fn end_link(&mut self) {
@@ -1071,6 +1133,16 @@ impl App {
 
     pub fn colour_correction(&self) -> bool {
         self.state.colour_correction
+    }
+
+    /// How long a shut lid sleeps before powering off, as Settings > Shelf has it.
+    pub fn lid_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(u64::from(self.state.lid_off_min.max(1)) * 60)
+    }
+
+    /// The clock reads 24-hour time, else 12-hour.
+    pub fn clock_24h(&self) -> bool {
+        self.state.clock_24h
     }
 
     /// What a Game Boy or GBA game at 3x is drawn through.
@@ -1237,7 +1309,8 @@ impl App {
                 return self.flush_resume();
             }
             Action::PowerTap => return self.power_press(),
-            Action::PowerHold => return self.open_power_menu(),
+            // holding POWER powers off at once, with no menu between
+            Action::PowerHold => return self.power_off_now(),
             Action::PowerOff => return,
             _ => {}
         }
@@ -1289,10 +1362,10 @@ impl App {
                 Action::GbaDown(Btn::A) => self.play_held = Some(now),
                 Action::GbaUp(Btn::A) => {
                     if self.play_held.take().is_some() {
-                        self.insert(false);
+                        self.insert(!self.state.auto_load);
                     }
                 }
-                Action::Insert => self.insert(false),
+                Action::Insert => self.insert(!self.state.auto_load),
                 Action::GbaDown(Btn::L1) => self.switch_shelf(-1),
                 Action::GbaDown(Btn::R1) => self.switch_shelf(1),
                 _ => {}
@@ -1314,6 +1387,8 @@ impl App {
                 Action::SaveState => self.save_state(),
                 Action::LoadState => self.load_newest(),
                 Action::RewindStart if !self.may_rewind() => self.refuse(),
+                // Fast Forward OFF: R2 does nothing, as on Slot
+                Action::FfStart if self.state.ff_speed == 0 => {}
                 Action::FfStart if !self.may_fast_forward() => self.refuse(),
                 _ => {}
             },
@@ -1332,6 +1407,7 @@ impl App {
             Phase::Info(_) => self.info_input(action),
             Phase::Labels(_) => self.labels_input(action),
             Phase::Background(_) => self.background_input(action),
+            Phase::Options(_) => self.options_input(action),
             _ => {}
         }
     }
@@ -2092,6 +2168,7 @@ impl App {
             Phase::Settings { row } => self.draw_settings(*row, out),
             Phase::Controls => self.draw_controls(out),
             Phase::Background(_) => self.draw_background_screen(out),
+            Phase::Options(_) => self.draw_options(out),
             Phase::Labels(_) if typing_of(phase).is_none() => self.draw_labels(out),
             // the modal and its panels stand over the backdrop, with nothing between
             Phase::Network(screen) if screen.typing.is_none() => self.draw_network(out),
@@ -2428,14 +2505,11 @@ impl App {
         if !self.on_shelf() || self.start_notice_shown() {
             return;
         }
-        let Some(cart) = self
-            .shelf()
-            .carts
-            .get(self.shelf().index)
-            .map(|c| c.stem.clone())
-        else {
+        let Some(picked) = self.shelf().carts.get(self.shelf().index).cloned() else {
             return;
         };
+        let cart = picked.stem.clone();
+        self.note_recent(&picked);
         self.play_held = None;
         self.refusal = None;
         self.refused_from = None;
@@ -2498,6 +2572,7 @@ impl App {
             return;
         };
         let (state, sav) = trusted_write(snapshot.as_ref(), state, "eject");
+        let state = state.filter(|_| self.state.eject_save);
         match persist::eject(
             root,
             self.platform,
@@ -2935,6 +3010,18 @@ impl App {
 
     /// Powers off once the screen saying so has slid in, ending a link session first. Once the
     /// handheld is going down, either way, nothing changes that.
+    /// Holding POWER: the game's resume is made durable, then the handheld powers off, with
+    /// the screen saying so. A link under way is ended first.
+    pub(crate) fn power_off_now(&mut self) {
+        if self.shutting_down() {
+            return;
+        }
+        self.close_pause_menu();
+        self.flush_resume();
+        self.finish_slide();
+        self.begin_power_off();
+    }
+
     pub(crate) fn begin_power_off(&mut self) {
         if self.shutting_down() {
             return;

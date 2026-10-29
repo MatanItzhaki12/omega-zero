@@ -1,11 +1,13 @@
 mod app_state;
 mod atomic;
 mod backdrop;
+mod blending;
 pub mod cart_shell;
 mod config;
 mod core;
 mod font;
 pub mod gb;
+mod gb_palette;
 mod gba;
 pub mod ini;
 mod platform;
@@ -20,16 +22,18 @@ mod theme;
 
 pub use app_state::{
     read_app_state, write_app_state, AppState, BLUE_LIGHT_MAX, BRIGHTNESS_MAX, FF_SPEEDS,
-    FF_SPEED_DEFAULT, UTC_OFFSET_MAX, UTC_OFFSET_MIN, VOLUME_MAX,
+    FF_SPEED_DEFAULT, LID_OFF_MINUTES, UTC_OFFSET_MAX, UTC_OFFSET_MIN, VOLUME_MAX,
 };
 pub use atomic::{atomic_write, atomic_write_dated};
 pub use backdrop::{colour_index, BackdropStyle, BACKDROP_COLOURS};
+pub use blending::Blending;
 pub use cart_shell::{Outline, ShellChoice, ShellFinish, CART_SHELL_FILE, LABELS_SHELL_FILE};
 pub use config::{move_config, CONFIG_DIR};
 pub use core::{
     core_for, core_for_platform, read_selected_cores, write_selected_core, Core, SELECTED_CORE_FILE,
 };
 pub use font::Font;
+pub use gb_palette::{GbColors, GbPalette};
 pub use gba::{header_clean, header_code, header_title};
 pub use platform::Platform;
 pub use region::Region;

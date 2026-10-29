@@ -3,7 +3,7 @@
 
 use omega_input::{Action, Btn};
 use omega_store::FF_SPEEDS;
-use omega_ui::{date_time_text, Draw, QuickValue, RowShown, SettingsFaces, SettingsMenu};
+use omega_ui::{date_time_text_in, Draw, QuickValue, RowShown, SettingsFaces, SettingsMenu};
 
 pub use omega_ui::{SettingsGroup, SettingsRow};
 
@@ -12,6 +12,7 @@ use crate::background_screen::BackgroundScreen;
 use crate::bluetooth_screen::{BluetoothScreen, Summary as BluetoothSummary};
 use crate::label_screen::LabelsScreen;
 use crate::nav::Dir;
+use crate::options::{OptionsPage, OptionsScreen};
 use crate::screens::clock::clock_screen;
 use crate::wifi_screen::{Summary, WifiScreen};
 
@@ -28,11 +29,11 @@ impl App {
     pub fn settings_value(&self, row: SettingsRow) -> Option<QuickValue> {
         match row {
             SettingsRow::FastForward => QuickValue::speed(self.state.ff_speed),
-            SettingsRow::FastForwardSound => Some(QuickValue::flag(self.state.ff_sound)),
             SettingsRow::ColourCorrection => Some(QuickValue::flag(self.state.colour_correction)),
             SettingsRow::ScreenFilter => Some(QuickValue::filter(self.state.screen_filter)),
-            SettingsRow::Rumble => Some(QuickValue::flag(self.state.rumble)),
-            SettingsRow::Labels
+            SettingsRow::Gameplay
+            | SettingsRow::Shelf
+            | SettingsRow::Labels
             | SettingsRow::DateTime
             | SettingsRow::Network
             | SettingsRow::Bluetooth
@@ -46,7 +47,9 @@ impl App {
     /// OFF with the radio off.
     pub fn settings_text(&self, row: SettingsRow) -> Option<String> {
         match row {
-            SettingsRow::DateTime => Some(date_time_text(self.wall_secs())),
+            SettingsRow::DateTime => {
+                Some(date_time_text_in(self.wall_secs(), self.state.clock_24h))
+            }
             SettingsRow::Network => Some(match self.wifi_summary() {
                 Summary::Off => QuickValue::Off.text().to_string(),
                 Summary::On => QuickValue::On.text().to_string(),
@@ -123,6 +126,8 @@ impl App {
 
     fn open_settings_row(&mut self, row: SettingsRow) {
         let to = match row {
+            SettingsRow::Gameplay => Phase::Options(OptionsScreen::new(OptionsPage::Gameplay)),
+            SettingsRow::Shelf => Phase::Options(OptionsScreen::new(OptionsPage::Shelf)),
             SettingsRow::Labels => Phase::Labels(LabelsScreen::default()),
             SettingsRow::DateTime => clock_screen(self.utc_secs(), self.state.utc_offset_min, true),
             SettingsRow::Network => Phase::Network(WifiScreen::default()),
@@ -130,10 +135,8 @@ impl App {
             SettingsRow::Background => Phase::Background(BackgroundScreen::default()),
             SettingsRow::About => Phase::About,
             SettingsRow::FastForward
-            | SettingsRow::FastForwardSound
             | SettingsRow::ColourCorrection
-            | SettingsRow::ScreenFilter
-            | SettingsRow::Rumble => return,
+            | SettingsRow::ScreenFilter => return,
         };
         self.go(to, Dir::Deeper);
     }
@@ -148,14 +151,14 @@ impl App {
                 }
                 s.ff_speed = to;
             }
-            SettingsRow::FastForwardSound => s.ff_sound = !s.ff_sound,
             SettingsRow::ColourCorrection => {
                 s.colour_correction = !s.colour_correction;
                 self.colour_pending = Some(s.colour_correction);
             }
             SettingsRow::ScreenFilter => s.screen_filter = s.screen_filter.step(right),
-            SettingsRow::Rumble => s.rumble = !s.rumble,
-            SettingsRow::Labels
+            SettingsRow::Gameplay
+            | SettingsRow::Shelf
+            | SettingsRow::Labels
             | SettingsRow::DateTime
             | SettingsRow::Network
             | SettingsRow::Bluetooth
@@ -178,6 +181,7 @@ impl App {
 
 fn ff_next(from: u8, right: bool) -> u8 {
     let at = FF_SPEEDS.iter().position(|&v| v == from).unwrap_or(0);
+    // OFF stands below 2X, as on Slot
     let to = if right { at + 1 } else { at.saturating_sub(1) };
     FF_SPEEDS[to.min(FF_SPEEDS.len() - 1)]
 }

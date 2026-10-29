@@ -140,6 +140,7 @@ pub fn actions_on(phase: &Phase) -> Option<Actions> {
         | Phase::Info(_)
         | Phase::Labels(_)
         | Phase::Background(_)
+        | Phase::Options(_)
         | Phase::SetClock { .. }
         | Phase::About => Some(Actions::Menu),
         Phase::Polaroids { .. } => Some(Actions::Switcher),

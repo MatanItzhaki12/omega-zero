@@ -121,22 +121,6 @@ fn step(row: PowerChoice, by: isize) -> PowerChoice {
 }
 
 impl App {
-    /// The POWER menu over whatever is shown, its cursor on RESTART: not once the handheld is
-    /// going down, nor during a link session, which it would pause, where the refusal shakes
-    /// instead. The resume is made durable first, as the player may hold on until the power
-    /// management chip cuts the power.
-    pub(crate) fn open_power_menu(&mut self) {
-        if self.power_screen.is_some() || self.shutting_down() {
-            return;
-        }
-        if self.link_active() {
-            return self.refuse();
-        }
-        self.flush_resume();
-        self.finish_slide();
-        self.show_power(PowerScreen::Menu(PowerChoice::Restart));
-    }
-
     /// Slides `screen` in deeper, over the power screen shown or the screen POWER was held on.
     fn show_power(&mut self, screen: PowerScreen) {
         let from = self.power_screen.replace(screen);

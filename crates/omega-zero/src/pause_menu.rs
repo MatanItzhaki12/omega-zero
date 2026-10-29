@@ -8,19 +8,22 @@
 //! - SCREEN FILTER, the LCD, a grid or nothing, changed in place with Left and Right, so the
 //!   game behind shows it at once;
 //! - COLOUR CORRECTION, on a Game Boy or GBA game, changed the same way;
+//! - FRAME BLENDING on those games, and the PALETTE of an original Game Boy game on mGBA, as
+//!   Settings > Gameplay has them;
 //! - EXIT GAME, which saves a state and ejects the cart, as holding MENU does.
 //!
 //! The panel is one face, baked again only when what it shows, or the palette, changes.
 
 use omega_gfx::{out_h, out_w};
 use omega_input::{Action, Btn};
-use omega_store::Platform;
+use omega_store::{Core, Platform};
 use omega_ui::kit::palette::Palette;
 use omega_ui::kit::panel::panel_face;
 use omega_ui::kit::row::{panel_height, row_face, row_rect, Row};
 use omega_ui::{clean_label, Draw, QuickValue, UndoFace};
 
 use crate::app::{App, Phase};
+use crate::options::OptionRow;
 use crate::screens::lone::{notes, notes_height, over, rows_height, Lone, NOTE_GAP};
 
 /// How wide the MENU panel is: the LINK and DISC panels' width.
@@ -38,17 +41,21 @@ pub enum PauseRow {
     States,
     ScreenFilter,
     ColourCorrection,
+    Blending,
+    Palette,
     ExitGame,
 }
 
 impl PauseRow {
-    pub const ALL: [PauseRow; 7] = [
+    pub const ALL: [PauseRow; 9] = [
         PauseRow::Resume,
         PauseRow::SaveState,
         PauseRow::LoadState,
         PauseRow::States,
         PauseRow::ScreenFilter,
         PauseRow::ColourCorrection,
+        PauseRow::Blending,
+        PauseRow::Palette,
         PauseRow::ExitGame,
     ];
 
@@ -60,13 +67,21 @@ impl PauseRow {
             PauseRow::States => "States",
             PauseRow::ScreenFilter => "Screen Filter",
             PauseRow::ColourCorrection => "Colour Correction",
+            PauseRow::Blending => "Frame Blending",
+            PauseRow::Palette => "Palette",
             PauseRow::ExitGame => "Exit Game",
         }
     }
 
     /// Left and Right change the row's value in place.
     pub fn carets(self) -> bool {
-        matches!(self, PauseRow::ScreenFilter | PauseRow::ColourCorrection)
+        matches!(
+            self,
+            PauseRow::ScreenFilter
+                | PauseRow::ColourCorrection
+                | PauseRow::Blending
+                | PauseRow::Palette
+        )
     }
 
     /// A opens a screen of its own for this row: the row ends in a ›.
@@ -135,6 +150,8 @@ impl App {
             .filter(|r| match r {
                 PauseRow::ScreenFilter => handheld,
                 PauseRow::ColourCorrection => self.platform.colour_correction(),
+                PauseRow::Blending => handheld,
+                PauseRow::Palette => self.platform == Platform::Gb && self.core == Core::Mgba,
                 _ => true,
             })
             .collect()
@@ -177,6 +194,8 @@ impl App {
                             .text()
                             .to_string(),
                     ),
+                    PauseRow::Blending => Some(self.option_text(OptionRow::Blending)),
+                    PauseRow::Palette => Some(self.option_text(OptionRow::Palette)),
                     _ => None,
                 },
                 dim: match row {
@@ -234,6 +253,8 @@ impl App {
                 crate::screens::settings::SettingsRow::ColourCorrection,
                 right,
             ),
+            PauseRow::Blending => self.change_option(OptionRow::Blending, right),
+            PauseRow::Palette => self.change_option(OptionRow::Palette, right),
             _ => {}
         }
     }
@@ -256,7 +277,10 @@ impl App {
                 self.close_pause_menu();
                 self.open_polaroids();
             }
-            PauseRow::ScreenFilter | PauseRow::ColourCorrection => self.change_pause_row(row, true),
+            PauseRow::ScreenFilter
+            | PauseRow::ColourCorrection
+            | PauseRow::Blending
+            | PauseRow::Palette => self.change_pause_row(row, true),
             PauseRow::ExitGame => {
                 self.close_pause_menu();
                 self.eject();

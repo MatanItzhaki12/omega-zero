@@ -16,6 +16,16 @@ turned off.
 - Screen Filter, in Settings' CONFIGS and in MENU, draws a Game Boy or GBA game through the LCD it
   always had, a plain grid between its pixels, or nothing. SELECT+A and SELECT+B step through them
   in a game, as on Slot. It is kept as `screen_filter` in `omega-zero.state`.
+- Slot's other settings, in two panels CONFIGS opens: GAMEPLAY holds Fast Forward Sound and
+  Rumble, which stood in CONFIGS, then Load State on Insert, Save State on Eject, Rewind, Turbo
+  Buttons, Frame Blending (Off, Mix, LCD Ghosting) and the Game Boy's Palette (Auto and mGBA's 48);
+  SHELF holds Recents, Game Titles, the Clock's 12 or 24 hours and Lid Power Off. Fast Forward can
+  be OFF. Frame Blending and the Palette are in MENU over a game too.
+- RECENTS, once shown, is the first shelf: the last ten games put in, kept in
+  `Config/recents.txt` as Slot keeps them. Game Titles names the cart picked under the top bar.
+- Every favorite wears a gold star at its corner, on every shelf, and FAVORITES stands its carts
+  by system, then by name.
+- Holding POWER powers off at once, as on Slot: the POWER menu and its Restart are gone.
 
 ## omega-zero 1.2.0
 

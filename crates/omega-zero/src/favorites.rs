@@ -4,8 +4,14 @@
 //! Config/favorites.txt as `gba/Pokemon - Emerald Version (USA, Europe)`, the file Slot writes,
 //! so a card moved over from Slot keeps its favorites.
 //!
-//! The FAVORITES shelf draws each cart on the face its own system's shelf has for it, so a label
-//! that arrives redraws both, and a boot draws no face twice.
+//! FAVORITES stands its carts by system, in the shelves' order, and by name within each. Every
+//! starred cart wears a gold star at its corner, on every shelf it stands on.
+//!
+//! RECENTS, once Settings > Shelf shows it, stands before FAVORITES: the last ten games put in,
+//! the latest first, kept in Config/recents.txt in the same lines, as Slot keeps them.
+//!
+//! Both shelves draw each cart on the face its own system's shelf has for it, so a label that
+//! arrives redraws them all, and a boot draws no face twice.
 
 use std::path::{Path, PathBuf};
 
@@ -16,10 +22,16 @@ use omega_ui::Toast;
 use crate::app::App;
 
 pub const FAVORITES_FILE: &str = "favorites.txt";
+pub const RECENTS_FILE: &str = "recents.txt";
 
-/// What a shelf holds: the carts of one system, or the starred carts of every system.
+/// How many games RECENTS holds.
+pub const RECENTS_MAX: usize = 10;
+
+/// What a shelf holds: the carts of one system, the last games played, or the starred carts of
+/// every system.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ShelfKind {
+    Recents,
     Favorites,
     System(Platform),
 }
@@ -29,7 +41,7 @@ impl ShelfKind {
     pub fn platform(self) -> Option<Platform> {
         match self {
             ShelfKind::System(p) => Some(p),
-            ShelfKind::Favorites => None,
+            ShelfKind::Recents | ShelfKind::Favorites => None,
         }
     }
 
@@ -38,6 +50,7 @@ impl ShelfKind {
         match self {
             ShelfKind::System(p) => p.dir_name(),
             ShelfKind::Favorites => "FAVORITES",
+            ShelfKind::Recents => "RECENTS",
         }
     }
 
@@ -46,12 +59,59 @@ impl ShelfKind {
         match self {
             ShelfKind::System(p) => p.name(),
             ShelfKind::Favorites => "Favorites",
+            ShelfKind::Recents => "Recents",
         }
     }
 }
 
 fn favorites_path(root: &Path) -> PathBuf {
     root.join(CONFIG_DIR).join(FAVORITES_FILE)
+}
+
+fn recents_path(root: &Path) -> PathBuf {
+    root.join(CONFIG_DIR).join(RECENTS_FILE)
+}
+
+/// The games put in last, the latest first.
+pub fn read_recents(root: &Path) -> Vec<(Platform, String)> {
+    std::fs::read_to_string(recents_path(root))
+        .map(|text| {
+            text.lines()
+                .filter_map(parse_line)
+                .take(RECENTS_MAX)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn write_recents(root: &Path, recents: &[(Platform, String)]) -> std::io::Result<()> {
+    let text: String = recents
+        .iter()
+        .map(|(p, stem)| line_of(*p, stem) + "\n")
+        .collect();
+    atomic_write(&recents_path(root), text.as_bytes())
+}
+
+/// `cart` as the latest game put in, ahead of `recents`, which keep it once and ten at most.
+pub fn with_recent(recents: &[(Platform, String)], cart: &Cart) -> Vec<(Platform, String)> {
+    std::iter::once((cart.platform, cart.stem.clone()))
+        .chain(
+            recents
+                .iter()
+                .filter(|(p, s)| !(*p == cart.platform && *s == cart.stem))
+                .cloned(),
+        )
+        .take(RECENTS_MAX)
+        .collect()
+}
+
+/// Where a cart stands on FAVORITES: its system's place among the shelves, then its name.
+fn favorite_key(cart: &Cart) -> (usize, (u8, String)) {
+    let system = Platform::ALL
+        .iter()
+        .position(|p| *p == cart.platform)
+        .unwrap_or(usize::MAX);
+    (system, sort_key(&cart.stem))
 }
 
 /// A favorite's line: its system's folder in small letters, a slash, then its name.
@@ -94,16 +154,16 @@ pub fn favorite_carts(carts: &[Cart], favorites: &[(Platform, String)]) -> Vec<C
         })
         .cloned()
         .collect();
-    found.sort_by_key(|c| sort_key(&c.stem));
+    found.sort_by_key(favorite_key);
     found
 }
 
-/// Where `cart` goes on a FAVORITES shelf of `carts`, kept in name order.
+/// Where `cart` goes on a FAVORITES shelf of `carts`, kept by system, then by name.
 fn place_in(carts: &[Cart], cart: &Cart) -> usize {
-    let key = sort_key(&cart.stem);
+    let key = favorite_key(cart);
     carts
         .iter()
-        .position(|c| sort_key(&c.stem) > key)
+        .position(|c| favorite_key(c) > key)
         .unwrap_or(carts.len())
 }
 
@@ -129,17 +189,96 @@ impl App {
 
     /// Draws each cart on FAVORITES on its own system's face, once the faces are set.
     pub(crate) fn share_favorite_faces(&mut self) {
-        let Some(at) = self.favorites_at() else {
+        for kind in [ShelfKind::Favorites, ShelfKind::Recents] {
+            let Some(at) = self.shelves.iter().position(|(k, _)| *k == kind) else {
+                continue;
+            };
+            let faces: Option<Vec<_>> = self.shelves[at]
+                .1
+                .carts
+                .iter()
+                .map(|c| self.face_of(c.platform, &c.stem))
+                .collect();
+            if let Some(faces) = faces {
+                self.shelves[at].1.set_faces(faces);
+            }
+        }
+        self.refresh_marks();
+    }
+
+    /// Puts the star on every starred cart, on every shelf.
+    pub(crate) fn refresh_marks(&mut self) {
+        let favorites = std::mem::take(&mut self.favorites);
+        for (_, shelf) in &mut self.shelves {
+            let marks = shelf
+                .carts
+                .iter()
+                .map(|c| {
+                    favorites
+                        .iter()
+                        .any(|(p, s)| *p == c.platform && *s == c.stem)
+                })
+                .collect();
+            shelf.set_marks(marks);
+        }
+        self.favorites = favorites;
+    }
+
+    /// The star every favorite wears, uploaded.
+    pub fn set_mark_face(&mut self, tex: omega_ui::TexId) {
+        for (_, shelf) in &mut self.shelves {
+            shelf.set_mark(tex);
+        }
+    }
+
+    /// The carts RECENTS shows now: the last games put in that are still on the card, or none
+    /// while Settings > Shelf hides it.
+    fn recent_carts(&self) -> Vec<(Cart, Option<omega_ui::TexId>)> {
+        if !self.state.show_recents {
+            return Vec::new();
+        }
+        self.recents
+            .iter()
+            .filter_map(|(p, stem)| {
+                let (_, shelf) = self
+                    .shelves
+                    .iter()
+                    .find(|(k, _)| *k == ShelfKind::System(*p))?;
+                let (cart, face) = shelf.find(stem)?;
+                Some((cart.clone(), face))
+            })
+            .collect()
+    }
+
+    /// Stands RECENTS again as the list and the setting have it, moving off it once it is
+    /// empty.
+    pub(crate) fn refresh_recents(&mut self) {
+        let Some(at) = self
+            .shelves
+            .iter()
+            .position(|(k, _)| *k == ShelfKind::Recents)
+        else {
             return;
         };
-        let faces: Option<Vec<_>> = self.shelves[at]
-            .1
-            .carts
-            .iter()
-            .map(|c| self.face_of(c.platform, &c.stem))
-            .collect();
-        if let Some(faces) = faces {
-            self.shelves[at].1.set_faces(faces);
+        let carts = self.recent_carts();
+        self.shelves[at].1.replace(carts);
+        self.refresh_marks();
+        if self.shelf_at == at && self.shelf().carts.is_empty() {
+            self.leave_empty_shelf();
+        }
+    }
+
+    /// `cart` goes in: it is the latest game on RECENTS.
+    pub(crate) fn note_recent(&mut self, cart: &Cart) {
+        self.recents = with_recent(&self.recents, cart);
+        if let Some(root) = &self.root {
+            if let Err(e) = write_recents(root, &self.recents) {
+                eprintln!("omega-zero: {RECENTS_FILE}: {e}");
+            }
+        }
+        // on RECENTS, the cart going in is its first now, and stays the one picked
+        if self.state.show_recents {
+            self.refresh_recents();
         }
     }
 
@@ -170,6 +309,7 @@ impl App {
             let i = place_in(&fav.carts, &cart);
             fav.insert(i, cart, face);
         }
+        self.refresh_marks();
         if let Some(root) = &self.root {
             if let Err(e) = write_favorites(root, &self.favorites) {
                 eprintln!("omega-zero: {FAVORITES_FILE}: {e}");
@@ -248,8 +388,68 @@ mod tests {
             shell: None,
         };
         let row = [cart("Advance Wars"), cart("Metroid Fusion"), cart("Zelda")];
+        let gb = Cart {
+            platform: Platform::Gb,
+            ..cart("Alleyway")
+        };
+        assert_eq!(
+            place_in(&row, &gb),
+            3,
+            "a Game Boy cart goes after the GBA's"
+        );
         assert_eq!(place_in(&row, &cart("Golden Sun")), 1);
         assert_eq!(place_in(&row, &cart("4 Games")), 0);
         assert_eq!(place_in(&row, &cart("Zoo")), 3);
+    }
+}
+
+#[cfg(test)]
+mod recents_tests {
+    use super::*;
+
+    fn cart(platform: Platform, stem: &str) -> Cart {
+        Cart {
+            platform,
+            stem: stem.into(),
+            rom: PathBuf::new(),
+            label: None,
+            title: String::new(),
+            code: String::new(),
+            shell: None,
+        }
+    }
+
+    #[test]
+    fn the_latest_comes_first_once_and_ten_at_most() {
+        let mut recents: Vec<(Platform, String)> = (0..RECENTS_MAX)
+            .map(|i| (Platform::Gba, format!("Game {i}")))
+            .collect();
+        recents = with_recent(&recents, &cart(Platform::Gba, "Game 4"));
+        assert_eq!(recents[0].1, "Game 4");
+        assert_eq!(recents.len(), RECENTS_MAX);
+        assert_eq!(recents.iter().filter(|(_, s)| s == "Game 4").count(), 1);
+        recents = with_recent(&recents, &cart(Platform::Gb, "Tetris"));
+        assert_eq!(recents[0], (Platform::Gb, "Tetris".into()));
+        assert_eq!(recents.len(), RECENTS_MAX, "the oldest falls off");
+    }
+
+    #[test]
+    fn favorites_stand_by_system_then_by_name() {
+        let carts = [
+            cart(Platform::Gbc, "Pokemon Crystal"),
+            cart(Platform::Gb, "Tetris"),
+            cart(Platform::Gba, "Zero"),
+            cart(Platform::Gba, "Emerald"),
+            cart(Platform::Gb, "Alleyway"),
+        ];
+        let all: Vec<_> = carts.iter().map(|c| (c.platform, c.stem.clone())).collect();
+        let order: Vec<_> = favorite_carts(&carts, &all)
+            .into_iter()
+            .map(|c| c.stem)
+            .collect();
+        assert_eq!(
+            order,
+            ["Emerald", "Zero", "Alleyway", "Tetris", "Pokemon Crystal"]
+        );
     }
 }

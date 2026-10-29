@@ -85,3 +85,10 @@ impl LidPolicy for Power {
         self.timeout
     }
 }
+
+impl Power {
+    /// How long a shut lid sleeps from now on before the handheld powers off.
+    pub fn set_timeout(&mut self, timeout: Duration) {
+        self.timeout = timeout;
+    }
+}

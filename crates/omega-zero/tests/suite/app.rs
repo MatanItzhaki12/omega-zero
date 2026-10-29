@@ -2146,6 +2146,7 @@ fn a_cart_with_no_line_reads_as_actual_size() {
 }
 
 #[test]
+#[ignore = "holding POWER powers off at once: there is no POWER menu"]
 fn the_power_menus_own_buttons_never_reach_the_game() {
     let d = common::tmp_root_with_carts(&["Emerald", "Zzz"]);
     let mut s = session_playing(d.path());

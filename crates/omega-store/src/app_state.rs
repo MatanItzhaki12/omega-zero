@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use crate::atomic::atomic_write;
 use crate::backdrop::{colour_index, BackdropStyle, BACKDROP_COLOURS};
+use crate::blending::Blending;
 use crate::font::Font;
+use crate::gb_palette::GbColors;
 use crate::platform::Platform;
 use crate::screen_filter::ScreenFilter;
 
@@ -13,7 +15,11 @@ pub const VOLUME_MAX: u8 = 100;
 pub const UTC_OFFSET_MIN: i16 = -720;
 pub const UTC_OFFSET_MAX: i16 = 840;
 
-pub const FF_SPEEDS: [u8; 4] = [2, 3, 4, 6];
+/// The fast-forward speeds Settings steps through; 0 is OFF, as on Slot.
+pub const FF_SPEEDS: [u8; 5] = [0, 2, 3, 4, 6];
+
+/// How long a shut lid sleeps before the handheld powers off, as Slot offers it.
+pub const LID_OFF_MINUTES: [u8; 6] = [1, 3, 5, 10, 15, 30];
 
 pub const FF_SPEED_DEFAULT: u8 = 6;
 
@@ -52,6 +58,26 @@ pub struct AppState {
     pub backdrop_colour: u8,
     /// The font the bar's actions write their big words in.
     pub font: Font,
+    /// Putting a cart in picks up from the state it was ejected in.
+    pub auto_load: bool,
+    /// Ejecting a cart saves a state to pick up from.
+    pub eject_save: bool,
+    /// Holding L2 rewinds.
+    pub rewind: bool,
+    /// Held X and Y are turbo A and B.
+    pub turbo: bool,
+    /// Frame blending, on the GBA and the Game Boys.
+    pub blending: Blending,
+    /// The colours an original Game Boy game is drawn in.
+    pub gb_colors: GbColors,
+    /// A RECENTS shelf of the last games played stands first.
+    pub show_recents: bool,
+    /// The name of the cart picked is shown over the shelf.
+    pub show_titles: bool,
+    /// The clock reads 24-hour time, else 12-hour.
+    pub clock_24h: bool,
+    /// Minutes a shut lid sleeps before the handheld powers off: one of `LID_OFF_MINUTES`.
+    pub lid_off_min: u8,
 }
 
 impl Default for AppState {
@@ -79,6 +105,16 @@ impl Default for AppState {
             backdrop_moving: true,
             backdrop_colour: 0,
             font: Font::Bold,
+            auto_load: true,
+            eject_save: true,
+            rewind: true,
+            turbo: true,
+            blending: Blending::Off,
+            gb_colors: GbColors::Auto,
+            show_recents: false,
+            show_titles: false,
+            clock_24h: true,
+            lid_off_min: 3,
         }
     }
 }
@@ -97,7 +133,7 @@ pub fn read_app_state(root: &Path) -> AppState {
 
 pub fn write_app_state(root: &Path, s: &AppState) -> std::io::Result<()> {
     let text = format!(
-        "cart={}\ncart_platform={}\nbrightness={}\nblue_light={}\nvolume={}\nvolume_hp={}\nmuted={}\nmuted_hp={}\nclock_set={}\nutc_offset_min={}\nrumble={}\nff_speed={}\nff_sound={}\ncolour_correction={}\nscreen_filter={}\nwifi={}\nssh={}\nbluetooth={}\nbackdrop={}\nbackdrop_moving={}\nbackdrop_colour={}\nfont={}\n",
+        "cart={}\ncart_platform={}\nbrightness={}\nblue_light={}\nvolume={}\nvolume_hp={}\nmuted={}\nmuted_hp={}\nclock_set={}\nutc_offset_min={}\nrumble={}\nff_speed={}\nff_sound={}\ncolour_correction={}\nscreen_filter={}\nwifi={}\nssh={}\nbluetooth={}\nbackdrop={}\nbackdrop_moving={}\nbackdrop_colour={}\nfont={}\nauto_load={}\neject_save={}\nrewind={}\nturbo={}\nblending={}\ngb_palette={}\nshow_recents={}\nshow_titles={}\nclock_24h={}\nlid_off_min={}\n",
         s.cart.as_deref().unwrap_or(""),
         s.cart_platform.map_or(String::new(), platform_key),
         s.brightness,
@@ -119,7 +155,17 @@ pub fn write_app_state(root: &Path, s: &AppState) -> std::io::Result<()> {
         s.backdrop.map_or("", BackdropStyle::key),
         s.backdrop_moving as u8,
         BACKDROP_COLOURS[(s.backdrop_colour as usize).min(BACKDROP_COLOURS.len() - 1)],
-        s.font.key()
+        s.font.key(),
+        s.auto_load as u8,
+        s.eject_save as u8,
+        s.rewind as u8,
+        s.turbo as u8,
+        s.blending.key(),
+        s.gb_colors.key(),
+        s.show_recents as u8,
+        s.show_titles as u8,
+        s.clock_24h as u8,
+        s.lid_off_min,
     );
     atomic_write(&state_path(root), text.as_bytes())
 }
@@ -147,6 +193,16 @@ fn parse(text: &str) -> Option<AppState> {
     let mut backdrop_moving = None;
     let mut backdrop_colour = None;
     let mut font = None;
+    let mut auto_load = None;
+    let mut eject_save = None;
+    let mut rewind = None;
+    let mut turbo = None;
+    let mut blending = None;
+    let mut gb_colors = None;
+    let mut show_recents = None;
+    let mut show_titles = None;
+    let mut clock_24h = None;
+    let mut lid_off_min = None;
     for line in text.lines().filter(|l| !l.is_empty()) {
         let Some((key, value)) = line.split_once('=') else {
             continue;
@@ -174,6 +230,18 @@ fn parse(text: &str) -> Option<AppState> {
             "backdrop_moving" => backdrop_moving = flag(value),
             "backdrop_colour" => backdrop_colour = colour_index(value),
             "font" => font = Font::from_key(value),
+            "auto_load" => auto_load = flag(value),
+            "eject_save" => eject_save = flag(value),
+            "rewind" => rewind = flag(value),
+            "turbo" => turbo = flag(value),
+            "blending" => blending = Blending::from_key(value),
+            "gb_palette" => gb_colors = GbColors::from_key(value),
+            "show_recents" => show_recents = flag(value),
+            "show_titles" => show_titles = flag(value),
+            "clock_24h" => clock_24h = flag(value),
+            "lid_off_min" => {
+                lid_off_min = value.parse().ok().filter(|m| LID_OFF_MINUTES.contains(m))
+            }
             _ => {}
         }
     }
@@ -202,6 +270,16 @@ fn parse(text: &str) -> Option<AppState> {
         backdrop_moving: backdrop_moving.unwrap_or(fallback.backdrop_moving),
         backdrop_colour: backdrop_colour.unwrap_or(fallback.backdrop_colour),
         font: font.unwrap_or(fallback.font),
+        auto_load: auto_load.unwrap_or(fallback.auto_load),
+        eject_save: eject_save.unwrap_or(fallback.eject_save),
+        rewind: rewind.unwrap_or(fallback.rewind),
+        turbo: turbo.unwrap_or(fallback.turbo),
+        blending: blending.unwrap_or(fallback.blending),
+        gb_colors: gb_colors.unwrap_or(fallback.gb_colors),
+        show_recents: show_recents.unwrap_or(fallback.show_recents),
+        show_titles: show_titles.unwrap_or(fallback.show_titles),
+        clock_24h: clock_24h.unwrap_or(fallback.clock_24h),
+        lid_off_min: lid_off_min.unwrap_or(fallback.lid_off_min),
     })
 }
 

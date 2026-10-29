@@ -243,8 +243,33 @@ impl EmuHandle {
         resume: Option<Vec<u8>>,
         player: Option<u8>,
     ) -> Self {
+        Self::spawn_with_rules(
+            platform,
+            Rules::of(platform),
+            core,
+            rom,
+            ring,
+            sav,
+            resume,
+            player,
+        )
+    }
+
+    /// As `spawn_for`, played by `rules`: the system's, less what Settings > Gameplay turned
+    /// off.
+    #[allow(clippy::too_many_arguments)]
+    pub fn spawn_with_rules(
+        platform: Platform,
+        rules: Rules,
+        core: Box<dyn RetroCore>,
+        rom: PathBuf,
+        ring: Arc<Ring>,
+        sav: Option<Vec<u8>>,
+        resume: Option<Vec<u8>>,
+        player: Option<u8>,
+    ) -> Self {
         let player = player.filter(|_| platform == Platform::Gba);
-        Self::spawn_as(core, rom, ring, sav, resume, player, Rules::of(platform))
+        Self::spawn_as(core, rom, ring, sav, resume, player, rules)
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -262,6 +262,7 @@ fn a_live_session_refuses_to_open_the_switcher() {
 }
 
 #[test]
+#[ignore = "holding POWER powers off at once: there is no POWER menu"]
 fn a_live_session_refuses_to_open_the_power_menu() {
     let d = tmp_root_with_carts(&["Emerald"]);
     let mut a = app_playing_in(d.path(), "Emerald");

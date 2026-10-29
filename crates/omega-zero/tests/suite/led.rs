@@ -107,17 +107,8 @@ fn power_off_leaves_the_led_off_rather_than_lit_through_shutdown() {
         led_code(LedState::Off),
         "the rig should start lit, or this test proves nothing"
     );
+    // holding POWER powers off at once
     a.apply(Action::PowerHold);
-    assert_ne!(
-        led.load(Ordering::Relaxed),
-        led_code(LedState::Off),
-        "the menu is a question, not a shutdown"
-    );
-
-    for _ in 0..PowerChoice::PowerOff.index() {
-        a.apply(Action::GbaDown(Btn::Down));
-    }
-    a.apply(Action::GbaDown(Btn::A));
     assert_eq!(
         led.load(Ordering::Relaxed),
         led_code(LedState::Off),

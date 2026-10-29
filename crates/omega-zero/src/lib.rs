@@ -31,6 +31,7 @@ pub mod link_state;
 pub mod list_view;
 pub mod nav;
 pub mod opening;
+pub mod options;
 pub mod pause_menu;
 pub mod persist;
 pub mod resample;

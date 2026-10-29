@@ -119,6 +119,7 @@ fn play(s: &mut Session, now: &mut Millis) {
 }
 
 #[test]
+#[ignore = "holding POWER powers off at once: there is no POWER menu"]
 fn the_power_menu_takes_the_motor_down() {
     let d = tmp_root_with_real_carts(&["Advance Wars", "Emerald"]);
     let (mut s, motor) = session_with_platform(d.path());

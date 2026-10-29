@@ -7,7 +7,7 @@
 
 use omega_gfx::{Compositor, TexId};
 use omega_ui::kit::text::text_face;
-use omega_ui::{bolt_face, hhmm, link_face, Link, LinkFaces, Printed};
+use omega_ui::{bolt_face, clock_text, link_face, Link, LinkFaces, Printed};
 
 use crate::app::{App, Readouts};
 use crate::frontend::faces::upload_nearest;
@@ -50,7 +50,7 @@ pub(crate) fn sync_top_bar(app: &mut App, compositor: &mut Compositor, texes: &m
         texes.ink = Some(ink);
     }
     let word = |(text, ink): &(String, [u8; 3])| text_face(text, *ink);
-    let time = (hhmm(app.wall_secs()), colours.ink);
+    let time = (clock_text(app.wall_secs(), app.clock_24h()), colours.ink);
     if let Some(clock) = texes.clock.bake(compositor, time, word) {
         readouts.clock = Printed::new(clock.tex, clock.w);
     }

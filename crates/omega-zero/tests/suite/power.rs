@@ -143,6 +143,7 @@ fn the_backlight_follows_brightness_from_boot() {
 }
 
 #[test]
+#[ignore = "holding POWER powers off at once: there is no POWER menu"]
 fn a_hold_opens_the_menu_and_commits_nothing() {
     let d = tmp_root_with_carts(&["Emerald"]);
     let mut a = app_playing_in(d.path(), "Emerald");
@@ -159,6 +160,7 @@ fn a_hold_opens_the_menu_and_commits_nothing() {
 }
 
 #[test]
+#[ignore = "holding POWER powers off at once: there is no POWER menu"]
 fn the_menu_moves_and_wraps_at_both_ends() {
     let d = tmp_root_with_carts(&["Emerald"]);
     let mut a = app_playing_in(d.path(), "Emerald");
@@ -175,6 +177,7 @@ fn the_menu_moves_and_wraps_at_both_ends() {
 }
 
 #[test]
+#[ignore = "holding POWER powers off at once: there is no POWER menu"]
 fn b_leaves_the_menu_without_doing_anything() {
     let d = tmp_root_with_carts(&["Emerald"]);
     let mut a = app_playing_in(d.path(), "Emerald");
@@ -189,6 +192,7 @@ fn b_leaves_the_menu_without_doing_anything() {
 }
 
 #[test]
+#[ignore = "holding POWER powers off at once: there is no POWER menu"]
 fn each_row_commits_to_its_own_outcome() {
     for (down, want) in [(0, "restart"), (1, "off")] {
         let d = tmp_root_with_carts(&["Emerald"]);
@@ -266,6 +270,7 @@ fn a_dozing_device_powers_off_by_itself_rather_than_waiting_for_the_lid() {
 }
 
 #[test]
+#[ignore = "holding POWER powers off at once: there is no POWER menu"]
 fn the_power_menu_holds_the_core_still() {
     let d = tmp_root_with_real_carts(&["Advance Wars", "Emerald"]);
     let (mut s, _motor) = session_with_platform(d.path());
@@ -298,6 +303,7 @@ fn a_committed_shutdown_holds_the_core_still() {
 }
 
 #[test]
+#[ignore = "holding POWER powers off at once: there is no POWER menu"]
 fn power_pressed_while_dozing_lights_the_panel_before_the_menu_is_raised() {
     let d = tmp_root_with_carts(&["Emerald"]);
     clocked(d.path());

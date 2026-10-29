@@ -46,9 +46,34 @@ pub fn hhmm(secs: i64) -> String {
     format!("{:02}:{:02}", rem / 3600, rem / 60 % 60)
 }
 
+/// The time as the top bar reads it: 24-hour as `hhmm`, or 12-hour as `3:07 PM`, as Slot's
+/// Clock setting picks.
+pub fn clock_text(secs: i64, h24: bool) -> String {
+    if h24 {
+        return hhmm(secs);
+    }
+    let rem = secs.rem_euclid(DAY);
+    let (hour, minute) = (rem / 3600, rem / 60 % 60);
+    let twelve = match hour % 12 {
+        0 => 12,
+        h => h,
+    };
+    let half = if hour < 12 { "AM" } else { "PM" };
+    format!("{twelve}:{minute:02} {half}")
+}
+
 const MONTHS: [&str; 12] = [
     "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
 ];
+
+/// The date and the time as Settings' Date & Time row reads them, in 24 or 12-hour time.
+pub fn date_time_text_in(secs: i64, h24: bool) -> String {
+    let (date, _) = date_time_text(secs)
+        .rsplit_once(' ')
+        .map(|(d, t)| (d.to_string(), t.to_string()))
+        .unwrap_or_default();
+    format!("{date} {}", clock_text(secs, h24))
+}
 
 pub fn date_time_text(secs: i64) -> String {
     let (_, month, day) = civil_from_days(secs.div_euclid(DAY));

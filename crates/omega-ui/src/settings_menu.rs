@@ -55,11 +55,13 @@ impl SettingsGroup {
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum SettingsRow {
     FastForward,
-    FastForwardSound,
     ColourCorrection,
     /// What a Game Boy or GBA game at 3x is drawn through: LCD, GRID or OFF.
     ScreenFilter,
-    Rumble,
+    /// The GAMEPLAY panel: Slot's gameplay settings, and the sound and rumble ones.
+    Gameplay,
+    /// The SHELF panel: Recents, Game Titles, the clock and the lid.
+    Shelf,
     Labels,
     DateTime,
     Network,
@@ -73,10 +75,10 @@ pub enum SettingsRow {
 impl SettingsRow {
     pub const ALL: [SettingsRow; 11] = [
         SettingsRow::FastForward,
-        SettingsRow::FastForwardSound,
         SettingsRow::ColourCorrection,
         SettingsRow::ScreenFilter,
-        SettingsRow::Rumble,
+        SettingsRow::Gameplay,
+        SettingsRow::Shelf,
         SettingsRow::Labels,
         SettingsRow::DateTime,
         SettingsRow::Network,
@@ -92,10 +94,10 @@ impl SettingsRow {
     pub fn label(self) -> &'static str {
         match self {
             SettingsRow::FastForward => "Fast Forward",
-            SettingsRow::FastForwardSound => "Fast Forward Sound",
             SettingsRow::ColourCorrection => "Colour Correction",
             SettingsRow::ScreenFilter => "Screen Filter",
-            SettingsRow::Rumble => "Rumble",
+            SettingsRow::Gameplay => "Gameplay",
+            SettingsRow::Shelf => "Shelf",
             SettingsRow::Labels => "Labels",
             SettingsRow::DateTime => "Date & Time",
             SettingsRow::Network => "Network",
@@ -108,10 +110,10 @@ impl SettingsRow {
     pub fn group(self) -> SettingsGroup {
         match self {
             SettingsRow::FastForward
-            | SettingsRow::FastForwardSound
             | SettingsRow::ColourCorrection
             | SettingsRow::ScreenFilter
-            | SettingsRow::Rumble
+            | SettingsRow::Gameplay
+            | SettingsRow::Shelf
             | SettingsRow::Labels => SettingsGroup::Configs,
             SettingsRow::DateTime
             | SettingsRow::Network
@@ -126,7 +128,9 @@ impl SettingsRow {
     pub fn opens(self) -> bool {
         matches!(
             self,
-            SettingsRow::Labels
+            SettingsRow::Gameplay
+                | SettingsRow::Shelf
+                | SettingsRow::Labels
                 | SettingsRow::DateTime
                 | SettingsRow::Network
                 | SettingsRow::Bluetooth
@@ -140,11 +144,7 @@ impl SettingsRow {
     pub fn carets(self) -> bool {
         matches!(
             self,
-            SettingsRow::FastForward
-                | SettingsRow::FastForwardSound
-                | SettingsRow::ColourCorrection
-                | SettingsRow::ScreenFilter
-                | SettingsRow::Rumble
+            SettingsRow::FastForward | SettingsRow::ColourCorrection | SettingsRow::ScreenFilter
         )
     }
 
@@ -214,6 +214,7 @@ impl QuickValue {
 
     pub fn speed(frames: u8) -> Option<QuickValue> {
         match frames {
+            0 => Some(QuickValue::Off),
             2 => Some(QuickValue::Speed2),
             3 => Some(QuickValue::Speed3),
             4 => Some(QuickValue::Speed4),

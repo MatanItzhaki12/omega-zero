@@ -1,7 +1,7 @@
 use omega_gfx::{out_w, Draw, MeshId, TexId, FOCAL};
 use omega_store::{Cart, Platform};
 
-use crate::cart::{cart_box, label_colour, label_text, model_box, model_of, CART_H};
+use crate::cart::{cart_box, label_colour, label_text, model_box, model_of, CART_H, CART_W};
 use crate::chrome::BAR_H;
 use crate::hud::Millis;
 use crate::models::disc::{self, DiscStack};
@@ -124,6 +124,10 @@ pub struct Shelf {
     /// How far the discs have turned about their own middles, in radians.
     spin: f32,
     still: bool,
+    /// Which carts wear the favorite's star, by place on the row.
+    marks: Vec<bool>,
+    /// The star, once uploaded.
+    mark: Option<TexId>,
 }
 
 impl Shelf {
@@ -144,6 +148,8 @@ impl Shelf {
             age: 0.0,
             spin: 0.0,
             still: false,
+            marks: Vec::new(),
+            mark: None,
         }
     }
 
@@ -176,12 +182,55 @@ impl Shelf {
         self.faces = faces;
     }
 
+    /// The carts that wear the favorite's star, by place on the row.
+    pub fn set_marks(&mut self, marks: Vec<bool>) {
+        self.marks = marks;
+    }
+
+    /// The star favorites wear, uploaded.
+    pub fn set_mark(&mut self, mark: TexId) {
+        self.mark = Some(mark);
+    }
+
+    /// Puts `carts` on the row in place of what was there, each drawn on its face, the first
+    /// picked: a RECENTS shelf as a game goes in. Faces are kept only when every cart has one.
+    pub fn replace(&mut self, carts: Vec<(Cart, Option<TexId>)>) {
+        let faces: Option<Vec<TexId>> = carts.iter().map(|(_, f)| *f).collect();
+        self.faces = faces.unwrap_or_default();
+        self.models = carts.iter().map(|(c, _)| model_of(c)).collect();
+        self.discs = carts.iter().map(|(c, _)| disc::stack_of(c)).collect();
+        self.carts = carts.into_iter().map(|(c, _)| c).collect();
+        self.marks.clear();
+        self.held = None;
+        self.select(0);
+    }
+
+    /// The favorite's star over the cart at `i`, drawn `(x, y, w, h)`, at its top right corner.
+    fn push_mark(&self, i: usize, at: (f32, f32, f32, f32), alpha: f32, out: &mut Vec<Draw>) {
+        let (Some(tex), true) = (self.mark, self.marks.get(i).copied().unwrap_or(false)) else {
+            return;
+        };
+        let (x, y, w, _) = at;
+        let side = crate::STAR_PX * (w / CART_W as f32).clamp(0.5, 1.0);
+        out.push(Draw::Tex {
+            x: (x + w - side * 0.8).round(),
+            y: (y - side * 0.3).round(),
+            w: side.round(),
+            h: side.round(),
+            tex,
+            alpha,
+        });
+    }
+
     /// Puts `cart` on the row at `at`, drawn on `face`, as a favorite starred on another shelf
     /// is. The cart picked stays the one picked.
     pub fn insert(&mut self, at: usize, cart: Cart, face: Option<TexId>) {
         let at = at.min(self.carts.len());
         if let Some(face) = face.filter(|_| self.faces.len() >= at) {
             self.faces.insert(at, face);
+        }
+        if self.marks.len() >= at {
+            self.marks.insert(at, false);
         }
         self.models
             .insert(at.min(self.models.len()), model_of(&cart));
@@ -207,6 +256,9 @@ impl Shelf {
         }
         if at < self.discs.len() {
             self.discs.remove(at);
+        }
+        if at < self.marks.len() {
+            self.marks.remove(at);
         }
         let cart = self.carts.remove(at);
         self.held = None;
@@ -548,6 +600,7 @@ impl Shelf {
                         pose.yaw,
                     )),
                 }
+                self.push_mark(i, (x, y, w, h), alpha * dim, out);
                 continue;
             }
             if let Some(tex) = face {

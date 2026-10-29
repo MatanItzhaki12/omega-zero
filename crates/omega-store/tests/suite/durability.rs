@@ -205,6 +205,7 @@ fn a_card_from_before_the_settings_keeps_all_its_values() {
             backdrop_moving: true,
             backdrop_colour: 0,
             font: Font::Bold,
+            ..AppState::default()
         }
     );
 }
@@ -312,7 +313,7 @@ fn an_out_of_range_setting_falls_back_to_its_default() {
     for bad in [
         "rumble=2\nff_speed=5\nff_sound=9\n",
         "rumble=\nff_speed=1\nff_sound=on\n",
-        "rumble=-1\nff_speed=0\nff_sound=-1\n",
+        "rumble=-1\nff_speed=7\nff_sound=-1\n",
         "ff_speed=x\n",
         "colour_correction=2\n",
         "colour_correction=\n",
@@ -627,4 +628,49 @@ fn a_font_the_reader_does_not_know_or_never_saw_is_bold() {
         );
     }
     assert_eq!(AppState::default().font, Font::Bold);
+}
+
+#[test]
+fn slots_settings_round_trip_and_an_older_card_takes_slots_defaults() {
+    let d = tmp_root();
+    let s = AppState {
+        clock_set: true,
+        ff_speed: 0,
+        auto_load: false,
+        eject_save: false,
+        rewind: false,
+        turbo: false,
+        blending: omega_store::Blending::Ghosting,
+        gb_colors: omega_store::GbColors::Palette(omega_store::GbPalette::DEFAULT),
+        show_recents: true,
+        show_titles: true,
+        clock_24h: false,
+        lid_off_min: 15,
+        ..AppState::default()
+    };
+    write_app_state(d.path(), &s).unwrap();
+    assert_eq!(read_app_state(d.path()), s);
+    let text = std::fs::read_to_string(d.path().join("Config/omega-zero.state")).unwrap();
+    for line in [
+        "auto_load=0",
+        "blending=ghosting",
+        "gb_palette=DMG Green",
+        "lid_off_min=15",
+    ] {
+        assert!(text.lines().any(|l| l == line), "no {line} in {text:?}");
+    }
+
+    let old = tmp_root();
+    std::fs::write(
+        old.path().join("Config/omega-zero.state"),
+        "cart=\nbrightness=5\nblue_light=0\nvolume=60\nmuted=0\nclock_set=1\nutc_offset_min=0\nlid_off_min=7\n",
+    )
+    .unwrap();
+    let read = read_app_state(old.path());
+    assert!(read.auto_load && read.eject_save && read.rewind && read.turbo);
+    assert_eq!(
+        read.lid_off_min, 3,
+        "7 is not a choice Lid Power Off offers"
+    );
+    assert_eq!(read.gb_colors, omega_store::GbColors::Auto);
 }

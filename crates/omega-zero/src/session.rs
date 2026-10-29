@@ -247,6 +247,13 @@ impl Session {
                 }
             }
         }
+        if self.app.take_core_options() {
+            if let Some(emu) = &self.emu {
+                for (key, value) in self.app.core_extras() {
+                    emu.set_option(key, value);
+                }
+            }
+        }
         if let Some(disc) = self.app.take_disc_swap() {
             if let Some(emu) = &self.emu {
                 emu.set_disc(disc);
@@ -445,7 +452,17 @@ impl Session {
         persist::mark_starting(&self.root, platform, stem);
         self.starting = true;
         let ring = self.sink.ring();
-        let emu = EmuHandle::spawn_for(platform, game, rom, ring, sav, resume, player);
+        let rules = crate::emu::Rules {
+            turbo: platform.turbo_xy() && self.app.turbo_on(),
+            rewinds: self.app.keys().rewind,
+        };
+        let emu =
+            EmuHandle::spawn_with_rules(platform, rules, game, rom, ring, sav, resume, player);
+        // frame blending and the Game Boy's palette, as Settings has them
+        self.app.take_core_options();
+        for (key, value) in self.app.core_extras() {
+            emu.set_option(key, value);
+        }
         emu.set_volume(self.app.output_volume());
         emu.set_driven(self.driven);
         self.app.set_snapshot(Box::new(emu.snapshot()));

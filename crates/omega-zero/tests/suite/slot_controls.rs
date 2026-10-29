@@ -173,3 +173,90 @@ fn select_a_and_b_step_the_screen_filter_in_a_game() {
     assert_eq!(a.screen_filter(), ScreenFilter::Off);
     assert_eq!(read_app_state(d.path()).screen_filter, ScreenFilter::Off);
 }
+
+fn booted_with(d: &tempfile::TempDir, change: impl FnOnce(&mut omega_store::AppState)) -> App {
+    let mut s = omega_store::AppState {
+        clock_set: true,
+        ..Default::default()
+    };
+    change(&mut s);
+    omega_store::write_app_state(d.path(), &s).unwrap();
+    App::boot(d.path())
+}
+
+#[test]
+fn holding_power_powers_off_with_no_menu_between() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = boot(d.path());
+    a.apply(Action::PowerPress);
+    a.apply(Action::PowerHold);
+    assert_eq!(a.power_menu(), None, "the POWER menu opened");
+    assert!(a.powering_off(), "holding POWER did not power off");
+}
+
+#[test]
+fn with_load_state_on_insert_off_a_starts_the_game_afresh() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = booted_with(&d, |s| s.auto_load = false);
+    press(&mut a, Btn::A);
+    assert!(
+        matches!(a.phase(), Phase::Inserting { .. }),
+        "{:?}",
+        a.phase()
+    );
+    assert!(a.starting_clean(), "the state was loaded anyway");
+
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = boot(d.path());
+    press(&mut a, Btn::A);
+    assert!(
+        !a.starting_clean(),
+        "on by default, A picks up where it left off"
+    );
+}
+
+#[test]
+fn fast_forward_off_leaves_r2_doing_nothing() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = app_playing_in(d.path(), "Emerald");
+    assert!(a.may_fast_forward());
+    let mut s = read_app_state(d.path());
+    s.ff_speed = 0;
+    omega_store::write_app_state(d.path(), &s).unwrap();
+    let a2 = App::boot(d.path());
+    assert!(!a2.may_fast_forward());
+    a.apply(Action::FfStart);
+    assert!(matches!(a.phase(), Phase::Playing { .. }));
+}
+
+#[test]
+fn recents_stands_first_with_the_last_game_put_in() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = booted_with(&d, |s| s.show_recents = true);
+    assert_ne!(
+        a.pill_text().as_deref(),
+        Some("RECENTS"),
+        "nothing played yet"
+    );
+    press(&mut a, Btn::Right);
+    press(&mut a, Btn::A);
+    let file = std::fs::read_to_string(d.path().join("Config/recents.txt")).unwrap();
+    assert_eq!(file, "gba/Fusion\n");
+    let a = booted_with(&d, |s| s.show_recents = true);
+    assert_eq!(a.pill_text().as_deref(), Some("RECENTS"));
+    assert_eq!(a.selected_stem(), Some("Fusion"));
+    let hidden = booted_with(&d, |_| {});
+    assert_ne!(
+        hidden.pill_text().as_deref(),
+        Some("RECENTS"),
+        "shown while hidden"
+    );
+}
+
+#[test]
+fn game_titles_name_the_picked_cart_only_while_shown() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    assert_eq!(boot(d.path()).shelf_title(), None);
+    let a = booted_with(&d, |s| s.show_titles = true);
+    assert_eq!(a.shelf_title().as_deref(), Some("Emerald"));
+}
