@@ -62,6 +62,9 @@ extern "C" {
 
 /// The client is made, and every oc_ call may be made.
 static STARTED: AtomicBool = AtomicBool::new(false);
+/// No request leaves the handheld: each is answered as a network error. For tests, which must
+/// never send an account anywhere.
+static OFFLINE: AtomicBool = AtomicBool::new(false);
 /// Held across every call into the client.
 static CLIENT: Mutex<()> = Mutex::new(());
 /// Answers come back from the network, waiting to be handed to the client.
@@ -164,6 +167,12 @@ pub fn start(hardcore: bool, version: &str) -> bool {
         STARTED.store(true, Ordering::Release);
     }
     made
+}
+
+/// Keeps every request on the handheld from now on, answered as a network error the client
+/// retries: for tests, so none ever reaches RetroAchievements.
+pub fn go_offline() {
+    OFFLINE.store(true, Ordering::Release);
 }
 
 pub fn login_with_password(user: &str, password: &str) {
@@ -317,6 +326,10 @@ pub extern "C" fn omega_cheevos_server_call(
     let post = (!post_data.is_null()).then(|| text(post_data));
     let content_type = text(content_type);
     let agent = lock(&AGENT).clone();
+    if OFFLINE.load(Ordering::Acquire) {
+        lock(&ANSWERS).push((id, RETRYABLE, Vec::new()));
+        return;
+    }
     let spawned = std::thread::Builder::new()
         .name("omega-cheevos-net".into())
         .spawn(move || {

@@ -58,6 +58,12 @@ pub const SCAN: Hint<'static> = Hint {
     word: "SCAN",
 };
 
+/// Y on Settings > Gameplay > Account, once signed in: it signs out of RetroAchievements.
+pub const SIGN_OUT: Hint<'static> = Hint {
+    key: "Y",
+    word: "SIGN OUT",
+};
+
 /// Which pair of actions the bar shows at its ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Actions {
@@ -262,6 +268,13 @@ impl App {
             Phase::Shelf if self.picker_has_bar() => vec![SWAP],
             Phase::Network(screen) => self.network_hints(screen),
             Phase::Bluetooth(screen) => self.bluetooth_hints(screen),
+            Phase::Options(screen)
+                if screen.typing.is_none()
+                    && screen.row == crate::options::OptionRow::Account
+                    && self.achievements_account() =>
+            {
+                vec![SIGN_OUT]
+            }
             Phase::Labels(screen) if screen.typing.is_none() => {
                 labels_hints(&screen.view(&self.labels, self.online()).legend)
             }

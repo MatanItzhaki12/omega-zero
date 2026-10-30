@@ -414,3 +414,60 @@ fn a_boot_on_favorites_draws_its_labels_first_and_no_cart_twice() {
         "the carts on screen are not FAVORITES' own"
     );
 }
+
+/// Settings > Gameplay > Account, on the keyboard: the user name, then the password, kept on
+/// the card for the sign-in, which turns RetroAchievements on; Y signs out and forgets them.
+#[test]
+fn account_signs_in_to_retroachievements_on_the_keyboard_and_y_signs_out() {
+    // no request may leave the test: the sign-in is answered as a network error
+    omega_cheevos::go_offline();
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = boot(d.path());
+    a.apply(Action::QuickMenu);
+    for _ in 0..3 {
+        press(&mut a, Btn::Down);
+    }
+    assert_eq!(a.settings_row(), Some(omega_ui::SettingsRow::Gameplay));
+    press(&mut a, Btn::A);
+    a.finish_slide();
+    let lit = |a: &App| a.options_view().map(|v| v.lines[v.lit].0);
+    for _ in 0..12 {
+        if lit(&a) == Some(omega_zero::options::OptionRow::Account) {
+            break;
+        }
+        press(&mut a, Btn::Down);
+    }
+    let view = a.options_view().expect("the GAMEPLAY panel");
+    assert_eq!(view.lines[view.lit].1, "SIGN IN");
+
+    press(&mut a, Btn::A);
+    let prompt = |a: &App| a.typing().map(|t| t.prompt);
+    assert_eq!(prompt(&a).as_deref(), Some("RetroAchievements user name"));
+    press(&mut a, Btn::A);
+    press(&mut a, Btn::A);
+    let user = a.typing().unwrap().keys.text.clone();
+    assert_eq!(user.chars().count(), 2, "{user:?}");
+    press(&mut a, Btn::Start);
+    assert_eq!(
+        prompt(&a),
+        Some(format!("RetroAchievements password for {user}"))
+    );
+    press(&mut a, Btn::A);
+    let password = a.typing().unwrap().keys.text.clone();
+    press(&mut a, Btn::Start);
+    assert!(a.typing().is_none(), "the keyboard stayed up");
+
+    let file = d.path().join("Config/retroachievements.ini");
+    let text = std::fs::read_to_string(&file).expect("the account was not kept");
+    assert!(text.contains(&format!("username = {user}")), "{text}");
+    assert!(text.contains(&format!("password = {password}")), "{text}");
+    assert!(
+        read_app_state(d.path()).cheevos,
+        "signing in left achievements off"
+    );
+    assert!(a.achievements_account());
+
+    press(&mut a, Btn::Y);
+    assert!(!file.exists(), "signing out kept the account");
+    assert!(!a.achievements_account());
+}

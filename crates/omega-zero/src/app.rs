@@ -2197,12 +2197,12 @@ impl App {
             Phase::Settings { row } => self.draw_settings(*row, out),
             Phase::Controls => self.draw_controls(out),
             Phase::Background(_) => self.draw_background_screen(out),
-            Phase::Options(_) => self.draw_options(out),
+            Phase::Options(screen) if screen.typing.is_none() => self.draw_options(out),
             Phase::Labels(_) if typing_of(phase).is_none() => self.draw_labels(out),
             // the modal and its panels stand over the backdrop, with nothing between
             Phase::Network(screen) if screen.typing.is_none() => self.draw_network(out),
             // the keyboard's modal stands on the backdrop itself
-            Phase::Network(_) | Phase::Labels(_) => {
+            Phase::Network(_) | Phase::Labels(_) | Phase::Options(_) => {
                 if let Some(t) = typing_of(phase) {
                     self.draw_keyboard(&t, out);
                 }

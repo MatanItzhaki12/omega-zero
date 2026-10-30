@@ -42,6 +42,9 @@ turned off.
   game's progress when it starts. The password is swapped for the site's token on the first
   sign-in. Hardcore loads no state, rewinds nothing and picks up from no resume. omega-retro now
   keeps the memory map a core declares, which achievements read the game's memory by.
+- Signing in to RetroAchievements on the keyboard: Settings > Gameplay > Account, A for the user
+  name and then the password, as Labels signs in to ScreenScraper; signing in turns achievements
+  on, and Y signs out and forgets the account.
 - A cart's shell set in `Labels/cart_shell.txt`, the file Slot and Cart Studio write, is now
   drawn; `Labels/cart_shell.ini` still wins for a game both name.
 - Labels are drawn for the carts in view first, on FAVORITES and RECENTS as on a system's shelf:

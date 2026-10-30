@@ -2,7 +2,8 @@
 //! the player's account and every Game Boy, Game Boy Color, GBA and SNES game is checked for
 //! achievements as it plays, each one earned said in a toast.
 //!
-//! The account is kept in Config/retroachievements.ini, which the player writes once:
+//! The player signs in on the keyboard, from Settings > Gameplay > Account, or by writing
+//! Config/retroachievements.ini by hand:
 //!
 //! ```text
 //! username = MyName
@@ -44,6 +45,22 @@ impl Account {
             password: field("password"),
             token: field("token"),
         })
+    }
+
+    /// Keeps the name and password typed on the keyboard, until the site swaps the password
+    /// for a token on the sign-in they are for.
+    pub fn keep_password(root: &Path, user: &str, password: &str) -> std::io::Result<()> {
+        let text = format!(
+            "# RetroAchievements account, typed in Settings > Gameplay > Account. omega-zero\n\
+             # swaps the password for a token as soon as the site lets it sign in.\n\
+             username = {user}\npassword = {password}\n"
+        );
+        atomic_write(&root.join(CONFIG_DIR).join(ACCOUNT_FILE), text.as_bytes())
+    }
+
+    /// Signing out forgets the account, and its token with it.
+    pub fn forget(root: &Path) {
+        let _ = std::fs::remove_file(root.join(CONFIG_DIR).join(ACCOUNT_FILE));
     }
 
     /// Keeps the name and the token the site handed back, and drops the password.
@@ -146,17 +163,49 @@ impl App {
         self.cheevos = Cheevos::default();
     }
 
-    /// What the RetroAchievements row's note says: who is signed in, or what is missing.
+    /// What the RetroAchievements and Account rows' note says: who is signed in, or what is
+    /// missing.
     pub fn achievements_note(&self) -> String {
         if !self.state.cheevos {
-            return format!("Sign in with Config/{ACCOUNT_FILE}");
+            return "Off. A on Account signs in and turns it on".into();
         }
         match (&self.cheevos.signed_in, &self.cheevos.refused) {
             (Some(name), _) => format!("Signed in as {name}"),
             (None, Some(why)) => why.clone(),
             (None, None) if self.cheevos.signing_in => "Signing in…".into(),
-            (None, None) => format!("Sign in with Config/{ACCOUNT_FILE}"),
+            (None, None) => "A on Account signs in".into(),
         }
+    }
+
+    /// The keyboard's name and password: kept on the card, achievements switched on, and the
+    /// sign-in under way, the password to be swapped for a token once it is let in.
+    pub(crate) fn sign_in_achievements(&mut self, user: &str, password: &str) {
+        let Some(root) = self.root.clone() else {
+            return;
+        };
+        if let Err(e) = Account::keep_password(&root, user, password) {
+            eprintln!("omega-zero: {ACCOUNT_FILE}: {e}");
+        }
+        omega_cheevos::logout();
+        self.cheevos = Cheevos::default();
+        self.state.cheevos = true;
+        self.persist();
+        self.start_achievements();
+    }
+
+    /// Y on Account: signs out and forgets the account.
+    pub(crate) fn sign_out_achievements(&mut self) {
+        if let Some(root) = &self.root {
+            Account::forget(root);
+        }
+        self.stop_achievements();
+        let now = self.now();
+        self.hud.toast(Toast::Cheevos("Signed out"), now);
+    }
+
+    /// Whether there is an account to sign out of, for the bar's Y SIGN OUT.
+    pub fn achievements_account(&self) -> bool {
+        self.root.as_deref().and_then(Account::load).is_some()
     }
 
     /// Follows the client: hands it the network's answers, and tells the player what happened.
@@ -261,6 +310,23 @@ mod tests {
                 token: Some("t0k3n".into())
             })
         );
+    }
+
+    #[test]
+    fn the_keyboards_password_is_kept_until_the_token_and_signing_out_forgets_it() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join(CONFIG_DIR)).unwrap();
+        Account::keep_password(d.path(), "Misty", "starmie").unwrap();
+        assert_eq!(
+            Account::load(d.path()),
+            Some(Account {
+                user: "Misty".into(),
+                password: Some("starmie".into()),
+                token: None
+            })
+        );
+        Account::forget(d.path());
+        assert_eq!(Account::load(d.path()), None);
     }
 
     #[test]

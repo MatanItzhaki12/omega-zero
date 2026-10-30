@@ -1,5 +1,6 @@
 //! The on-screen keyboard, which the Network screen raises for a passphrase and the Labels
-//! screen for an account: a modal over the backdrop, titled with what it asks for.
+//! and Settings > Gameplay screens for an account: a modal over the backdrop, titled with what
+//! it asks for.
 
 use omega_ui::{Draw, KeyboardFaces, KeyboardScreen};
 
@@ -45,6 +46,11 @@ pub(crate) fn typing_of(phase: &Phase) -> Option<TypingView<'_>> {
             refused: t.refused,
         }),
         Phase::Labels(screen) => screen.typing.as_ref().map(|t| TypingView {
+            prompt: t.prompt(),
+            keys: &t.keys,
+            refused: false,
+        }),
+        Phase::Options(screen) => screen.typing.as_ref().map(|t| TypingView {
             prompt: t.prompt(),
             keys: &t.keys,
             refused: false,

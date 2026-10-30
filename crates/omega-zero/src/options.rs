@@ -7,12 +7,16 @@
 //! Save State on Eject, Rewind, Turbo Buttons, Frame Blending and the Game Boy's Palette.
 //!
 //! SHELF: Recents, Game Titles, the Clock's 12 or 24 hours, and Lid Power Off.
+//!
+//! GAMEPLAY's Account row signs in to RetroAchievements on the keyboard, as Labels signs in to
+//! ScreenScraper: A asks for the user name and then the password, and Y signs out.
 
 use omega_input::{Action, Btn};
 use omega_store::{Blending, LID_OFF_MINUTES};
 use omega_ui::kit::palette::Palette;
 use omega_ui::kit::panel::panel_face;
 use omega_ui::kit::row::{panel_height, row_face, row_rect, Row};
+use omega_ui::Keyboard;
 use omega_ui::{Draw, UndoFace};
 
 use crate::app::{App, Phase};
@@ -49,6 +53,7 @@ impl OptionsPage {
                 OptionRow::Blending,
                 OptionRow::Palette,
                 OptionRow::Cheevos,
+                OptionRow::Account,
                 OptionRow::Hardcore,
             ],
             OptionsPage::Shelf => &[
@@ -84,10 +89,17 @@ pub enum OptionRow {
     Clock,
     LidOff,
     Cheevos,
+    /// The RetroAchievements account: A signs in on the keyboard, Y signs out.
+    Account,
     Hardcore,
 }
 
 impl OptionRow {
+    /// A opens the keyboard on the row rather than stepping it: the row ends in a ›.
+    pub fn opens(self) -> bool {
+        self == OptionRow::Account
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             OptionRow::FastForwardSound => "Fast Forward Sound",
@@ -103,6 +115,7 @@ impl OptionRow {
             OptionRow::Clock => "Clock",
             OptionRow::LidOff => "Lid Power Off",
             OptionRow::Cheevos => "RetroAchievements",
+            OptionRow::Account => "Account",
             OptionRow::Hardcore => "Hardcore",
         }
     }
@@ -122,17 +135,45 @@ impl OptionRow {
             OptionRow::Titles => "The cart's name over the shelf",
             OptionRow::Clock => "12 or 24-hour time",
             OptionRow::LidOff => "A shut lid powers off after this",
-            OptionRow::Cheevos => "Sign in with Config/retroachievements.ini",
+            OptionRow::Cheevos => "Check games for achievements",
+            OptionRow::Account => "A signs in, Y signs out",
             OptionRow::Hardcore => "No state loads or rewind, from the next game",
         }
     }
 }
 
-/// An options panel while it is open, and the row the cursor is on.
+/// What the keyboard asks for while signing in: the user name, then the password.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Step {
+    User,
+    Password,
+}
+
+/// The keyboard up over the panel, signing in to RetroAchievements.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SignIn {
+    pub step: Step,
+    /// The user name typed, once the password is being asked for.
+    pub user: String,
+    pub keys: Keyboard,
+}
+
+impl SignIn {
+    pub fn prompt(&self) -> String {
+        match self.step {
+            Step::User => "RetroAchievements user name".to_string(),
+            Step::Password => format!("RetroAchievements password for {}", self.user),
+        }
+    }
+}
+
+/// An options panel while it is open, the row the cursor is on, and the keyboard while it is
+/// up for the account.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OptionsScreen {
     pub page: OptionsPage,
     pub row: OptionRow,
+    pub typing: Option<SignIn>,
 }
 
 impl OptionsScreen {
@@ -140,6 +181,7 @@ impl OptionsScreen {
         OptionsScreen {
             page,
             row: page.rows()[0],
+            typing: None,
         }
     }
 }
@@ -172,8 +214,8 @@ pub fn options_panel_face(view: &OptionsView, pal: &Palette) -> UndoFace {
                 label: row.label(),
                 value: Some(value),
                 lit: i == view.lit,
-                carets: true,
-                opens: false,
+                carets: !row.opens(),
+                opens: row.opens(),
                 dim: false,
             },
             pal,
@@ -222,6 +264,10 @@ impl App {
             OptionRow::Clock => if s.clock_24h { "24-HOUR" } else { "12-HOUR" }.to_string(),
             OptionRow::LidOff => format!("{} MIN", s.lid_off_min),
             OptionRow::Cheevos => on_off(s.cheevos),
+            OptionRow::Account => match &self.cheevos.signed_in {
+                Some(name) => name.clone(),
+                None => "SIGN IN".to_string(),
+            },
             OptionRow::Hardcore => on_off(s.cheevos_hardcore),
         }
     }
@@ -260,6 +306,8 @@ impl App {
                     false => self.stop_achievements(),
                 }
             }
+            // the keyboard signs in, not the arrows
+            OptionRow::Account => return,
             OptionRow::Hardcore => {
                 s.cheevos_hardcore = !s.cheevos_hardcore;
                 // taken by the next game: the client switches it between games
@@ -283,13 +331,16 @@ impl App {
         let Phase::Options(screen) = &self.phase else {
             return None;
         };
+        if screen.typing.is_some() {
+            return None;
+        }
         let rows = screen.page.rows();
         Some(OptionsView {
             title: screen.page.title(),
             lines: rows.iter().map(|r| (*r, self.option_text(*r))).collect(),
             lit: rows.iter().position(|r| *r == screen.row).unwrap_or(0),
             note: match screen.row {
-                OptionRow::Cheevos => self.achievements_note(),
+                OptionRow::Cheevos | OptionRow::Account => self.achievements_note(),
                 row => row.note().to_string(),
             },
         })
@@ -299,11 +350,16 @@ impl App {
         let Phase::Options(screen) = &mut self.phase else {
             return;
         };
+        if screen.typing.is_some() {
+            return self.sign_in_input(action);
+        }
         let rows = screen.page.rows();
         let (page, row) = (screen.page, screen.row);
         match action {
             Action::GbaDown(Btn::Up) => screen.row = step(rows, row, false),
             Action::GbaDown(Btn::Down) => screen.row = step(rows, row, true),
+            Action::GbaDown(Btn::A) if row == OptionRow::Account => self.open_sign_in(),
+            Action::GbaDown(Btn::Y) if row == OptionRow::Account => self.sign_out_achievements(),
             Action::GbaDown(Btn::Left) => self.change_option(row, false),
             Action::GbaDown(Btn::Right | Btn::A) => self.change_option(row, true),
             Action::GbaDown(Btn::B) | Action::QuickMenu => self.go(
@@ -313,6 +369,83 @@ impl App {
                 Dir::Back,
             ),
             _ => {}
+        }
+    }
+
+    /// A on Account: the keyboard slides in over the panel, asking for the user name, the one
+    /// signed in as already typed.
+    fn open_sign_in(&mut self) {
+        let user = self
+            .root
+            .as_deref()
+            .and_then(crate::achievements::Account::load)
+            .map(|a| a.user)
+            .unwrap_or_default();
+        let Phase::Options(screen) = &mut self.phase else {
+            return;
+        };
+        let before = Phase::Options(screen.clone());
+        screen.typing = Some(SignIn {
+            step: Step::User,
+            user: String::new(),
+            keys: Keyboard {
+                text: user,
+                ..Keyboard::default()
+            },
+        });
+        self.slide_from(before, Dir::Deeper);
+    }
+
+    /// A key on the keyboard: the user name, then the password, then signing in; B on an empty
+    /// field, or MENU, puts the keyboard away.
+    fn sign_in_input(&mut self, action: Action) {
+        let Phase::Options(screen) = &mut self.phase else {
+            return;
+        };
+        let before = Phase::Options(screen.clone());
+        let Some(t) = &mut screen.typing else {
+            return;
+        };
+        let keys = &mut t.keys;
+        let mut submit = false;
+        match action {
+            Action::GbaDown(Btn::Up) => keys.up(),
+            Action::GbaDown(Btn::Down) => keys.down(),
+            Action::GbaDown(Btn::Left) => keys.left(),
+            Action::GbaDown(Btn::Right) => keys.right(),
+            Action::GbaDown(Btn::A) => submit = keys.press(),
+            Action::GbaDown(Btn::B) if keys.text.is_empty() => {
+                screen.typing = None;
+                return self.slide_from(before, Dir::Back);
+            }
+            Action::GbaDown(Btn::B) => keys.delete(),
+            Action::GbaDown(Btn::X) => keys.shift(),
+            Action::GbaDown(Btn::Y) => keys.type_char(' '),
+            Action::GbaDown(Btn::L1 | Btn::R1) => keys.symbols(),
+            Action::GbaDown(Btn::Start) => submit = true,
+            Action::QuickMenu => {
+                screen.typing = None;
+                return self.slide_from(before, Dir::Back);
+            }
+            _ => return,
+        }
+        if !submit || t.keys.text.is_empty() {
+            return;
+        }
+        let typed = std::mem::take(&mut t.keys.text);
+        match t.step {
+            // from the user name to the password the keyboard stays where it is
+            Step::User => {
+                t.step = Step::Password;
+                t.user = typed;
+                t.keys = Keyboard::default();
+            }
+            Step::Password => {
+                let user = std::mem::take(&mut t.user);
+                screen.typing = None;
+                self.slide_from(before, Dir::Back);
+                self.sign_in_achievements(&user, &typed);
+            }
         }
     }
 
