@@ -247,6 +247,9 @@ impl Session {
                 }
             }
         }
+        if let (Some(emu), Some((platform, _))) = (&self.emu, &self.running) {
+            emu.set_turbo(platform.turbo_xy() && self.app.turbo_on());
+        }
         if self.app.take_core_options() {
             if let Some(emu) = &self.emu {
                 for (key, value) in self.app.core_extras() {
@@ -454,7 +457,9 @@ impl Session {
         let ring = self.sink.ring();
         let rules = crate::emu::Rules {
             turbo: platform.turbo_xy() && self.app.turbo_on(),
-            rewinds: self.app.keys().rewind,
+            // rewind keeps its snapshots whatever the setting, which L2 itself follows, so
+            // switching it on in a game rewinds at once
+            rewinds: platform.rewinds(),
         };
         let emu =
             EmuHandle::spawn_with_rules(platform, rules, game, rom, ring, sav, resume, player);

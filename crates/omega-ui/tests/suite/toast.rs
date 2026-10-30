@@ -94,6 +94,8 @@ fn the_banner_says_what_happened_and_never_what_is_on_screen() {
             Toast::Filter(ScreenFilter::Lcd),
             Toast::Favorited,
             Toast::Unfavorited,
+            Toast::SaveUndone,
+            Toast::LoadUndone,
         ],
         "a banner was added or dropped"
     );

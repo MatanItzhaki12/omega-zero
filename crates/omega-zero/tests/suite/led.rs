@@ -7,7 +7,6 @@ use common::{
 };
 use omega_input::{Action, Btn};
 use omega_power::LedState;
-use omega_ui::PowerChoice;
 
 #[test]
 fn the_fast_tick_actually_reaches_the_platforms_set_led() {

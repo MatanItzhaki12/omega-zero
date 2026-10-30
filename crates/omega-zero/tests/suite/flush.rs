@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use common::{app_playing_in, app_playing_with, tmp_root_with_carts};
-use omega_input::{Action, Btn};
+use omega_input::Action;
 use omega_power::{Battery, Charge, LedState};
 use omega_store::{read_app_state, Core, Platform, StateRing};
 use omega_zero::app::Phase;

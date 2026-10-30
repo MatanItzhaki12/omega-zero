@@ -25,6 +25,9 @@ pub enum Toast {
     /// Y on the shelf starred the cart, or took its star off.
     Favorited,
     Unfavorited,
+    /// The in-game menu's Undo Save took the state just saved back, or Undo Load the load.
+    SaveUndone,
+    LoadUndone,
 }
 
 /// What the toast says once disc `n` is in, for every disc a PlayStation game can have.
@@ -42,7 +45,7 @@ const DISC_IN: [&str; 9] = [
 
 impl Toast {
     /// Every toast there is, a disc's once, as disc 1.
-    pub const ALL: [Toast; 14] = [
+    pub const ALL: [Toast; 16] = [
         Toast::StateSaved,
         Toast::StateLoaded,
         Toast::NeedsGpsp,
@@ -57,6 +60,8 @@ impl Toast {
         Toast::Filter(omega_store::ScreenFilter::Lcd),
         Toast::Favorited,
         Toast::Unfavorited,
+        Toast::SaveUndone,
+        Toast::LoadUndone,
     ];
 
     /// Its place in `ALL`: every disc's toast is the one place.
@@ -76,13 +81,17 @@ impl Toast {
             Toast::Filter(_) => 11,
             Toast::Favorited => 12,
             Toast::Unfavorited => 13,
+            Toast::SaveUndone => 14,
+            Toast::LoadUndone => 15,
         }
     }
 
     /// What it is about, in the toast's title tab.
     pub fn label(self) -> &'static str {
         match self {
-            Toast::StateSaved | Toast::StateLoaded => "SAVE STATE",
+            Toast::StateSaved | Toast::StateLoaded | Toast::SaveUndone | Toast::LoadUndone => {
+                "SAVE STATE"
+            }
             Toast::NeedsGpsp
             | Toast::NoLink
             | Toast::LinkEnded
@@ -117,6 +126,8 @@ impl Toast {
             Toast::Filter(omega_store::ScreenFilter::Off) => "Off",
             Toast::Favorited => "Added",
             Toast::Unfavorited => "Removed",
+            Toast::SaveUndone => "Save undone",
+            Toast::LoadUndone => "Load undone",
         }
     }
 

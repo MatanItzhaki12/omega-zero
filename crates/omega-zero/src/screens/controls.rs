@@ -209,6 +209,10 @@ impl App {
                     .map(|c| c.platform)
             })
             .unwrap_or_default();
+        if self.pause_page() == Some(crate::pause_menu::PausePage::Controls) {
+            // CONTROLS under the in-game menu's Settings: the game in play's
+            return Some(ControlsView::new(self.platform()));
+        }
         matches!(self.phase, Phase::Controls).then(|| ControlsView::new(platform))
     }
 

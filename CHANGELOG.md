@@ -26,6 +26,13 @@ turned off.
 - Every favorite wears a gold star at its corner, on every shelf, and FAVORITES stands its carts
   by system, then by name.
 - Holding POWER powers off at once, as on Slot: the POWER menu and its Restart are gone.
+- MENU over a game is laid out as Slot's in-game menu: Resume; Undo Save and Undo Load for 30
+  seconds after a save or a load; States while there are any; Settings, which opens Screen
+  (Screen Filter, Palette, Colour Correction, Frame Blending, Brightness, Blue Light), Gameplay
+  (Fast Forward and the rest of GAMEPLAY) and Controls; and Exit Game. B steps back a page. The
+  game is not dimmed under Screen, whose panel stands at the bottom, so each change shows at once.
+  The menu comes up a moment after the tap, so a double tap goes straight to the save states.
+  Turbo Buttons and Rewind switch in a game, not only at the next one.
 
 ## omega-zero 1.2.0
 

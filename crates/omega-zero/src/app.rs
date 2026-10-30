@@ -38,7 +38,7 @@ use crate::link_start::{link_port, LinkFail, LinkProgress, LinkStarter, LinkStep
 use crate::nav::{even, offsets, Dir, End, Offsets, Slide, SLIDE_MS};
 use crate::opening::Opening;
 use crate::options::OptionsScreen;
-use crate::pause_menu::PauseMenu;
+use crate::pause_menu::{PauseMenu, PendingUndo};
 use crate::persist::{self, Snapshot};
 use crate::screens::bar::BarFaces;
 use crate::screens::clock::clock_screen;
@@ -285,6 +285,8 @@ pub struct App {
     pub(crate) pause_menu: Option<PauseMenu>,
     /// The MENU panel, once baked.
     pub(crate) pause_panel: Option<Lone>,
+    /// The save or load the menu's Undo can take back, and when it was made.
+    pub(crate) pending_undo: Option<(PendingUndo, Millis)>,
     pub(crate) shelf_at: usize,
     pub(crate) play_held: Option<Millis>,
     pub(crate) refusal: Option<Refusal>,
@@ -483,6 +485,7 @@ impl App {
             favorites,
             pause_menu: None,
             pause_panel: None,
+            pending_undo: None,
             shelf_at,
             play_held: None,
             refusal: None,
@@ -3134,7 +3137,7 @@ impl App {
         }
     }
 
-    fn ring(&self) -> Option<StateRing> {
+    pub(crate) fn ring(&self) -> Option<StateRing> {
         let (Some(root), Some(cart)) = (&self.root, self.seated()) else {
             return None;
         };
@@ -3148,7 +3151,7 @@ impl App {
         }
     }
 
-    fn entries(&self) -> Vec<StateEntry> {
+    pub(crate) fn entries(&self) -> Vec<StateEntry> {
         self.ring().and_then(|r| r.list().ok()).unwrap_or_default()
     }
 
@@ -3211,7 +3214,12 @@ impl App {
                 return false;
             }
         };
+        // the game as it was, for Undo Load to go back to
+        let prior = snapshot.state();
         snapshot.load(bytes);
+        if let Some(prior) = prior {
+            self.note_loaded(prior);
+        }
         self.hud.toast(Toast::StateLoaded, self.now());
         true
     }
@@ -3232,10 +3240,13 @@ impl App {
         };
         let thumb = snapshot.thumb().unwrap_or_default();
         let stamp = free_stamp(&ring, self.wall_secs());
+        // the state a full ring drops for this one, for Undo Save to put back
+        let evicted = self.oldest_if_full();
         if let Err(e) = ring.push(&state, &thumb, &stamp) {
             eprintln!("omega-zero: save: {e}");
             return;
         }
+        self.note_saved(stamp, evicted);
         self.hud.toast(Toast::StateSaved, self.now());
     }
 

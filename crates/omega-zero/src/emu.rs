@@ -176,6 +176,8 @@ enum Cmd {
 
 struct Shared {
     input: AtomicU16,
+    /// Held X and Y are turbo A and B: the system's rule, switched live from MENU.
+    turbo: AtomicBool,
     speed: AtomicU8,
     observed: AtomicU8,
     state: AtomicU8,
@@ -287,6 +289,7 @@ impl EmuHandle {
         let frames = Frames::new((GBA_W * GBA_H * 4) as usize);
         let shared = Arc::new(Shared {
             input: AtomicU16::new(0),
+            turbo: AtomicBool::new(rules.turbo),
             speed: AtomicU8::new(Speed::Paused as u8),
             observed: AtomicU8::new(Speed::Paused as u8),
             state: AtomicU8::new(CoreState::Loading as u8),
@@ -501,6 +504,11 @@ impl EmuHandle {
 
     pub fn fast_steps(&self) -> u32 {
         self.shared.fast_steps.load(Ordering::Relaxed)
+    }
+
+    /// Turns held X and Y into turbo A and B, or back into X and Y, from the next frame on.
+    pub fn set_turbo(&self, on: bool) {
+        self.shared.turbo.store(on, Ordering::Relaxed);
     }
 
     pub fn set_ff_sound(&self, on: bool) {
@@ -806,7 +814,7 @@ impl Worker {
                 loop {
                     ran += 1;
                     let last = ran >= ceiling || cost.last(began.elapsed(), budget);
-                    let input = if self.rules.turbo {
+                    let input = if self.shared.turbo.load(Ordering::Relaxed) {
                         input.turbo(turbo_frame)
                     } else {
                         input

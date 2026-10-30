@@ -198,7 +198,7 @@ impl App {
                 picker_swap(&picker, now),
             )?,
             // the MENU panel over a game has a menu's B RETURN and A CONFIRM
-            (None, _) if self.pause_menu_open() => (Actions::Menu, 0),
+            (None, _) if self.pause_menu_shown().is_some() => (Actions::Menu, 0),
             (None, _) => (actions_on(&self.phase)?, 0),
         };
         let drop = match self.phase {

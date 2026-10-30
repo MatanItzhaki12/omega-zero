@@ -8,7 +8,7 @@ use common::{app_playing_in, boot, tmp_root_with_carts};
 use omega_input::{Action, Btn};
 use omega_store::{read_app_state, ScreenFilter};
 use omega_zero::app::{App, Phase};
-use omega_zero::pause_menu::PauseRow;
+use omega_zero::pause_menu::{PausePage, PauseRow, MENU_REVEAL_MS, UNDO_GRACE_MS};
 
 fn press(a: &mut App, btn: Btn) {
     a.apply(Action::GbaDown(btn));
@@ -82,38 +82,108 @@ fn a_card_from_slot_boots_on_its_favorites() {
     );
 }
 
+/// A tap of MENU, and the moment the menu takes to come up after it.
+fn open_menu(a: &mut App) {
+    let now = a.now();
+    a.apply(Action::QuickMenu);
+    a.tick_ms(now + MENU_REVEAL_MS);
+}
+
+fn lit(a: &App) -> Option<PauseRow> {
+    a.pause_view().map(|v| v.lines[v.lit].row)
+}
+
+fn rows(a: &App) -> Vec<PauseRow> {
+    a.pause_view()
+        .map(|v| v.lines.iter().map(|l| l.row).collect())
+        .unwrap_or_default()
+}
+
+/// Moves the cursor down to `row` on the page shown.
+fn down_to(a: &mut App, row: PauseRow) {
+    for _ in 0..12 {
+        if lit(a) == Some(row) {
+            return;
+        }
+        press(a, Btn::Down);
+    }
+    panic!("Down never reached {row:?}: {:?}", rows(a));
+}
+
 #[test]
-fn a_tap_of_menu_in_a_game_opens_the_menu_and_holds_the_game() {
+fn a_tap_of_menu_in_a_game_opens_slots_menu_and_holds_the_game() {
     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
     let mut a = app_playing_in(d.path(), "Emerald");
-    assert!(matches!(a.phase(), Phase::Playing { .. }));
+    let now = a.now();
     a.apply(Action::QuickMenu);
-    assert!(a.pause_menu_open());
     assert!(a.game_menu_open(), "the game is not held under the menu");
-    let view = a.pause_view().expect("a view");
-    assert_eq!(view.lines[view.lit].row, PauseRow::Resume);
-
+    assert!(
+        a.pause_view().is_none(),
+        "the menu came up before a double tap could land"
+    );
+    a.tick_ms(now + MENU_REVEAL_MS);
+    let view = a.pause_view().expect("the menu never came up");
+    assert_eq!(view.title, "MENU");
+    // no state saved, nothing to undo: Resume, Settings and Exit Game, as Slot shows them
+    assert_eq!(
+        rows(&a),
+        [PauseRow::Resume, PauseRow::Settings, PauseRow::ExitGame]
+    );
     // B, or MENU again, goes back to the game
     press(&mut a, Btn::B);
     assert!(!a.pause_menu_open());
-    a.apply(Action::QuickMenu);
+    open_menu(&mut a);
     a.apply(Action::QuickMenu);
     assert!(!a.pause_menu_open());
 }
 
 #[test]
-fn the_menu_changes_the_screen_filter_in_place_and_keeps_it() {
+fn settings_opens_screen_gameplay_and_controls_and_b_steps_back() {
     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
     let mut a = app_playing_in(d.path(), "Emerald");
-    a.apply(Action::QuickMenu);
-    for _ in 0..PauseRow::ALL.len() {
-        if a.pause_view().map(|v| v.lines[v.lit].row) == Some(PauseRow::ScreenFilter) {
-            break;
-        }
-        press(&mut a, Btn::Down);
-    }
-    let lit = a.pause_view().map(|v| v.lines[v.lit].row);
-    assert_eq!(lit, Some(PauseRow::ScreenFilter), "Down never reached it");
+    open_menu(&mut a);
+    down_to(&mut a, PauseRow::Settings);
+    press(&mut a, Btn::A);
+    assert_eq!(a.pause_view().unwrap().title, "SETTINGS");
+    assert_eq!(
+        rows(&a),
+        [PauseRow::Screen, PauseRow::Gameplay, PauseRow::Controls]
+    );
+    press(&mut a, Btn::A);
+    assert_eq!(a.pause_view().unwrap().title, "SCREEN");
+    assert_eq!(
+        rows(&a),
+        [
+            PauseRow::ScreenFilter,
+            PauseRow::ColourCorrection,
+            PauseRow::Blending,
+            PauseRow::Brightness,
+            PauseRow::BlueLight
+        ],
+        "a GBA game has no Game Boy palette"
+    );
+    press(&mut a, Btn::B);
+    assert_eq!(lit(&a), Some(PauseRow::Screen), "B came back to its row");
+    down_to(&mut a, PauseRow::Controls);
+    press(&mut a, Btn::A);
+    assert_eq!(a.pause_page(), Some(PausePage::Controls));
+    assert!(a.controls_view().is_some(), "no CONTROLS to show");
+    press(&mut a, Btn::B);
+    press(&mut a, Btn::B);
+    assert_eq!(a.pause_view().unwrap().title, "MENU");
+    press(&mut a, Btn::B);
+    assert!(!a.pause_menu_open());
+}
+
+#[test]
+fn the_screen_page_changes_the_filter_in_place_and_keeps_it() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = app_playing_in(d.path(), "Emerald");
+    open_menu(&mut a);
+    down_to(&mut a, PauseRow::Settings);
+    press(&mut a, Btn::A);
+    press(&mut a, Btn::A);
+    assert_eq!(lit(&a), Some(PauseRow::ScreenFilter));
     assert_eq!(a.screen_filter(), ScreenFilter::Lcd);
     press(&mut a, Btn::Right);
     assert_eq!(a.screen_filter(), ScreenFilter::Grid);
@@ -129,14 +199,9 @@ fn the_menu_changes_the_screen_filter_in_place_and_keeps_it() {
 fn exit_game_ejects_the_cart() {
     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
     let mut a = app_playing_in(d.path(), "Emerald");
-    a.apply(Action::QuickMenu);
+    open_menu(&mut a);
     press(&mut a, Btn::Up);
-    let view = a.pause_view().unwrap();
-    assert_eq!(
-        view.lines[view.lit].row,
-        PauseRow::ExitGame,
-        "Up wraps to the end"
-    );
+    assert_eq!(lit(&a), Some(PauseRow::ExitGame), "Up wraps to the end");
     press(&mut a, Btn::A);
     assert!(!a.pause_menu_open());
     assert!(
@@ -159,6 +224,69 @@ fn a_second_tap_of_menu_opens_the_save_states_as_before() {
         matches!(a.phase(), Phase::Polaroids { .. }),
         "{:?}",
         a.phase()
+    );
+}
+
+#[test]
+fn undo_save_takes_the_state_just_saved_back_for_thirty_seconds() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = app_playing_in(d.path(), "Emerald");
+    let ring = omega_store::StateRing::new(
+        d.path(),
+        omega_store::Platform::Gba,
+        omega_store::Core::Mgba,
+        "Emerald",
+    );
+    a.apply(Action::SaveState);
+    assert_eq!(ring.list().unwrap().len(), 1);
+    open_menu(&mut a);
+    assert_eq!(
+        rows(&a),
+        [
+            PauseRow::Resume,
+            PauseRow::UndoSave,
+            PauseRow::States,
+            PauseRow::Settings,
+            PauseRow::ExitGame
+        ]
+    );
+    down_to(&mut a, PauseRow::UndoSave);
+    press(&mut a, Btn::A);
+    assert!(!a.pause_menu_open());
+    assert!(
+        ring.list().unwrap().is_empty(),
+        "the save was not taken back"
+    );
+
+    a.apply(Action::SaveState);
+    let later = a.now() + UNDO_GRACE_MS + 1;
+    a.tick_ms(later);
+    open_menu(&mut a);
+    assert!(
+        !rows(&a).contains(&PauseRow::UndoSave),
+        "Undo Save outlived its 30 seconds"
+    );
+}
+
+#[test]
+fn undo_load_offers_itself_after_a_load() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = app_playing_in(d.path(), "Emerald");
+    a.apply(Action::SaveState);
+    a.apply(Action::LoadState);
+    open_menu(&mut a);
+    assert!(rows(&a).contains(&PauseRow::UndoLoad), "{:?}", rows(&a));
+    assert!(
+        !rows(&a).contains(&PauseRow::UndoSave),
+        "the load replaced the save's undo"
+    );
+    down_to(&mut a, PauseRow::UndoLoad);
+    press(&mut a, Btn::A);
+    assert!(!a.pause_menu_open());
+    open_menu(&mut a);
+    assert!(
+        !rows(&a).contains(&PauseRow::UndoLoad),
+        "undone once, it is gone"
     );
 }
 
