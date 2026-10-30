@@ -1439,6 +1439,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "omega-cheevos"
+version = "1.2.0"
+dependencies = [
+ "cc",
+ "omega-retro",
+]
+
+[[package]]
 name = "omega-gfx"
 version = "1.2.0"
 dependencies = [
@@ -1502,6 +1510,7 @@ dependencies = [
  "gilrs",
  "libloading",
  "lz4_flex",
+ "omega-cheevos",
  "omega-gfx",
  "omega-input",
  "omega-power",
