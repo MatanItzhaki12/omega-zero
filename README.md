@@ -9,8 +9,27 @@ you play them.</p>
 <a href="https://oauramos.github.io/omega-zero/"><b>Site</b></a> ·
 <a href="https://github.com/oauramos/omega-zero/releases/latest"><b>Download</b></a> ·
 <a href="https://github.com/oauramos/omega-zero/wiki"><b>Wiki</b></a> ·
-<a href="CHANGELOG.md"><b>Changelog</b></a>
+<a href="CHANGELOG.md"><b>Changelog</b></a> ·
+<a href="README-FORK.md"><b>Fork changes</b></a>
 </p>
+
+## About this fork
+
+This fork of omega-zero 1.2.0 brings back [Slot](https://github.com/BrandonKowalski/slot)'s
+controls and conveniences and adds RetroAchievements, drawn in omega-zero's own style:
+
+- **Slot's buttons**: MENU opens Settings on the shelf and the in-game menu in a game, START
+  picks the core, Y adds a favorite, and holding POWER powers off.
+- **Favorites and Recents** shelves, with a star on every favorite, kept in Slot's own files.
+- **A screen filter**: LCD, Grid or Off, also on SELECT + A / B in a game.
+- **Slot's other settings**: Load State on Insert, Save State on Eject, Rewind, Turbo, Frame
+  Blending, Game Boy palettes, Game Titles, 12-hour clock, Lid Power Off and Fast Forward OFF.
+- **Slot's in-game menu**: Resume, Undo Save / Load, States, Settings and Exit Game.
+- **RetroAchievements** for Game Boy, Game Boy Color, GBA and SNES games, signed in on the
+  keyboard, with hardcore.
+- **Slot's `cart_shell.txt`** is read, and labels load first for the carts on screen.
+
+Everything, with defaults and the files kept on the card, is in **[README-FORK.md](README-FORK.md)**.
 
 <img src="site/media/readme/supported-devices.png" width="760" alt="">
 
@@ -53,9 +72,9 @@ is the most useful thing you can send.
   and turbo buttons on the Game Boys.
 - Link play between two handhelds over Wi-Fi, for Game Boy and GBA games: Pokémon trades,
   Advance Wars, Mario Kart and Tetris.
-- Settings on START, in windows in the style of Mega Man Zero's menus that slide from screen to
-  screen, over a background that keeps moving: CONFIGS (Fast Forward, Fast Forward Sound, Colour
-  Correction, Rumble, Labels) and GENERAL (Date & Time, Network, Bluetooth, Theme, About).
+- Settings on MENU, in windows in the style of Mega Man Zero's menus that slide from screen to
+  screen, over a background that keeps moving: CONFIGS (Fast Forward, Colour Correction, Screen
+  Filter, Gameplay, Shelf, Labels) and GENERAL (Date & Time, Network, Bluetooth, Theme, About).
 - A tap of SELECT opens CONTROLS: what every button does, on the shelf and in a game, on one panel.
 - Network: home Wi-Fi, network time, and SSH and SFTP, each ON or OFF. Y on one opens its panel:
   SSH's shows the login and root's own random password. Labels are fetched from ScreenScraper,
@@ -104,7 +123,7 @@ is the most useful thing you can send.
 3. Put your games in `Games/GBA`, `Games/GB`, `Games/GBC`, `Games/SNES` and `Games/PS1`. A
    PlayStation game is a `.cue` with its `.bin`, a `.chd`, a `.pbp` or an `.m3u`; a real
    PlayStation BIOS, such as `scph5501.bin`, is used from `BIOS/` when it is there.
-4. Boot. On the shelf, START opens Settings and a tap of SELECT shows every button.
+4. Boot. On the shelf, MENU opens Settings and a tap of SELECT shows every button.
 
 Two cards and updating are in the site's
 [install guide](https://oauramos.github.io/omega-zero/#install); controls and everything else are
@@ -130,6 +149,9 @@ omega-zero is made by **Otávio ([@oauramos](https://github.com/oauramos))**.
   icon is drawn as pixel art. The LCD mask is derived from GigaHerz's LCD3x.
 - Cart labels come from [ScreenScraper](https://www.screenscraper.fr), fetched with your own
   account.
+- This fork's achievements run on [rcheevos](https://github.com/RetroAchievements/rcheevos) by
+  RetroAchievements.org (MIT); its controls, settings and in-game menu follow Slot's. See
+  [README-FORK.md](README-FORK.md#credits-and-licences).
 
 omega-zero is licensed under the GPL-3.0-or-later; see [LICENSE](LICENSE). It began in October
 2026 as a modified version of slot. It is written with Claude, and reviewed and tested by its
