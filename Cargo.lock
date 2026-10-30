@@ -1444,6 +1444,7 @@ version = "1.2.0"
 dependencies = [
  "cc",
  "omega-retro",
+ "tempfile",
 ]
 
 [[package]]
