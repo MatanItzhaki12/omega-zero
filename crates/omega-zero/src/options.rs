@@ -479,12 +479,17 @@ impl App {
         }
     }
 
-    pub fn set_options_panel(&mut self, panel: Lone) {
-        self.options_panel = Some(panel);
+    pub fn set_options_panel(&mut self, title: &'static str, panel: Lone) {
+        match self.options_panels.iter_mut().find(|(t, _)| *t == title) {
+            Some((_, kept)) => *kept = panel,
+            None => self.options_panels.push((title, panel)),
+        }
     }
 
-    pub(crate) fn draw_options(&self, out: &mut Vec<Draw>) {
-        if let Some(panel) = &self.options_panel {
+    /// `page`'s panel, as it was last baked: the one leaving a slide keeps its own face.
+    pub(crate) fn draw_options(&self, page: OptionsPage, out: &mut Vec<Draw>) {
+        let title = page.title();
+        if let Some((_, panel)) = self.options_panels.iter().find(|(t, _)| *t == title) {
             panel.draw(out);
         }
     }

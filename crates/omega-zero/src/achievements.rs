@@ -17,9 +17,15 @@
 //!
 //! Hardcore, on the same panel, plays as the site's hardcore asks: no state is loaded, no game
 //! rewinds and none picks up from where it was put away; unlocks count as hardcore.
+//!
+//! A sign-in the network refuses, as at a boot before Wi-Fi is up, is tried again, sooner at
+//! first and then each minute, and the game in play has its achievements loaded once it is in.
+//! What the site answered is kept in Config/retroachievements/, so a game played before signs
+//! in and loads with no network, and unlocks earned offline are sent once it is back.
 
 use std::path::Path;
 
+use omega_input::Millis;
 use omega_store::{atomic_write, Platform, CONFIG_DIR};
 use omega_ui::Toast;
 
@@ -29,6 +35,21 @@ pub const ACCOUNT_FILE: &str = "retroachievements.ini";
 
 /// The longest a title is shown in a toast before it is cut short.
 const TOAST_CHARS: usize = 30;
+
+/// Where the site's answers and the unlocks still to send are kept, in Config.
+pub const STORE_DIR: &str = "retroachievements";
+
+/// How long after the first sign-in the network refused the next is tried; each wait after is
+/// twice the last, up to `RETRY_MAX_MS`.
+pub const RETRY_FIRST_MS: Millis = 5_000;
+pub const RETRY_MAX_MS: Millis = 60_000;
+
+/// The wait before try `n` again, counting from 0.
+pub fn retry_after(n: u32) -> Millis {
+    RETRY_FIRST_MS
+        .saturating_mul(1 << n.min(16))
+        .min(RETRY_MAX_MS)
+}
 
 /// The player's RetroAchievements account, as Config/retroachievements.ini holds it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -115,6 +136,10 @@ pub struct Cheevos {
     pub told_game: bool,
     /// The game's achievements as the in-game menu's list last read them.
     pub list: Vec<omega_cheevos::Achievement>,
+    /// When to try again what the network refused, the sign-in or the game's achievements, and
+    /// how many times it has been tried.
+    pub retry_at: Option<Millis>,
+    pub retries: u32,
 }
 
 impl App {
@@ -145,6 +170,7 @@ impl App {
             return;
         };
         omega_cheevos::start(self.state.cheevos_hardcore, env!("CARGO_PKG_VERSION"));
+        omega_cheevos::set_store(&root.join(CONFIG_DIR).join(STORE_DIR));
         let Some(account) = Account::load(&root) else {
             self.cheevos.refused = Some(format!("No account in Config/{ACCOUNT_FILE}"));
             return;
@@ -178,6 +204,9 @@ impl App {
             (Some(name), _) => format!("Signed in as {name}"),
             (None, Some(why)) => why.clone(),
             (None, None) if self.cheevos.signing_in => "Signing in…".into(),
+            (None, None) if self.cheevos.retry_at.is_some() => {
+                "No network yet: trying again".into()
+            }
             (None, None) => "A on Account signs in".into(),
         }
     }
@@ -220,11 +249,21 @@ impl App {
         }
         omega_cheevos::pump();
         let now = self.now();
+        if self.cheevos.retry_at.is_some_and(|at| now >= at) {
+            self.cheevos.retry_at = None;
+            self.retry_achievements();
+        }
         if self.cheevos.signing_in {
             match omega_cheevos::login() {
                 omega_cheevos::Login::In { name, token } => {
                     self.cheevos.signing_in = false;
                     self.cheevos.signed_in = Some(name.clone());
+                    self.cheevos.retries = 0;
+                    self.cheevos.retry_at = None;
+                    // in after the game began: its achievements load now
+                    if self.achievements_wanted() {
+                        self.reload_achievements();
+                    }
                     if let (Some(root), Some(account)) =
                         (&self.root, self.root.as_deref().and_then(Account::load))
                     {
@@ -238,6 +277,14 @@ impl App {
                     self.hud
                         .toast(Toast::Cheevos(shown(&format!("Signed in as {name}"))), now);
                 }
+                omega_cheevos::Login::Unreachable(why) => {
+                    self.cheevos.signing_in = false;
+                    eprintln!("omega-zero: cheevos: no network to sign in: {why}");
+                    if self.cheevos.retries == 0 {
+                        self.hud.toast(Toast::Cheevos("Waiting for network"), now);
+                    }
+                    self.retry_later(now);
+                }
                 omega_cheevos::Login::Refused(why) => {
                     self.cheevos.signing_in = false;
                     self.cheevos.refused = Some(why.clone());
@@ -246,6 +293,13 @@ impl App {
                 }
                 _ => {}
             }
+        }
+        // the game's achievements could not load for want of a network: tried again
+        if self.cheevos.signed_in.is_some()
+            && self.cheevos.retry_at.is_none()
+            && omega_cheevos::game_unreachable()
+        {
+            self.retry_later(now);
         }
         if !self.cheevos.told_game {
             if let Some(s) = omega_cheevos::summary() {
@@ -266,6 +320,10 @@ impl App {
                 }
                 E::Disconnected => Toast::Cheevos("Unlocks waiting for network"),
                 E::Reconnected => Toast::Cheevos("Unlocks sent"),
+                E::Synced => match event.points {
+                    1 => Toast::Cheevos("1 offline unlock sent"),
+                    n => Toast::Cheevos(shown(&format!("{n} offline unlocks sent"))),
+                },
                 E::ServerError => {
                     eprintln!(
                         "omega-zero: cheevos: {}: {}",
@@ -282,6 +340,44 @@ impl App {
     /// A game goes in: its summary is told once its achievements load.
     pub(crate) fn achievements_game_starts(&mut self) {
         self.cheevos.told_game = false;
+    }
+
+    /// Tries again, after the wait the tries so far have earned.
+    fn retry_later(&mut self, now: Millis) {
+        self.cheevos.retry_at = Some(now + retry_after(self.cheevos.retries));
+        self.cheevos.retries = self.cheevos.retries.saturating_add(1);
+    }
+
+    /// What the network refused, tried again: the sign-in, or the game's achievements.
+    fn retry_achievements(&mut self) {
+        match self.cheevos.signed_in.is_some() {
+            false => {
+                let retries = self.cheevos.retries;
+                self.start_achievements();
+                self.cheevos.retries = retries;
+            }
+            true if omega_cheevos::game_unreachable() => self.reload_achievements(),
+            true => {}
+        }
+    }
+
+    /// A game is in play whose achievements are not loaded, nor loading.
+    fn achievements_wanted(&self) -> bool {
+        matches!(self.phase, crate::app::Phase::Playing { .. })
+            && self.achievements_console() != 0
+            && !matches!(
+                omega_cheevos::game_load(),
+                omega_cheevos::GameLoad::Loaded | omega_cheevos::GameLoad::Pending
+            )
+    }
+
+    /// Loads the achievements of the game in play again.
+    fn reload_achievements(&mut self) {
+        let Some(rom) = self.seated_cart().map(|c| c.rom.clone()) else {
+            return;
+        };
+        self.cheevos.told_game = false;
+        omega_cheevos::reload_game(self.achievements_console(), &rom);
     }
 
     /// Hardcore switched: the client takes it at once. Switched on in a game, the game starts
@@ -398,6 +494,13 @@ mod tests {
         assert_eq!(console_of(Platform::Gbc), Some(6));
         assert_eq!(console_of(Platform::Snes), Some(3));
         assert_eq!(console_of(Platform::Ps1), None);
+    }
+
+    #[test]
+    fn a_refused_sign_in_waits_longer_each_time_up_to_a_minute() {
+        let waits: Vec<Millis> = (0..6).map(retry_after).collect();
+        assert_eq!(waits, [5_000, 10_000, 20_000, 40_000, 60_000, 60_000]);
+        assert_eq!(retry_after(u32::MAX), RETRY_MAX_MS);
     }
 
     #[test]

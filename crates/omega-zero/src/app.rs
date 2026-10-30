@@ -414,7 +414,8 @@ pub struct App {
     /// The games put in last, the latest first, as Config/recents.txt lists them.
     pub(crate) recents: Vec<(Platform, String)>,
     /// The GAMEPLAY or SHELF panel, once baked.
-    pub(crate) options_panel: Option<Lone>,
+    /// Each options panel as last baked, by its title.
+    pub(crate) options_panels: Vec<(&'static str, Lone)>,
     /// Frame blending or the Game Boy's palette changed, for the game in play to take.
     pub(crate) core_options_pending: bool,
     /// The picked cart's name over the shelf, baked, with its size in art pixels.
@@ -479,7 +480,7 @@ impl App {
             opening: None,
             start_notice: None,
             recents: Vec::new(),
-            options_panel: None,
+            options_panels: Vec::new(),
             core_options_pending: false,
             title_face: None,
             cheevos: Default::default(),
@@ -2197,7 +2198,9 @@ impl App {
             Phase::Settings { row } => self.draw_settings(*row, out),
             Phase::Controls => self.draw_controls(out),
             Phase::Background(_) => self.draw_background_screen(out),
-            Phase::Options(screen) if screen.typing.is_none() => self.draw_options(out),
+            Phase::Options(screen) if screen.typing.is_none() => {
+                self.draw_options(screen.page, out)
+            }
             Phase::Labels(_) if typing_of(phase).is_none() => self.draw_labels(out),
             // the modal and its panels stand over the backdrop, with nothing between
             Phase::Network(screen) if screen.typing.is_none() => self.draw_network(out),

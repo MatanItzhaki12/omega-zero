@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "rc_api_runtime.h"
 #include "rc_client.h"
 #include "rc_libretro.h"
 
@@ -37,8 +38,10 @@ static uint32_t next_id = 1;
 
 static int login_state; /* 0 none, 1 under way, 2 signed in, 3 refused */
 static char login_error[256];
+static int login_result; /* rcheevos' code for the last sign-in: RC_OK, RC_NO_RESPONSE, ... */
 static int game_state;  /* 0 none, 1 under way, 2 loaded, 3 refused */
 static char game_error[256];
+static int game_result;
 
 static void keep_error(char* into, const char* error) {
   snprintf(into, 256, "%s", error ? error : "");
@@ -116,6 +119,7 @@ static void RC_CCONV login_done(int result, const char* error, rc_client_t* c, v
   (void)c;
   (void)userdata;
   login_state = result == RC_OK ? 2 : 3;
+  login_result = result;
   keep_error(login_error, error);
 }
 
@@ -123,6 +127,7 @@ static void RC_CCONV game_done(int result, const char* error, rc_client_t* c, vo
   (void)c;
   (void)userdata;
   game_state = result == RC_OK ? 2 : 3;
+  game_result = result;
   keep_error(game_error, error);
 }
 
@@ -184,6 +189,57 @@ void oc_login_token(const char* user, const char* token) {
 int oc_login_state(const char** error) {
   *error = login_error;
   return login_state;
+}
+
+/* Whether the last refusal was the network's, not the account's: the server never answered,
+   or answered with something that is not its JSON, as a captive portal does. */
+static int unreachable(int result) {
+  return result == RC_NO_RESPONSE || result == RC_INVALID_JSON;
+}
+
+int oc_login_unreachable(void) {
+  return login_state == 3 && unreachable(login_result);
+}
+
+int oc_game_unreachable(void) {
+  return game_state == 3 && unreachable(game_result);
+}
+
+/* The memory of a game is set, so its achievements can be loaded again. */
+int oc_has_memory(void) {
+  return regions_ready;
+}
+
+void oc_user_scores(uint32_t* hardcore, uint32_t* softcore) {
+  const rc_client_user_t* user = client ? rc_client_get_user_info(client) : NULL;
+  *hardcore = user ? user->score : 0;
+  *softcore = user ? user->score_softcore : 0;
+}
+
+/* An unlock earned offline, as the request that sends it now: `seconds` after it was earned,
+   signed as the site checks it. Writes the post data into `out`; returns its length, or 0. */
+size_t oc_award_post(uint32_t id, const char* user, const char* token, int hardcore,
+                     const char* hash, uint32_t seconds, char* out, size_t size) {
+  rc_api_award_achievement_request_t params;
+  rc_api_request_t request;
+  size_t n = 0;
+  memset(&params, 0, sizeof(params));
+  memset(&request, 0, sizeof(request));
+  params.username = user;
+  params.api_token = token;
+  params.achievement_id = id;
+  params.hardcore = hardcore ? 1 : 0;
+  params.game_hash = hash;
+  params.seconds_since_unlock = seconds;
+  if (rc_api_init_award_achievement_request(&request, &params) == RC_OK && request.post_data) {
+    n = strlen(request.post_data);
+    if (n < size)
+      memcpy(out, request.post_data, n + 1);
+    else
+      n = 0;
+  }
+  rc_api_destroy_request(&request);
+  return n;
 }
 
 const char* oc_user_name(void) {

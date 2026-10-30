@@ -7,6 +7,9 @@
 //! time it is pumped, on whichever thread pumps it. Every call into the client is made under one
 //! lock, so the main thread (signing in, between games) and the emulator's (a game's frames)
 //! never meet inside it.
+//!
+//! With no network, the answers kept on the card stand in for the site's, and unlocks wait on
+//! the card to be sent: see offline.rs.
 
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::path::Path;
@@ -15,6 +18,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use omega_retro::{CoreMemory, MemoryDescriptor};
+
+mod offline;
+pub use offline::{pending, set_store, Pending};
 
 /// The consoles omega-zero plays, by rcheevos' numbers.
 pub const CONSOLE_SNES: u32 = 3;
@@ -35,6 +41,21 @@ extern "C" {
     fn oc_login_password(user: *const c_char, password: *const c_char);
     fn oc_login_token(user: *const c_char, token: *const c_char);
     fn oc_login_state(error: *mut *const c_char) -> c_int;
+    fn oc_login_unreachable() -> c_int;
+    fn oc_game_unreachable() -> c_int;
+    fn oc_has_memory() -> c_int;
+    fn oc_user_scores(hardcore: *mut u32, softcore: *mut u32);
+    #[allow(clippy::too_many_arguments)]
+    fn oc_award_post(
+        id: u32,
+        user: *const c_char,
+        token: *const c_char,
+        hardcore: c_int,
+        hash: *const c_char,
+        seconds: u32,
+        out: *mut c_char,
+        size: usize,
+    ) -> usize;
     fn oc_user_name() -> *const c_char;
     fn oc_user_token() -> *const c_char;
     fn oc_logout();
@@ -125,6 +146,8 @@ pub enum EventKind {
     /// An unlock could not reach the server; it is kept and sent again.
     Disconnected,
     Reconnected,
+    /// Unlocks earned offline were sent, as many as `points` says.
+    Synced,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -146,6 +169,8 @@ pub enum Login {
         token: String,
     },
     Refused(String),
+    /// The site could not be reached: no network yet. Worth trying again.
+    Unreachable(String),
 }
 
 /// Where loading the game in the handheld's achievements stands.
@@ -234,6 +259,7 @@ pub fn login() -> Login {
                 name: text(unsafe { oc_user_name() }),
                 token: text(unsafe { oc_user_token() }),
             },
+            3 if unsafe { oc_login_unreachable() } != 0 => Login::Unreachable(text(error)),
             3 => Login::Refused(text(error)),
             _ => Login::Out,
         }
@@ -275,6 +301,24 @@ pub fn game_load() -> GameLoad {
         }
     })
     .unwrap_or(GameLoad::None)
+}
+
+/// Loading the game's achievements failed for want of a network: worth trying again.
+pub fn game_unreachable() -> bool {
+    // SAFETY: under the lock
+    with_client(|| unsafe { oc_game_unreachable() } != 0).unwrap_or(false)
+}
+
+/// Loads the achievements of the game `rom` of `console` again, its memory as `begin_game`
+/// set it: after a sign-in or a network that came too late for the game's start.
+pub fn reload_game(console: u32, rom: &Path) {
+    let path = c(&rom.to_string_lossy());
+    with_client(|| unsafe {
+        // SAFETY: under the lock; the shim copies the path
+        if oc_has_memory() != 0 {
+            oc_load_game(console, path.as_ptr());
+        }
+    });
 }
 
 /// The game's achievements, once they are loaded.
@@ -399,6 +443,13 @@ pub extern "C" fn omega_cheevos_server_call(
     let post = (!post_data.is_null()).then(|| text(post_data));
     let content_type = text(content_type);
     let agent = lock(&AGENT).clone();
+    if let Some(post) = &post {
+        offline::requested(post);
+    }
+    let (mut hardcore, mut softcore) = (0, 0);
+    // SAFETY: called under the client's lock, from inside a call into it
+    unsafe { oc_user_scores(&mut hardcore, &mut softcore) };
+    let scores = (hardcore, softcore);
     if OFFLINE.load(Ordering::Acquire) {
         lock(&ANSWERS).push((id, RETRYABLE, Vec::new()));
         return;
@@ -407,11 +458,69 @@ pub extern "C" fn omega_cheevos_server_call(
         .name("omega-cheevos-net".into())
         .spawn(move || {
             let (status, body) = fetch(&url, post.as_deref(), &content_type, &agent);
-            lock(&ANSWERS).push((id, status, body));
+            let answer = match (status > 0, post.as_deref()) {
+                (true, post) => {
+                    if let Some(post) = post {
+                        offline::answered(post, status, &body);
+                    }
+                    (status, body)
+                }
+                // no network: an answer kept on the card, or the unlock kept for later
+                (false, Some(post)) => match offline::answer_offline(post, scores) {
+                    Some(kept) => {
+                        if post.contains("r=awardachievement") {
+                            event(EventKind::Disconnected, "", "", 0);
+                        }
+                        kept
+                    }
+                    None => (status, body),
+                },
+                (false, None) => (status, body),
+            };
+            lock(&ANSWERS).push((id, answer.0, answer.1));
+            if status == 200 {
+                sync(&agent);
+            }
         });
     if spawned.is_err() {
         lock(&ANSWERS).push((id, RETRYABLE, Vec::new()));
     }
+}
+
+/// Sends the unlocks earned offline, now the site answers.
+fn sync(agent: &str) {
+    let agent = agent.to_string();
+    offline::send_pending(
+        |p, seconds| {
+            let (user, token, hash) = (c(&p.user), c(&p.token), c(&p.hash));
+            let mut out = vec![0u8; 1024];
+            // SAFETY: pure request building, no client; the buffer is as long as said
+            let n = unsafe {
+                oc_award_post(
+                    p.id,
+                    user.as_ptr(),
+                    token.as_ptr(),
+                    c_int::from(p.hardcore),
+                    hash.as_ptr(),
+                    seconds,
+                    out.as_mut_ptr() as *mut c_char,
+                    out.len(),
+                )
+            };
+            (n > 0).then(|| String::from_utf8_lossy(&out[..n]).into_owned())
+        },
+        move |url, post, content_type| fetch(url, Some(post), content_type, &agent),
+        |sent| event(EventKind::Synced, "", "", sent as u32),
+    );
+}
+
+fn event(kind: EventKind, title: &str, description: &str, points: u32) {
+    lock(&EVENTS).push(Event {
+        kind,
+        title: title.to_string(),
+        description: description.to_string(),
+        points,
+    });
 }
 
 #[no_mangle]
@@ -432,12 +541,7 @@ pub extern "C" fn omega_cheevos_event(
         18 => EventKind::Reconnected,
         _ => return,
     };
-    lock(&EVENTS).push(Event {
-        kind,
-        title: text(title),
-        description: text(description),
-        points,
-    });
+    event(kind, &text(title), &text(description), points);
 }
 
 /// One request through curl: the post data goes in on its standard input, so a password never

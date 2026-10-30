@@ -1,5 +1,7 @@
-//! The GAMEPLAY and SHELF panels' face, made while one is open, when what it shows or the
-//! palette does; and the picked cart's name over the shelf, while Game Titles shows it.
+//! The GAMEPLAY, SHELF and ACHIEVEMENTS panels' faces, each made while it is open, when what it
+//! shows or the palette does, each in a texture of its own: sliding from GAMEPLAY to
+//! ACHIEVEMENTS shows both at once. And the picked cart's name over the shelf, while Game Titles
+//! shows it.
 
 use omega_gfx::{out_w, Compositor};
 use omega_ui::kit::palette::Palette;
@@ -12,7 +14,8 @@ use crate::frontend::lone::Baked;
 use crate::options::{options_panel_face, OptionsView};
 use crate::screens::lone::{fitted, over};
 
-pub(crate) type OptionsTex = Baked<(OptionsView, u8)>;
+/// Each panel's texture, by its title.
+pub(crate) type OptionsTex = Vec<(&'static str, Baked<(OptionsView, u8)>)>;
 
 /// The title's texture, and the name and palette it was made for.
 #[derive(Default)]
@@ -26,10 +29,18 @@ pub(crate) fn sync_options(app: &mut App, compositor: &mut Compositor, tex: &mut
         return;
     };
     let (colour, pal) = (app.palette_colour(), app.palette());
-    if let Some(panel) = tex.bake(compositor, (view, colour), |(view, _)| {
+    let title = view.title;
+    let at = match tex.iter().position(|(t, _)| *t == title) {
+        Some(at) => at,
+        None => {
+            tex.push((title, Baked::default()));
+            tex.len() - 1
+        }
+    };
+    if let Some(panel) = tex[at].1.bake(compositor, (view, colour), |(view, _)| {
         options_panel_face(view, pal)
     }) {
-        app.set_options_panel(panel);
+        app.set_options_panel(title, panel);
     }
 }
 

@@ -60,6 +60,15 @@ turned off.
   `retro_reset`; achievements start watching again with it.
 - A clear or glitter shell is clear: the board and the cart's hollow show through the plastic,
   and a GBA cart's board shows over its label too.
+- A RetroAchievements sign-in the network refuses, as at a boot before Wi-Fi is up, is tried
+  again after 5, 10, 20 and 40 seconds and then each minute; a wrong password is not. Signed in
+  late, the game in play has its achievements loaded then.
+- RetroAchievements offline: the site's answers are kept in `Config/retroachievements/cache/`,
+  so a game played before signs in and loads with no network; an unlock earned offline is kept
+  in `Config/retroachievements/pending.txt` and sent, with how long ago it was earned, the next
+  time the site answers.
+- Sliding from GAMEPLAY to ACHIEVEMENTS and back, the panel leaving keeps its own face: each
+  options panel has a texture of its own.
 
 ## omega-zero 1.2.0
 

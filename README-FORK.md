@@ -174,6 +174,8 @@ the handheld to sleep.
 - **Clear shells look clear.** A clear or glitter shell shows much more of what is behind the
   plastic: the board is seen through it, its top edge above the label on a GBA cart, and where
   there is no board the cart's hollow inside shows, tinted by the plastic.
+- **Panels slide whole.** Going from GAMEPLAY to ACHIEVEMENTS and back, the panel leaving
+  keeps its own size instead of being drawn with the one arriving.
 - **Mixed shelves draw cleanly.** Carts on screen are spaced by the widest of them, and the
   picked cart is drawn in front. A narrow cart beside a wide one, such as a Game Boy pak beside
   a GBA cart on Favorites, no longer covers it.
@@ -203,7 +205,26 @@ username = YourName
 password = YourPassword
 ```
 
-The handheld needs Wi-Fi. Requests go out through `curl`, like the label downloads do.
+Requests go out through `curl`, like the label downloads do.
+
+### No network yet, or none at all
+
+- **Sign-in retries.** If the handheld boots before Wi-Fi is up, the sign-in isn't given up: it
+  says *Waiting for network* once and tries again after 5, 10, 20 and 40 seconds, then every
+  minute. A wrong password or an expired token is not retried. Once signed in, a game that's
+  already running has its achievements loaded then, without restarting it.
+- **Offline play.** What the site answers is kept in `Config/retroachievements/cache/`: your
+  sign-in, each game's identity and achievements, and which of them you had. With no network, a
+  game you've played online before signs in and loads its achievements from there. A game never
+  played online needs the network once.
+- **Offline unlocks.** An achievement earned with no network still pops up, and is written to
+  `Config/retroachievements/pending.txt`. The next time the site answers anything, every kept
+  unlock is sent, saying how long ago it was earned, and a toast says how many were sent. They
+  survive powering off. An offline unlock also counts as unlocked in the kept data, so it isn't
+  awarded twice.
+- A sign-in from the cache only accepts the token the site handed back for it, never a typed
+  password, so a wrong password can't sign in offline.
+- Leaderboard scores set offline are not kept.
 
 ### Playing
 
@@ -255,6 +276,8 @@ Unlocked and View All show once the game is found.
 | `Config/favorites.txt` | Favorites, one `gba/<name>` per line (Slot's format) |
 | `Config/recents.txt` | The last ten games played, newest first (Slot's format) |
 | `Config/retroachievements.ini` | The RetroAchievements user name, and the password until it is swapped for a token |
+| `Config/retroachievements/cache/` | The site's answers, for signing in and loading games offline |
+| `Config/retroachievements/pending.txt` | Unlocks earned offline, waiting to be sent |
 | `Labels/cart_shell.txt` | Cart shells as Slot and Cart Studio write them |
 
 New keys in `Config/omega-zero.state`. A card from before this fork reads each one as its default.

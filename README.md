@@ -27,7 +27,7 @@ controls and conveniences and adds RetroAchievements, drawn in omega-zero's own 
 - **Slot's in-game menu**: Resume, Undo Save / Load, States, Settings, Restart and Exit Game.
 - **RetroAchievements** for Game Boy, Game Boy Color, GBA and SNES games, signed in on the
   keyboard, with hardcore, and an in-game page showing the game it was matched to and every
-  achievement.
+  achievement. Sign-in retries until Wi-Fi is up, and unlocks earned offline are sent later.
 - **Slot's `cart_shell.txt`** is read, clear shells look clear, and labels load first for the
   carts on screen.
 

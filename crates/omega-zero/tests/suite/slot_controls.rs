@@ -486,6 +486,18 @@ fn account_signs_in_to_retroachievements_on_the_keyboard_and_y_signs_out() {
     );
     assert!(a.achievements_account());
 
+    // no network: the sign-in is tried again, after a wait, rather than given up
+    let now = a.now();
+    a.tick_ms(now + 100);
+    a.tick_ms(now + 200);
+    assert_eq!(a.achievements_note(), "No network yet: trying again");
+    a.tick_ms(now + 200 + omega_zero::achievements::RETRY_FIRST_MS);
+    assert_eq!(
+        a.achievements_note(),
+        "Signing in…",
+        "the sign-in was not tried again"
+    );
+
     press(&mut a, Btn::Y);
     assert!(!file.exists(), "signing out kept the account");
     assert!(!a.achievements_account());
