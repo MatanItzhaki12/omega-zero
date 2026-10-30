@@ -159,13 +159,16 @@ fn two_carts_repeat_around_the_ring() {
     settle(&mut s);
     let mut out = Vec::new();
     s.draw_row(None, 0.0, 0.0, 1.0, &mut out);
+    // from the outside in: the other cart either side, then the selection, in front of them
     assert_eq!(
         drawn_cart_indices(&out),
-        vec![1, 0, 1],
-        "a row of two is not the other cart, the selection, the other cart again"
+        vec![1, 1, 0],
+        "a row of two is not the other cart either side and the selection in front"
     );
     let row = placed(&s);
-    let centres: Vec<f32> = row.iter().map(|(x, w)| x + w / 2.0).collect();
+    // left to right, whatever order they were drawn in
+    let mut centres: Vec<f32> = row.iter().map(|(x, w)| x + w / 2.0).collect();
+    centres.sort_by(f32::total_cmp);
     assert!(
         (centres[1] - out_w() as f32 / 2.0).abs() < 0.5,
         "the selected cart sits at {}, not the middle of the screen",
@@ -178,11 +181,12 @@ fn two_carts_repeat_around_the_ring() {
             b - a
         );
     }
+    // the other cart's two images are drawn first, either side, before the selection
     assert!(
-        (row[0].1 - row[2].1).abs() < 0.01,
+        (row[0].1 - row[1].1).abs() < 0.01,
         "the two images of one cart came out at different sizes: {} and {}",
         row[0].1,
-        row[2].1
+        row[1].1
     );
 }
 
@@ -856,10 +860,14 @@ fn a_snes_row_stands_each_cart_as_its_own_shell_at_its_own_size() {
         .collect();
     assert_eq!(models.len(), 3, "three carts, not three models: {models:?}");
     let mid = out_w() as f32 / 2.0;
+    // the carts stand the widest shell's width apart, so a wide one never reaches into the next
+    let pitch = (0..3)
+        .map(|i| model_shelf_box(s.model_at(i).unwrap()).0)
+        .fold(0.0, f32::max);
     for (offset, i) in [(-1.0, 2), (0.0, 0), (1.0, 1)] {
         let model = s.model_at(i).expect("a model for every cart");
         let (sw, sh) = model_shelf_box(model);
-        let want = mid + offset * sw;
+        let want = mid + offset * pitch;
         let &(centre, foot, w, h, mesh) = models
             .iter()
             .find(|m| (m.0 - want).abs() < 0.01)
@@ -914,4 +922,41 @@ fn each_snes_shell_is_backed_by_its_own_shadow() {
         "the American cart beside the selected one and the Super Famicom one are not each \
          backed by their own shell"
     );
+}
+
+/// FAVORITES stands every system's carts on one row: a Game Boy pak beside a GBA cart, narrower
+/// than it, must neither reach into it nor be drawn over it.
+#[test]
+fn on_a_row_of_mixed_systems_no_cart_reaches_into_or_covers_the_picked_one() {
+    let cart = |platform, stem: &str| Cart {
+        platform,
+        stem: stem.into(),
+        rom: format!("Games/{stem}").into(),
+        label: None,
+        code: String::new(),
+        shell: None,
+        title: stem.to_uppercase(),
+    };
+    let mut s = Shelf::new(vec![
+        cart(Platform::Gba, "Emerald"),
+        cart(Platform::Gba, "Unbound"),
+        cart(Platform::Gb, "Tetris"),
+    ]);
+    s.select(1);
+    let mut out = Vec::new();
+    s.draw_row(None, 0.0, 0.0, 1.0, &mut out);
+    let spans = cart_spans(&out);
+    assert_eq!(spans.len(), 3, "{spans:?}");
+    let picked = *spans.last().unwrap();
+    let centre = out_w() as f32 / 2.0;
+    assert!(
+        picked.0 < centre && picked.1 > centre,
+        "the picked cart is not drawn last, in front: {spans:?}"
+    );
+    for side in &spans[..2] {
+        assert!(
+            side.1 <= picked.0 + 0.5 || side.0 >= picked.1 - 0.5,
+            "a neighbour {side:?} reaches into the picked cart {picked:?}"
+        );
+    }
 }

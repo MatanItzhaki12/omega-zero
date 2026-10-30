@@ -33,6 +33,9 @@ turned off.
   game is not dimmed under Screen, whose panel stands at the bottom, so each change shows at once.
   The menu comes up a moment after the tap, so a double tap goes straight to the save states.
   Turbo Buttons and Rewind switch in a game, not only at the next one.
+- On a row of carts of different shapes, as FAVORITES and a SNES shelf are, a narrow cart beside
+  a wide one no longer reaches into it or covers it: the carts in view stand the widest one's
+  width apart, and the row is drawn from the outside in, the cart picked in front.
 
 ## omega-zero 1.2.0
 

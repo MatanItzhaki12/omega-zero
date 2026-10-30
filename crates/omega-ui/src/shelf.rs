@@ -454,6 +454,22 @@ impl Shelf {
         from + (self.index as f32 - from + n / 2.0).rem_euclid(n) - n / 2.0
     }
 
+    /// How far apart the carts in view stand: the widest of them, so none reaches into the
+    /// next. A row of one system's carts, all one width, stands as it always did.
+    fn pitch(&self) -> f32 {
+        (-SLOTS..=SLOTS)
+            .filter_map(|slot| self.cart_at_offset(slot))
+            .map(|i| {
+                let model = self
+                    .models
+                    .get(i)
+                    .copied()
+                    .unwrap_or_else(|| model_of(&self.carts[i]));
+                model_shelf_box(model).0
+            })
+            .fold(0.0, f32::max)
+    }
+
     pub fn cart_at_offset(&self, off: i32) -> Option<usize> {
         let n = self.carts.len() as i32;
         if n == 0 {
@@ -473,7 +489,7 @@ impl Shelf {
         let offset = self.scroll_target() - self.scroll;
         let scale = shrink(offset);
         (
-            out_w() as f32 / 2.0 + offset * w - w * scale / 2.0,
+            out_w() as f32 / 2.0 + offset * self.pitch() - w * scale / 2.0,
             scale * model_scale(model),
         )
     }
@@ -543,7 +559,12 @@ impl Shelf {
         let recede = recede.clamp(0.0, 1.0);
         let dim = dim.clamp(0.0, 1.0);
         let target = self.scroll_target();
-        for slot in -SLOTS..=SLOTS {
+        let pitch = self.pitch();
+        // from the outside in, so each cart stands in front of the ones further out and the
+        // picked one in front of all: on a row of every system's carts, as FAVORITES is, a
+        // cart beside a wider one would otherwise cover it
+        let outside_in = (1..=SLOTS).rev().flat_map(|d| [-d, d]).chain([0]);
+        for slot in outside_in {
             let Some(i) = self.cart_at_offset(slot) else {
                 continue;
             };
@@ -564,7 +585,7 @@ impl Shelf {
             let (cw, ch) = model_shelf_box(model);
             let (w, h) = (cw * scale, ch * scale);
             let away = offset.signum() * (1.0 + offset.abs());
-            let x = out_w() as f32 / 2.0 + offset * cw - w / 2.0 + away * PART * recede;
+            let x = out_w() as f32 / 2.0 + offset * pitch - w / 2.0 + away * PART * recede;
             if x + w <= 0.0 || x >= out_w() as f32 || alpha <= 0.0 {
                 continue;
             }
