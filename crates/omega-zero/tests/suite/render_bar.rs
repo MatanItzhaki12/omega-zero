@@ -194,7 +194,7 @@ fn the_bar_is_the_kits_pixel_for_pixel_on_the_shelf_and_in_settings() {
         );
 
         let mut input = Script(VecDeque::new());
-        tap(&mut f, &mut input, Btn::Start);
+        tap(&mut f, &mut input, Btn::Menu);
         let settings = composed(&mut f, &mut c, &format!("settings-{colour}"));
         let off = misses(&settings, &kit_bar(Actions::Menu, &[], Font::Bold, pal));
         assert!(
@@ -296,7 +296,7 @@ fn the_background_shows_between_the_bars_actions_but_for_the_hints() {
         };
 
         let mut input = Script(VecDeque::new());
-        tap(&mut f, &mut input, Btn::Start);
+        tap(&mut f, &mut input, Btn::Menu);
         assert!(
             f.app().settings_row().is_some(),
             "{colour}: START opened no Settings"
@@ -342,7 +342,7 @@ fn a_new_font_redraws_the_bars_actions_in_the_next_frame() {
     f.upload_faces(&mut c);
     let pal = f.app().palette();
     let mut input = Script(VecDeque::new());
-    tap(&mut f, &mut input, Btn::Start);
+    tap(&mut f, &mut input, Btn::Menu);
     while f.app().settings_row() != Some(SettingsRow::Background) {
         tap(&mut f, &mut input, Btn::Down);
     }

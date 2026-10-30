@@ -137,7 +137,8 @@ fn a_new_colour_in_background_prints_the_top_bar_again() {
     let before = printed(&mut f, &mut c, &[night.cream]);
     assert!(before[0] > 0);
 
-    press(&mut f, Btn::Start);
+    f.app_mut().apply(Action::QuickMenu);
+    f.app_mut().finish_slide();
     while f.app().settings_row() != Some(SettingsRow::Background) {
         press(&mut f, Btn::Down);
     }

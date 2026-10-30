@@ -96,8 +96,8 @@ fn settings_over(colour: u8, c: &mut Compositor) -> (tempfile::TempDir, Frontend
     let mut f = Frontend::boot(Box::new(SimPlatform::at(d.path().to_path_buf())));
     f.upload_faces(c);
     let mut input = Script(VecDeque::new());
-    tap(&mut f, &mut input, Btn::Start);
-    assert!(f.app().settings_row().is_some(), "START opened no Settings");
+    tap(&mut f, &mut input, Btn::Menu);
+    assert!(f.app().settings_row().is_some(), "MENU opened no Settings");
     (d, f, input)
 }
 
@@ -215,7 +215,7 @@ fn settings_draws_the_modal_and_the_lit_rows_band_over_the_backdrop() {
     assert_eq!(art(&px, x + 2, y + 2), pal.tab, "the band");
     assert_eq!(art(&px, x + w / 2, y + h - 2), pal.tab, "the band");
     assert_eq!(art(&px, x, y), pal.well, "the band's corner is the well's");
-    let [x, y, w, h] = row_rect(&f, SettingsRow::Rumble);
+    let [x, y, w, h] = row_rect(&f, SettingsRow::ColourCorrection);
     for (dx, dy) in [(1, 0), (2, 2), (w / 2, h - 2)] {
         assert_eq!(
             art(&px, x + dx, y + dy),

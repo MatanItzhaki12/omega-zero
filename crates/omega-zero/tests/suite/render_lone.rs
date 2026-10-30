@@ -107,7 +107,7 @@ impl Rig {
                 return r;
             }
         };
-        r.tap(Btn::Start);
+        r.tap(Btn::Menu);
         for _ in 0..row.index() {
             r.tap(Btn::Down);
         }

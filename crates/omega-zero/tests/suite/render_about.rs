@@ -49,7 +49,7 @@ fn about_over(colour: u8, c: &mut Compositor) -> (tempfile::TempDir, Frontend) {
     let mut f = Frontend::boot(Box::new(SimPlatform::at(d.path().to_path_buf())));
     f.upload_faces(c);
     let mut input = Script(VecDeque::new());
-    tap(&mut f, &mut input, Btn::Start);
+    tap(&mut f, &mut input, Btn::Menu);
     for _ in 0..SettingsRow::About.index() {
         tap(&mut f, &mut input, Btn::Down);
     }

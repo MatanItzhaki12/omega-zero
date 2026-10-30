@@ -170,7 +170,7 @@ impl Rig {
     /// Settings, with the cursor on `row`.
     fn settings_at(&mut self, row: SettingsRow) {
         if self.f.app().settings_row().is_none() {
-            self.tap(Btn::Start);
+            self.tap(Btn::Menu);
         }
         for _ in 0..SettingsRow::ALL.len() {
             if self.f.app().settings_row() == Some(row) {

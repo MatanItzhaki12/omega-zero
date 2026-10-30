@@ -219,7 +219,7 @@ impl Rig {
     }
 
     fn open_bluetooth(&mut self) {
-        self.tap(Btn::Start);
+        self.tap(Btn::Menu);
         for _ in 0..SettingsRow::ALL.len() {
             if self.f.app().settings_row() == Some(SettingsRow::Bluetooth) {
                 break;
