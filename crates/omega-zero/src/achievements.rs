@@ -1,9 +1,11 @@
-//! RetroAchievements: with Settings > Gameplay > RetroAchievements on, omega-zero signs in to
-//! the player's account and every Game Boy, Game Boy Color, GBA and SNES game is checked for
-//! achievements as it plays, each one earned said in a toast.
+//! RetroAchievements: with Settings > Gameplay > RetroAchievements switched on, omega-zero signs
+//! in to the player's account and every Game Boy, Game Boy Color, GBA and SNES game is checked
+//! for achievements as it plays, each one earned said in a toast. MENU over a game says, under
+//! Settings > Achievements, which game RetroAchievements took the ROM for, and lists its
+//! achievements.
 //!
-//! The player signs in on the keyboard, from Settings > Gameplay > Account, or by writing
-//! Config/retroachievements.ini by hand:
+//! The player signs in on the keyboard, from Settings > Gameplay > RetroAchievements > Account,
+//! or by writing Config/retroachievements.ini by hand:
 //!
 //! ```text
 //! username = MyName
@@ -51,8 +53,9 @@ impl Account {
     /// for a token on the sign-in they are for.
     pub fn keep_password(root: &Path, user: &str, password: &str) -> std::io::Result<()> {
         let text = format!(
-            "# RetroAchievements account, typed in Settings > Gameplay > Account. omega-zero\n\
-             # swaps the password for a token as soon as the site lets it sign in.\n\
+            "# RetroAchievements account, typed in Settings > Gameplay > RetroAchievements >\n\
+             # Account. omega-zero swaps the password for a token as soon as the site lets it\n\
+             # sign in.\n\
              username = {user}\npassword = {password}\n"
         );
         atomic_write(&root.join(CONFIG_DIR).join(ACCOUNT_FILE), text.as_bytes())
@@ -110,6 +113,8 @@ pub struct Cheevos {
     pub refused: Option<String>,
     /// The game whose summary is still to be told when its achievements load.
     pub told_game: bool,
+    /// The game's achievements as the in-game menu's list last read them.
+    pub list: Vec<omega_cheevos::Achievement>,
 }
 
 impl App {
@@ -277,6 +282,63 @@ impl App {
     /// A game goes in: its summary is told once its achievements load.
     pub(crate) fn achievements_game_starts(&mut self) {
         self.cheevos.told_game = false;
+    }
+
+    /// Hardcore switched: the client takes it at once. Switched on in a game, the game starts
+    /// over, as RetroAchievements asks, so nothing done before it counts.
+    pub(crate) fn switch_hardcore(&mut self) {
+        if !self.state.cheevos {
+            return;
+        }
+        omega_cheevos::start(self.state.cheevos_hardcore, env!("CARGO_PKG_VERSION"));
+        if self.state.cheevos_hardcore && matches!(self.phase, crate::app::Phase::Playing { .. }) {
+            self.restart_game();
+        }
+    }
+
+    /// The game in play as RetroAchievements has it, once it is found there.
+    pub fn achievements_found(&self) -> Option<omega_cheevos::Summary> {
+        if !self.state.cheevos || self.cheevos.signed_in.is_none() {
+            return None;
+        }
+        omega_cheevos::summary().filter(|s| s.id != 0)
+    }
+
+    /// Whether the game in play was found on RetroAchievements, in a word for the in-game
+    /// menu's Game row, and its note: the title and number it was taken for, or why not.
+    pub fn achievements_game(&self) -> (String, String) {
+        let (value, note) = if !self.state.cheevos {
+            ("OFF", "Switch RetroAchievements on below".to_string())
+        } else if self.cheevos.signed_in.is_none() {
+            ("SIGNED OUT", self.achievements_note())
+        } else if let Some(s) = self.achievements_found() {
+            ("FOUND", format!("{} (game {})", s.title, s.id))
+        } else {
+            match omega_cheevos::game_load() {
+                omega_cheevos::GameLoad::Pending => (
+                    "LOOKING",
+                    "Asking RetroAchievements for this game".to_string(),
+                ),
+                omega_cheevos::GameLoad::Refused(why) if !why.is_empty() => ("NOT FOUND", why),
+                omega_cheevos::GameLoad::Refused(_) | omega_cheevos::GameLoad::Loaded => (
+                    "NOT FOUND",
+                    "RetroAchievements does not know this ROM".to_string(),
+                ),
+                omega_cheevos::GameLoad::None => (
+                    "NOT STARTED",
+                    "Achievements start with the next game".to_string(),
+                ),
+            }
+        };
+        (value.to_string(), note)
+    }
+
+    /// Reads the game's achievements again, for the in-game menu's list.
+    pub(crate) fn read_achievements(&mut self) {
+        self.cheevos.list = match self.achievements_found() {
+            Some(_) => omega_cheevos::achievements(),
+            None => Vec::new(),
+        };
     }
 }
 

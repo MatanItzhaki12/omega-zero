@@ -175,6 +175,7 @@ enum Cmd {
     BeginCable(u8, Box<dyn LinkChannel>),
     SetOption(String, String),
     SetDisc(usize),
+    Reset,
 }
 
 struct Shared {
@@ -547,7 +548,6 @@ impl EmuHandle {
     pub fn request_load(&self, state: Vec<u8>) {
         request(&self.cmds, &self.shared, Cmd::Load(state));
     }
-
     pub fn snapshot(&self) -> EmuSnapshot {
         EmuSnapshot {
             cmds: self.cmds.clone(),
@@ -583,6 +583,10 @@ impl Snapshot for EmuSnapshot {
 
     fn load(&self, state: Vec<u8>) {
         request(&self.cmds, &self.shared, Cmd::Load(state));
+    }
+
+    fn reset(&self) {
+        request(&self.cmds, &self.shared, Cmd::Reset);
     }
 
     fn resume_trusted(&self) -> bool {
@@ -1075,6 +1079,10 @@ impl Worker {
                     eprintln!("omega-zero: {e}");
                 }
                 // no achievement is earned by the jump a load makes
+                omega_cheevos::reset();
+            }
+            Cmd::Reset => {
+                core.reset();
                 omega_cheevos::reset();
             }
             Cmd::Sav(reply) => {

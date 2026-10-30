@@ -4,14 +4,18 @@
 //! row's description under its rows, with the kit's bar under it, B RETURN and A CONFIRM.
 //!
 //! - MENU: Resume; Undo Save and Undo Load, for 30 seconds after a save or a load; States, while
-//!   the game has any; Settings; and Exit Game, which saves a state and ejects the cart, but for
-//!   a card with one cart.
-//! - SETTINGS: Screen, Gameplay and Controls.
+//!   the game has any; Settings; Restart, which starts the game over from power on; and Exit
+//!   Game, which saves a state and ejects the cart, but for a card with one cart.
+//! - SETTINGS: Screen, Gameplay, Achievements, for a system RetroAchievements reads, and
+//!   Controls.
 //! - SCREEN, for the system being played: Screen Filter, the Game Boy's Palette, Colour
 //!   Correction, Frame Blending, Brightness and Blue Light. The game is not dimmed behind it and
 //!   the panel stands at the bottom, so every change shows on the game as it is made.
 //! - GAMEPLAY: Fast Forward, Fast Forward Sound, Rewind, Turbo Buttons, Rumble, Load State on
 //!   Insert and Save State on Eject.
+//! - ACHIEVEMENTS: whether RetroAchievements found the game, and the title it took it for; how
+//!   many of its achievements are unlocked; every one of them, in a list of its own; and
+//!   RetroAchievements and Hardcore switched on or off.
 //! - CONTROLS: what each button does, as the shelf's CONTROLS shows it, for this system.
 //!
 //! B goes back a page, and from MENU back to the game, as MENU does from any page. The menu
@@ -24,13 +28,15 @@ use omega_store::{Core, Platform, BLUE_LIGHT_MAX, BRIGHTNESS_MAX, RING_MAX};
 use omega_ui::kit::layout::{page, screen_px};
 use omega_ui::kit::palette::Palette;
 use omega_ui::kit::panel::panel_face;
-use omega_ui::kit::pixel::quad;
+use omega_ui::kit::pixel::{quad, text_width};
 use omega_ui::kit::row::{panel_height, row_face, row_rect, Row};
 use omega_ui::{Draw, QuickValue, Toast, UndoFace};
 
 use crate::app::{App, Phase};
 use crate::options::OptionRow;
-use crate::screens::lone::{notes, notes_height, over, rows_height, Lone, NOTE_GAP};
+use crate::screens::lone::{
+    fitted, notes, notes_height, over, rows_height, Lone, NOTE_GAP, NOTE_X,
+};
 use crate::screens::settings::SettingsRow;
 
 /// How wide the panel is: the GAMEPLAY and SHELF panels' width.
@@ -46,6 +52,9 @@ pub const MENU_REVEAL_MS: Millis = 180;
 /// How long after a save or a load it can be undone, as on Slot.
 pub const UNDO_GRACE_MS: Millis = 30_000;
 
+/// How many of a game's achievements the list shows at once; the rest scroll by.
+pub const LIST_SHOWN: usize = 6;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PausePage {
     Main,
@@ -53,6 +62,10 @@ pub enum PausePage {
     Screen,
     Gameplay,
     Controls,
+    /// RetroAchievements: the game as it was found there, and the switches.
+    Achievements,
+    /// Every achievement of the game.
+    List,
 }
 
 impl PausePage {
@@ -63,6 +76,8 @@ impl PausePage {
             PausePage::Screen => "SCREEN",
             PausePage::Gameplay => "GAMEPLAY",
             PausePage::Controls => "CONTROLS",
+            PausePage::Achievements => "ACHIEVEMENTS",
+            PausePage::List => "ALL ACHIEVEMENTS",
         }
     }
 
@@ -75,9 +90,15 @@ impl PausePage {
                 PauseRow::UndoLoad,
                 PauseRow::States,
                 PauseRow::Settings,
+                PauseRow::Restart,
                 PauseRow::ExitGame,
             ],
-            PausePage::Settings => &[PauseRow::Screen, PauseRow::Gameplay, PauseRow::Controls],
+            PausePage::Settings => &[
+                PauseRow::Screen,
+                PauseRow::Gameplay,
+                PauseRow::Achievements,
+                PauseRow::Controls,
+            ],
             PausePage::Screen => &[
                 PauseRow::ScreenFilter,
                 PauseRow::Palette,
@@ -95,7 +116,15 @@ impl PausePage {
                 PauseRow::LoadOnInsert,
                 PauseRow::SaveOnEject,
             ],
-            PausePage::Controls => &[],
+            PausePage::Achievements => &[
+                PauseRow::Game,
+                PauseRow::Progress,
+                PauseRow::List,
+                PauseRow::Cheevos,
+                PauseRow::Hardcore,
+            ],
+            // the game's own achievements, one row each
+            PausePage::Controls | PausePage::List => &[],
         }
     }
 
@@ -107,6 +136,8 @@ impl PausePage {
             PausePage::Screen => Some((PausePage::Settings, PauseRow::Screen)),
             PausePage::Gameplay => Some((PausePage::Settings, PauseRow::Gameplay)),
             PausePage::Controls => Some((PausePage::Settings, PauseRow::Controls)),
+            PausePage::Achievements => Some((PausePage::Settings, PauseRow::Achievements)),
+            PausePage::List => Some((PausePage::Achievements, PauseRow::List)),
         }
     }
 }
@@ -136,6 +167,17 @@ pub enum PauseRow {
     Rumble,
     LoadOnInsert,
     SaveOnEject,
+    Restart,
+    Achievements,
+    /// Whether RetroAchievements found the game.
+    Game,
+    /// How many of its achievements are unlocked.
+    Progress,
+    List,
+    Cheevos,
+    Hardcore,
+    /// The game's achievement at this place in the list.
+    Achievement(usize),
 }
 
 impl PauseRow {
@@ -163,6 +205,15 @@ impl PauseRow {
             PauseRow::Rumble => "Rumble",
             PauseRow::LoadOnInsert => "Load State on Insert",
             PauseRow::SaveOnEject => "Save State on Eject",
+            PauseRow::Restart => "Restart",
+            PauseRow::Achievements => "Achievements",
+            PauseRow::Game => "Game",
+            PauseRow::Progress => "Unlocked",
+            PauseRow::List => "View All",
+            PauseRow::Cheevos => "RetroAchievements",
+            PauseRow::Hardcore => "Hardcore",
+            // named by the achievement's own title
+            PauseRow::Achievement(_) => "",
         }
     }
 
@@ -191,6 +242,13 @@ impl PauseRow {
             PauseRow::Rumble => "For games with a rumble pak",
             PauseRow::LoadOnInsert => "A picks up where you left off",
             PauseRow::SaveOnEject => "Ejecting saves where you were",
+            PauseRow::Restart => "Start the game over from power on",
+            PauseRow::Achievements => "This game on RetroAchievements",
+            PauseRow::List => "Every achievement in this game",
+            PauseRow::Cheevos => "Switched on, it starts with the next game",
+            PauseRow::Hardcore => "Switching it on restarts the game",
+            // said in the game's own words: see pause_note
+            PauseRow::Game | PauseRow::Progress | PauseRow::Achievement(_) => "",
         }
     }
 
@@ -198,7 +256,21 @@ impl PauseRow {
     pub fn opens(self) -> bool {
         matches!(
             self,
-            PauseRow::Settings | PauseRow::Screen | PauseRow::Gameplay | PauseRow::Controls
+            PauseRow::Settings
+                | PauseRow::Screen
+                | PauseRow::Gameplay
+                | PauseRow::Controls
+                | PauseRow::Achievements
+                | PauseRow::List
+        )
+    }
+
+    /// Left and Right change what the row is set to: it has ◀ ▶ round its value. The rows that
+    /// only say something do not.
+    fn steps(self) -> bool {
+        !matches!(
+            self,
+            PauseRow::Game | PauseRow::Progress | PauseRow::Achievement(_)
         )
     }
 
@@ -209,6 +281,8 @@ impl PauseRow {
             PauseRow::Screen => PausePage::Screen,
             PauseRow::Gameplay => PausePage::Gameplay,
             PauseRow::Controls => PausePage::Controls,
+            PauseRow::Achievements => PausePage::Achievements,
+            PauseRow::List => PausePage::List,
             _ => return None,
         })
     }
@@ -235,52 +309,106 @@ pub enum PendingUndo {
     Load { stem: String, prior: Vec<u8> },
 }
 
-/// One row as the panel shows it.
+/// One row as the panel shows it: its name, its value, ◀ ▶ round a value that steps, and dim
+/// for an achievement not yet unlocked.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PauseLine {
     pub row: PauseRow,
+    pub label: String,
     pub value: Option<String>,
+    pub carets: bool,
+    pub dim: bool,
 }
 
-/// What the panel shows: its title, its rows, the lit one, and the lit row's description.
+impl PauseLine {
+    pub fn of(row: PauseRow, value: Option<&str>) -> PauseLine {
+        PauseLine {
+            row,
+            label: row.label().to_string(),
+            value: value.map(str::to_string),
+            carets: value.is_some() && row.steps(),
+            dim: false,
+        }
+    }
+}
+
+/// What the panel shows: its title, its rows, the lit one, and the lit row's description on
+/// as many lines as the page keeps for it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PauseView {
     pub title: &'static str,
     pub lines: Vec<PauseLine>,
     pub lit: usize,
+    pub note: String,
+    pub note_lines: usize,
 }
 
 /// The panel in `pal`: a row a line, the lit one under the cursor, the ◀ ▶ round a value that
 /// steps and a › on a row that opens a page, and the lit row's description under them.
 pub fn pause_panel_face(view: &PauseView, pal: &Palette) -> UndoFace {
     let held = rows_height(view.lines.len());
+    let lines = view.note_lines.max(1);
     let mut panel = panel_face(
         PANEL_W,
-        panel_height(held + notes_height(1)),
+        panel_height(held + notes_height(lines)),
         view.title,
         true,
         pal,
     );
     for (i, line) in view.lines.iter().enumerate() {
         let [x, y, w, _] = row_rect(panel.well, i as u32);
+        // an achievement's title is cut short to leave its value room
+        let label = match line.row {
+            PauseRow::Achievement(_) => {
+                let value = line.value.as_deref().map_or(0, text_width);
+                fitted(&line.label, w.saturating_sub(value + 16))
+            }
+            _ => line.label.clone(),
+        };
         let row = Row {
-            label: line.row.label(),
+            label: &label,
             value: line.value.as_deref(),
             lit: i == view.lit,
-            carets: line.value.is_some(),
+            carets: line.carets,
             opens: line.row.opens(),
-            dim: false,
+            dim: line.dim,
         };
         over(&mut panel.face, &row_face(w, &row, pal), x, y);
     }
-    let note: Vec<String> = view
-        .lines
-        .get(view.lit)
-        .map(|l| l.row.note().to_string())
-        .into_iter()
-        .collect();
-    notes(&mut panel, &note, held + NOTE_GAP, pal);
+    let room = panel.well[2].saturating_sub(NOTE_X);
+    notes(
+        &mut panel,
+        &wrapped(&view.note, room, lines),
+        held + NOTE_GAP,
+        pal,
+    );
     panel.face
+}
+
+/// `text` in at most `lines` lines `room` art pixels across, word by word; what does not fit
+/// the last is cut short with an ellipsis as the note is drawn.
+fn wrapped(text: &str, room: u32, lines: usize) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut words = text.split_whitespace().peekable();
+    while let Some(word) = words.next() {
+        let mut line = word.to_string();
+        if out.len() + 1 == lines {
+            for rest in words.by_ref() {
+                line = format!("{line} {rest}");
+            }
+        } else {
+            while let Some(next) = words.peek() {
+                let longer = format!("{line} {next}");
+                if text_width(&longer) > room {
+                    break;
+                }
+                line = longer;
+                words.next();
+            }
+        }
+        out.push(line);
+    }
+    out
 }
 
 fn step<T: Copy + PartialEq>(items: &[T], at: T, right: bool) -> T {
@@ -312,7 +440,18 @@ impl App {
                 PauseRow::Palette => self.platform == Platform::Gb && self.core == Core::Mgba,
                 PauseRow::Rewind => self.platform.rewinds(),
                 PauseRow::Turbo => self.platform.turbo_xy(),
+                PauseRow::Restart => !self.link_active(),
+                PauseRow::Achievements => crate::achievements::console_of(self.platform).is_some(),
+                PauseRow::Progress | PauseRow::List => {
+                    self.achievements_found().is_some_and(|s| s.total > 0)
+                }
                 _ => true,
+            })
+            .chain(match page {
+                PausePage::List => (0..self.cheevos.list.len())
+                    .map(PauseRow::Achievement)
+                    .collect(),
+                _ => Vec::new(),
             })
             .collect()
     }
@@ -368,8 +507,40 @@ impl App {
             PauseRow::Rumble => self.option_text(OptionRow::Rumble),
             PauseRow::LoadOnInsert => self.option_text(OptionRow::LoadOnInsert),
             PauseRow::SaveOnEject => self.option_text(OptionRow::SaveOnEject),
+            PauseRow::Cheevos => self.option_text(OptionRow::Cheevos),
+            PauseRow::Hardcore => self.option_text(OptionRow::Hardcore),
+            PauseRow::Game => self.achievements_game().0,
+            PauseRow::Progress => {
+                let s = self.achievements_found()?;
+                format!("{}/{}", s.unlocked, s.total)
+            }
+            PauseRow::Achievement(i) => {
+                let a = self.cheevos.list.get(i)?;
+                match (a.unlocked, a.progress.is_empty()) {
+                    (true, _) => "UNLOCKED".to_string(),
+                    (false, false) => a.progress.clone(),
+                    (false, true) => "LOCKED".to_string(),
+                }
+            }
             _ => return None,
         })
+    }
+
+    /// What the lit row's note says: what the row does, or for RetroAchievements' rows what the
+    /// site said.
+    fn pause_note(&self, row: PauseRow) -> String {
+        match row {
+            PauseRow::Game => self.achievements_game().1,
+            PauseRow::Progress => match self.achievements_found() {
+                Some(s) => format!("{} of {} points", s.points_unlocked, s.points_total),
+                None => String::new(),
+            },
+            PauseRow::Achievement(i) => match self.cheevos.list.get(i) {
+                Some(a) => format!("{} ({} points)", a.description, a.points),
+                None => String::new(),
+            },
+            row => row.note().to_string(),
+        }
     }
 
     /// What the panel shows, once the menu is up; CONTROLS has a panel of its own.
@@ -379,16 +550,40 @@ impl App {
             return None;
         }
         let rows = self.pause_rows(menu.page);
+        let lit = rows.iter().position(|r| *r == menu.row).unwrap_or(0);
+        // the list scrolls, the lit row kept in the middle of the window where it can be
+        let (from, shown, note_lines) = match menu.page {
+            PausePage::List => {
+                let from = lit
+                    .saturating_sub(LIST_SHOWN / 2)
+                    .min(rows.len().saturating_sub(LIST_SHOWN));
+                (from, LIST_SHOWN, 2)
+            }
+            _ => (0, rows.len(), 1),
+        };
         Some(PauseView {
             title: menu.page.title(),
             lines: rows
                 .iter()
-                .map(|&row| PauseLine {
-                    row,
-                    value: self.pause_value(row),
+                .skip(from)
+                .take(shown)
+                .map(|&row| {
+                    let value = self.pause_value(row);
+                    let mut line = PauseLine::of(row, value.as_deref());
+                    if let PauseRow::Achievement(i) = row {
+                        let a = &self.cheevos.list[i];
+                        line.label = a.title.clone();
+                        line.dim = !a.unlocked;
+                    }
+                    line
                 })
                 .collect(),
-            lit: rows.iter().position(|r| *r == menu.row).unwrap_or(0),
+            lit: lit - from,
+            note: rows
+                .get(lit)
+                .map(|r| self.pause_note(*r))
+                .unwrap_or_default(),
+            note_lines,
         })
     }
 
@@ -471,6 +666,8 @@ impl App {
                     PauseRow::Rumble => OptionRow::Rumble,
                     PauseRow::LoadOnInsert => OptionRow::LoadOnInsert,
                     PauseRow::SaveOnEject => OptionRow::SaveOnEject,
+                    PauseRow::Cheevos => OptionRow::Cheevos,
+                    PauseRow::Hardcore => OptionRow::Hardcore,
                     _ => return,
                 };
                 self.change_option(option, right);
@@ -480,6 +677,9 @@ impl App {
 
     fn choose_pause_row(&mut self, page: PausePage, row: PauseRow) {
         if let Some(child) = row.child() {
+            if child == PausePage::List {
+                self.read_achievements();
+            }
             let first = self.pause_rows(child).first().copied();
             return self.pause_at(child, first.unwrap_or(row));
         }
@@ -497,6 +697,10 @@ impl App {
                 self.close_pause_menu();
                 self.eject();
             }
+            PauseRow::Restart => {
+                self.close_pause_menu();
+                self.restart_game();
+            }
             _ if page != PausePage::Main => self.change_pause_row(row, true),
             _ => {}
         }
@@ -504,6 +708,17 @@ impl App {
 
     pub fn set_pause_panel(&mut self, panel: Lone) {
         self.pause_panel = Some(panel);
+    }
+
+    /// Starts the game in play over from power on, as the console's reset button does; its
+    /// save memory stays as it is, and a save or load can no longer be undone.
+    pub(crate) fn restart_game(&mut self) {
+        let Some(snapshot) = &self.snapshot else {
+            return self.refuse();
+        };
+        snapshot.reset();
+        self.pending_undo = None;
+        self.hud.toast(Toast::Restarted, self.now());
     }
 
     /// The save or load that can still be undone, for the game in play.

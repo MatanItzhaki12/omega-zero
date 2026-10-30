@@ -895,6 +895,14 @@ impl RetroCore for LibretroCore {
         }
     }
 
+    fn reset(&mut self) {
+        if !self.loaded {
+            return;
+        }
+        let _a = Active::bind(&mut self.host);
+        unsafe { (self.api.reset)() };
+    }
+
     fn memory(&self) -> Option<CoreMemory> {
         if !self.loaded {
             return None;

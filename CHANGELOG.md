@@ -50,6 +50,16 @@ turned off.
 - Labels are drawn for the carts in view first, on FAVORITES and RECENTS as on a system's shelf:
   a boot starts with the shelf in view, and a shelf or cart come into view moves its carts to the
   front of the labels still waiting.
+- RetroAchievements has a panel of its own, GAMEPLAY's last row opening it: Achievements on or
+  off, Account and Hardcore.
+- MENU over a game: Settings > Achievements says whether RetroAchievements found the game, with
+  the title and number it took the ROM for or why not, how many of its achievements are unlocked
+  and their points, and lists every one of them, locked ones dim, with its description; and
+  switches RetroAchievements and Hardcore. Hardcore switched on in a game restarts it.
+- MENU over a game has Restart, which starts the game over from power on, through the core's
+  `retro_reset`; achievements start watching again with it.
+- A clear or glitter shell is clear: the board and the cart's hollow show through the plastic,
+  and a GBA cart's board shows over its label too.
 
 ## omega-zero 1.2.0
 

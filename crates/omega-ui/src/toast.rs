@@ -32,6 +32,8 @@ pub enum Toast {
     Achievement(&'static str),
     /// RetroAchievements: signing in, a game's progress, a mastery.
     Cheevos(&'static str),
+    /// The in-game menu's Restart started the game over.
+    Restarted,
 }
 
 /// What the toast says once disc `n` is in, for every disc a PlayStation game can have.
@@ -49,7 +51,7 @@ const DISC_IN: [&str; 9] = [
 
 impl Toast {
     /// Every toast there is, a disc's once, as disc 1.
-    pub const ALL: [Toast; 18] = [
+    pub const ALL: [Toast; 19] = [
         Toast::StateSaved,
         Toast::StateLoaded,
         Toast::NeedsGpsp,
@@ -68,6 +70,7 @@ impl Toast {
         Toast::LoadUndone,
         Toast::Achievement(""),
         Toast::Cheevos(""),
+        Toast::Restarted,
     ];
 
     /// Its place in `ALL`: every disc's toast is the one place.
@@ -91,6 +94,7 @@ impl Toast {
             Toast::LoadUndone => 15,
             Toast::Achievement(_) => 16,
             Toast::Cheevos(_) => 17,
+            Toast::Restarted => 18,
         }
     }
 
@@ -111,6 +115,7 @@ impl Toast {
             Toast::Favorited | Toast::Unfavorited => "FAVORITES",
             Toast::Achievement(_) => "ACHIEVEMENT",
             Toast::Cheevos(_) => "RETROACHIEVEMENTS",
+            Toast::Restarted => "GAME",
         }
     }
 
@@ -139,6 +144,7 @@ impl Toast {
             Toast::SaveUndone => "Save undone",
             Toast::LoadUndone => "Load undone",
             Toast::Achievement(title) | Toast::Cheevos(title) => title,
+            Toast::Restarted => "Restarted",
         }
     }
 

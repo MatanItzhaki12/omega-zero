@@ -156,6 +156,12 @@ impl RetroCore for MockCore {
         Ok(self.frame.to_le_bytes().to_vec())
     }
 
+    fn reset(&mut self) {
+        self.frame = 0;
+        self.audio.clear();
+        self.render();
+    }
+
     fn unserialize(&mut self, data: &[u8]) -> Result<(), CoreError> {
         let bytes: [u8; 8] = data
             .try_into()

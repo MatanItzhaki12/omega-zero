@@ -4,7 +4,7 @@
 
 use crate::common;
 
-use common::{app_playing_in, boot, tmp_root_with_carts};
+use common::{app_playing_in, app_playing_with, boot, tmp_root_with_carts, CoreSnapshot};
 use omega_input::{Action, Btn};
 use omega_store::{read_app_state, ScreenFilter};
 use omega_zero::app::{App, Phase};
@@ -124,10 +124,15 @@ fn a_tap_of_menu_in_a_game_opens_slots_menu_and_holds_the_game() {
     a.tick_ms(now + MENU_REVEAL_MS);
     let view = a.pause_view().expect("the menu never came up");
     assert_eq!(view.title, "MENU");
-    // no state saved, nothing to undo: Resume, Settings and Exit Game, as Slot shows them
+    // no state saved, nothing to undo: Resume, Settings, Restart and Exit Game
     assert_eq!(
         rows(&a),
-        [PauseRow::Resume, PauseRow::Settings, PauseRow::ExitGame]
+        [
+            PauseRow::Resume,
+            PauseRow::Settings,
+            PauseRow::Restart,
+            PauseRow::ExitGame
+        ]
     );
     // B, or MENU again, goes back to the game
     press(&mut a, Btn::B);
@@ -147,7 +152,12 @@ fn settings_opens_screen_gameplay_and_controls_and_b_steps_back() {
     assert_eq!(a.pause_view().unwrap().title, "SETTINGS");
     assert_eq!(
         rows(&a),
-        [PauseRow::Screen, PauseRow::Gameplay, PauseRow::Controls]
+        [
+            PauseRow::Screen,
+            PauseRow::Gameplay,
+            PauseRow::Achievements,
+            PauseRow::Controls
+        ]
     );
     press(&mut a, Btn::A);
     assert_eq!(a.pause_view().unwrap().title, "SCREEN");
@@ -247,6 +257,7 @@ fn undo_save_takes_the_state_just_saved_back_for_thirty_seconds() {
             PauseRow::UndoSave,
             PauseRow::States,
             PauseRow::Settings,
+            PauseRow::Restart,
             PauseRow::ExitGame
         ]
     );
@@ -431,13 +442,21 @@ fn account_signs_in_to_retroachievements_on_the_keyboard_and_y_signs_out() {
     press(&mut a, Btn::A);
     a.finish_slide();
     let lit = |a: &App| a.options_view().map(|v| v.lines[v.lit].0);
-    for _ in 0..12 {
-        if lit(&a) == Some(omega_zero::options::OptionRow::Account) {
-            break;
+    let down_to = |a: &mut App, row| {
+        for _ in 0..12 {
+            if lit(a) == Some(row) {
+                return;
+            }
+            press(a, Btn::Down);
         }
-        press(&mut a, Btn::Down);
-    }
-    let view = a.options_view().expect("the GAMEPLAY panel");
+        panic!("Down never reached {row:?}");
+    };
+    down_to(&mut a, omega_zero::options::OptionRow::Achievements);
+    press(&mut a, Btn::A);
+    a.finish_slide();
+    assert_eq!(a.options_view().unwrap().title, "ACHIEVEMENTS");
+    down_to(&mut a, omega_zero::options::OptionRow::Account);
+    let view = a.options_view().expect("the ACHIEVEMENTS panel");
     assert_eq!(view.lines[view.lit].1, "SIGN IN");
 
     press(&mut a, Btn::A);
@@ -470,4 +489,99 @@ fn account_signs_in_to_retroachievements_on_the_keyboard_and_y_signs_out() {
     press(&mut a, Btn::Y);
     assert!(!file.exists(), "signing out kept the account");
     assert!(!a.achievements_account());
+}
+
+/// GAMEPLAY's last row opens RetroAchievements' own panel, and B comes back to it.
+#[test]
+fn gameplay_opens_a_panel_of_its_own_for_retroachievements() {
+    use omega_zero::options::OptionRow;
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = boot(d.path());
+    a.apply(Action::QuickMenu);
+    for _ in 0..3 {
+        press(&mut a, Btn::Down);
+    }
+    press(&mut a, Btn::A);
+    a.finish_slide();
+    let view = a.options_view().expect("the GAMEPLAY panel");
+    assert_eq!(view.title, "GAMEPLAY");
+    let (last, value) = view.lines.last().unwrap().clone();
+    assert_eq!((last, value.as_str()), (OptionRow::Achievements, "OFF"));
+    assert!(
+        !view.lines.iter().any(|(r, _)| *r == OptionRow::Account),
+        "the account stayed on GAMEPLAY"
+    );
+    press(&mut a, Btn::Up);
+    press(&mut a, Btn::A);
+    a.finish_slide();
+    let view = a.options_view().expect("the ACHIEVEMENTS panel");
+    assert_eq!(view.title, "ACHIEVEMENTS");
+    assert_eq!(
+        view.lines.iter().map(|(r, _)| *r).collect::<Vec<_>>(),
+        [OptionRow::Cheevos, OptionRow::Account, OptionRow::Hardcore]
+    );
+    press(&mut a, Btn::B);
+    a.finish_slide();
+    let view = a.options_view().expect("B left GAMEPLAY");
+    assert_eq!(view.title, "GAMEPLAY");
+    assert_eq!(view.lines[view.lit].0, OptionRow::Achievements);
+    press(&mut a, Btn::B);
+    a.finish_slide();
+    assert_eq!(a.settings_row(), Some(omega_ui::SettingsRow::Gameplay));
+}
+
+/// Settings > Achievements in a game: whether the game was found, and the switches; with
+/// RetroAchievements off there is nothing to count or list.
+#[test]
+fn the_in_game_achievements_page_says_whether_the_game_was_found() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = app_playing_in(d.path(), "Emerald");
+    open_menu(&mut a);
+    down_to(&mut a, PauseRow::Settings);
+    press(&mut a, Btn::A);
+    down_to(&mut a, PauseRow::Achievements);
+    press(&mut a, Btn::A);
+    let view = a.pause_view().unwrap();
+    assert_eq!(view.title, "ACHIEVEMENTS");
+    assert_eq!(
+        rows(&a),
+        [PauseRow::Game, PauseRow::Cheevos, PauseRow::Hardcore],
+        "off, there is no progress or list to show"
+    );
+    assert_eq!(view.lines[0].value.as_deref(), Some("OFF"));
+    assert!(!view.lines[0].carets, "the Game row says, it does not step");
+    assert_eq!(view.note, "Switch RetroAchievements on below");
+    press(&mut a, Btn::B);
+    assert_eq!(
+        lit(&a),
+        Some(PauseRow::Achievements),
+        "B came back to its row"
+    );
+}
+
+/// Restart starts the game over from power on, and says so.
+#[test]
+fn restart_starts_the_game_over() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let core = CoreSnapshot::new();
+    let mut a = app_playing_with(d.path(), "Emerald", core.boxed());
+    for _ in 0..5 {
+        core.run_frame();
+    }
+    assert_ne!(core.bytes(), 0u64.to_le_bytes(), "the game never ran");
+    open_menu(&mut a);
+    down_to(&mut a, PauseRow::Restart);
+    press(&mut a, Btn::A);
+    assert!(!a.pause_menu_open(), "the menu stayed up");
+    assert_eq!(
+        core.bytes(),
+        0u64.to_le_bytes(),
+        "the game did not start over"
+    );
+    assert_eq!(a.toast(), Some(omega_ui::Toast::Restarted));
+    assert!(
+        matches!(a.phase(), Phase::Playing { .. }),
+        "{:?}",
+        a.phase()
+    );
 }

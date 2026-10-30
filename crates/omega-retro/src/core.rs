@@ -100,6 +100,8 @@ pub trait RetroCore: Send {
     fn take_audio(&mut self) -> Vec<i16>;
     fn serialize(&mut self) -> Result<Vec<u8>, CoreError>;
     fn unserialize(&mut self, data: &[u8]) -> Result<(), CoreError>;
+    /// Starts the game over, as the console's reset does; the cart's save memory stays.
+    fn reset(&mut self) {}
     fn save_ram(&self) -> Option<Vec<u8>>;
     /// The loaded game's memory, for RetroAchievements; none for a core that shows none.
     fn memory(&self) -> Option<CoreMemory> {

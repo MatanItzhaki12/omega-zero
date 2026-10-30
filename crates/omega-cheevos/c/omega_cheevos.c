@@ -200,6 +200,8 @@ void oc_logout(void) {
   if (client)
     rc_client_logout(client);
   login_state = 0;
+  /* signing out lets go of the game too */
+  game_state = 0;
 }
 
 void oc_set_memory(const struct retro_memory_descriptor* descriptors, unsigned count,
@@ -239,16 +241,43 @@ void oc_unload_game(void) {
   game_state = 0;
 }
 
-int oc_summary(const char** title, uint32_t* unlocked, uint32_t* total) {
+int oc_summary(const char** title, uint32_t* id, uint32_t* unlocked, uint32_t* total,
+               uint32_t* points_unlocked, uint32_t* points_total) {
   if (!client || !rc_client_is_game_loaded(client))
     return 0;
   rc_client_user_game_summary_t summary;
   rc_client_get_user_game_summary(client, &summary);
   const rc_client_game_t* game = rc_client_get_game_info(client);
   *title = game ? game->title : "";
+  *id = game ? game->id : 0;
   *unlocked = summary.num_unlocked_achievements;
   *total = summary.num_core_achievements;
+  *points_unlocked = summary.points_unlocked;
+  *points_total = summary.points_core;
   return 1;
+}
+
+/* Hands each of the game's achievements to `each`, in the order the client groups them: the
+   ones close to being earned and the ones just earned first, then the rest. */
+typedef void (*oc_achievement_fn)(void* user, const char* title, const char* description,
+                                  uint32_t points, int unlocked, const char* progress);
+
+void oc_achievements(oc_achievement_fn each, void* user) {
+  if (!client || !rc_client_is_game_loaded(client))
+    return;
+  rc_client_achievement_list_t* list = rc_client_create_achievement_list(
+      client, RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE, RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_LOCK_STATE);
+  if (!list)
+    return;
+  for (uint32_t b = 0; b < list->num_buckets; b++) {
+    const rc_client_achievement_bucket_t* bucket = &list->buckets[b];
+    for (uint32_t i = 0; i < bucket->num_achievements; i++) {
+      const rc_client_achievement_t* a = bucket->achievements[i];
+      each(user, a->title, a->description, a->points,
+           a->state == RC_CLIENT_ACHIEVEMENT_STATE_UNLOCKED, a->measured_progress);
+    }
+  }
+  rc_client_destroy_achievement_list(list);
 }
 
 void oc_frame(void) {

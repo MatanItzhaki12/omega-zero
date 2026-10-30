@@ -143,7 +143,8 @@ pub(crate) fn spec(model: CartModel) -> Spec {
             rim: RIM,
             board: Board {
                 x: (0.135, 0.875),
-                top: LABEL_Y as f32 / CART_H as f32,
+                // the board's top edge shows through over the label, as on a clear pak
+                top: 0.16,
                 pins: (0.17, 0.84),
                 contacts_from: 0.85,
                 traces_from: 0.76,
@@ -366,7 +367,7 @@ fn shell_face(s: &Spec, shell: &Shell) -> CartFace {
         let c = match shell.finish {
             Finish::Solid => shell.colour,
             Finish::Translucent | Finish::Glitter => {
-                let body = through(shell.colour, inside(s, x, y).unwrap_or(shell.colour));
+                let body = through(shell.colour, inside(s, x, y).unwrap_or(HOLLOW));
                 let c = lerp(edge, body, (*depth as u32).min(s.rim), s.rim);
                 if shell.finish == Finish::Glitter && fleck(x, y) {
                     lerp(c, [0xff; 3], 100, 255)
@@ -384,7 +385,13 @@ fn shell_face(s: &Spec, shell: &Shell) -> CartFace {
     }
 }
 
-const SURFACE: u32 = 150;
+/// How much of a clear shell's colour is its own surface, of 255; the rest is what shows through
+/// it, tinted: low, so the board and the hollow inside read through the plastic.
+const SURFACE: u32 = 90;
+
+/// What a clear shell shows where no board stands behind it: the cart's hollow, a light grey the
+/// plastic tints, so its colour stays as rich as a solid shell's.
+const HOLLOW: [u8; 3] = [0xb4, 0xb6, 0xbc];
 
 const BOARD: [u8; 3] = [0x2c, 0x96, 0x52];
 const TRACE: [u8; 3] = [0x5a, 0xb4, 0x74];
@@ -393,12 +400,7 @@ const GOLD: [u8; 3] = [0xe6, 0xb4, 0x46];
 fn through(plastic: [u8; 3], behind: [u8; 3]) -> [u8; 3] {
     let filter =
         |a: [u8; 3], b: [u8; 3]| [0, 1, 2].map(|c| (a[c] as u32 * b[c] as u32 / 255) as u8);
-    lerp(
-        filter(plastic, behind),
-        filter(plastic, plastic),
-        SURFACE,
-        255,
-    )
+    lerp(filter(plastic, behind), plastic, SURFACE, 255)
 }
 
 fn inside(s: &Spec, x: u32, y: u32) -> Option<[u8; 3]> {

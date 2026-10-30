@@ -8,8 +8,9 @@
 //!
 //! SHELF: Recents, Game Titles, the Clock's 12 or 24 hours, and Lid Power Off.
 //!
-//! GAMEPLAY's Account row signs in to RetroAchievements on the keyboard, as Labels signs in to
-//! ScreenScraper: A asks for the user name and then the password, and Y signs out.
+//! GAMEPLAY's last row, RetroAchievements, opens a panel of its own, ACHIEVEMENTS: switching
+//! them on, the account and Hardcore. Its Account row signs in on the keyboard, as Labels signs
+//! in to ScreenScraper: A asks for the user name and then the password, and Y signs out.
 
 use omega_input::{Action, Btn};
 use omega_store::{Blending, LID_OFF_MINUTES};
@@ -31,6 +32,8 @@ pub const PANEL_W: u32 = 268;
 pub enum OptionsPage {
     Gameplay,
     Shelf,
+    /// RetroAchievements, opened from GAMEPLAY's last row.
+    Achievements,
 }
 
 impl OptionsPage {
@@ -38,6 +41,7 @@ impl OptionsPage {
         match self {
             OptionsPage::Gameplay => "GAMEPLAY",
             OptionsPage::Shelf => "SHELF",
+            OptionsPage::Achievements => "ACHIEVEMENTS",
         }
     }
 
@@ -52,10 +56,11 @@ impl OptionsPage {
                 OptionRow::Turbo,
                 OptionRow::Blending,
                 OptionRow::Palette,
-                OptionRow::Cheevos,
-                OptionRow::Account,
-                OptionRow::Hardcore,
+                OptionRow::Achievements,
             ],
+            OptionsPage::Achievements => {
+                &[OptionRow::Cheevos, OptionRow::Account, OptionRow::Hardcore]
+            }
             OptionsPage::Shelf => &[
                 OptionRow::Recents,
                 OptionRow::Titles,
@@ -65,11 +70,20 @@ impl OptionsPage {
         }
     }
 
-    /// The Settings row that opens it, and that B comes back to.
+    /// The Settings row that opens it, or the panel it opens from.
     pub fn settings_row(self) -> SettingsRow {
         match self {
-            OptionsPage::Gameplay => SettingsRow::Gameplay,
+            OptionsPage::Gameplay | OptionsPage::Achievements => SettingsRow::Gameplay,
             OptionsPage::Shelf => SettingsRow::Shelf,
+        }
+    }
+
+    /// The panel and row B goes back to, for a panel opened from another; none for one
+    /// Settings opens.
+    pub fn parent(self) -> Option<(OptionsPage, OptionRow)> {
+        match self {
+            OptionsPage::Achievements => Some((OptionsPage::Gameplay, OptionRow::Achievements)),
+            OptionsPage::Gameplay | OptionsPage::Shelf => None,
         }
     }
 }
@@ -88,6 +102,8 @@ pub enum OptionRow {
     Titles,
     Clock,
     LidOff,
+    /// GAMEPLAY's way into the ACHIEVEMENTS panel.
+    Achievements,
     Cheevos,
     /// The RetroAchievements account: A signs in on the keyboard, Y signs out.
     Account,
@@ -95,9 +111,9 @@ pub enum OptionRow {
 }
 
 impl OptionRow {
-    /// A opens the keyboard on the row rather than stepping it: the row ends in a ›.
+    /// A opens the keyboard or a panel on the row rather than stepping it: the row ends in a ›.
     pub fn opens(self) -> bool {
-        self == OptionRow::Account
+        matches!(self, OptionRow::Account | OptionRow::Achievements)
     }
 
     pub fn label(self) -> &'static str {
@@ -114,7 +130,8 @@ impl OptionRow {
             OptionRow::Titles => "Game Titles",
             OptionRow::Clock => "Clock",
             OptionRow::LidOff => "Lid Power Off",
-            OptionRow::Cheevos => "RetroAchievements",
+            OptionRow::Achievements => "RetroAchievements",
+            OptionRow::Cheevos => "Achievements",
             OptionRow::Account => "Account",
             OptionRow::Hardcore => "Hardcore",
         }
@@ -135,6 +152,7 @@ impl OptionRow {
             OptionRow::Titles => "The cart's name over the shelf",
             OptionRow::Clock => "12 or 24-hour time",
             OptionRow::LidOff => "A shut lid powers off after this",
+            OptionRow::Achievements => "Account, hardcore and more",
             OptionRow::Cheevos => "Check games for achievements",
             OptionRow::Account => "A signs in, Y signs out",
             OptionRow::Hardcore => "No state loads or rewind, from the next game",
@@ -263,7 +281,7 @@ impl App {
             OptionRow::Titles => if s.show_titles { "SHOW" } else { "HIDE" }.to_string(),
             OptionRow::Clock => if s.clock_24h { "24-HOUR" } else { "12-HOUR" }.to_string(),
             OptionRow::LidOff => format!("{} MIN", s.lid_off_min),
-            OptionRow::Cheevos => on_off(s.cheevos),
+            OptionRow::Achievements | OptionRow::Cheevos => on_off(s.cheevos),
             OptionRow::Account => match &self.cheevos.signed_in {
                 Some(name) => name.clone(),
                 None => "SIGN IN".to_string(),
@@ -306,14 +324,11 @@ impl App {
                     false => self.stop_achievements(),
                 }
             }
-            // the keyboard signs in, not the arrows
-            OptionRow::Account => return,
+            // the keyboard signs in, not the arrows, and A opens the panel
+            OptionRow::Account | OptionRow::Achievements => return,
             OptionRow::Hardcore => {
                 s.cheevos_hardcore = !s.cheevos_hardcore;
-                // taken by the next game: the client switches it between games
-                if self.state.cheevos {
-                    omega_cheevos::start(self.state.cheevos_hardcore, env!("CARGO_PKG_VERSION"));
-                }
+                self.switch_hardcore();
             }
             OptionRow::LidOff => {
                 s.lid_off_min = step(&LID_OFF_MINUTES, s.lid_off_min, right);
@@ -340,7 +355,9 @@ impl App {
             lines: rows.iter().map(|r| (*r, self.option_text(*r))).collect(),
             lit: rows.iter().position(|r| *r == screen.row).unwrap_or(0),
             note: match screen.row {
-                OptionRow::Cheevos | OptionRow::Account => self.achievements_note(),
+                OptionRow::Achievements | OptionRow::Cheevos | OptionRow::Account => {
+                    self.achievements_note()
+                }
                 row => row.note().to_string(),
             },
         })
@@ -359,15 +376,28 @@ impl App {
             Action::GbaDown(Btn::Up) => screen.row = step(rows, row, false),
             Action::GbaDown(Btn::Down) => screen.row = step(rows, row, true),
             Action::GbaDown(Btn::A) if row == OptionRow::Account => self.open_sign_in(),
+            Action::GbaDown(Btn::A) if row == OptionRow::Achievements => self.go(
+                Phase::Options(OptionsScreen::new(OptionsPage::Achievements)),
+                Dir::Deeper,
+            ),
             Action::GbaDown(Btn::Y) if row == OptionRow::Account => self.sign_out_achievements(),
             Action::GbaDown(Btn::Left) => self.change_option(row, false),
             Action::GbaDown(Btn::Right | Btn::A) => self.change_option(row, true),
-            Action::GbaDown(Btn::B) | Action::QuickMenu => self.go(
-                Phase::Settings {
-                    row: page.settings_row(),
-                },
-                Dir::Back,
-            ),
+            Action::GbaDown(Btn::B) | Action::QuickMenu => match page.parent() {
+                Some((parent, row)) => self.go(
+                    Phase::Options(OptionsScreen {
+                        row,
+                        ..OptionsScreen::new(parent)
+                    }),
+                    Dir::Back,
+                ),
+                None => self.go(
+                    Phase::Settings {
+                        row: page.settings_row(),
+                    },
+                    Dir::Back,
+                ),
+            },
             _ => {}
         }
     }

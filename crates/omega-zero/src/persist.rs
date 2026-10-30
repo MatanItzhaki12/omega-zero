@@ -8,6 +8,9 @@ pub trait Snapshot {
     fn thumb(&self) -> Option<Vec<u8>>;
     fn load(&self, state: Vec<u8>);
 
+    /// Starts the game over from power on, as the console's reset button does.
+    fn reset(&self) {}
+
     fn resume_trusted(&self) -> bool {
         true
     }

@@ -8,7 +8,7 @@
 //! lock, so the main thread (signing in, between games) and the emulator's (a game's frames)
 //! never meet inside it.
 
-use std::ffi::{c_char, c_int, c_uint, CStr, CString};
+use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -53,12 +53,29 @@ extern "C" {
     fn oc_load_game(console: u32, path: *const c_char);
     fn oc_game_state(error: *mut *const c_char) -> c_int;
     fn oc_unload_game();
-    fn oc_summary(title: *mut *const c_char, unlocked: *mut u32, total: *mut u32) -> c_int;
+    fn oc_summary(
+        title: *mut *const c_char,
+        id: *mut u32,
+        unlocked: *mut u32,
+        total: *mut u32,
+        points_unlocked: *mut u32,
+        points_total: *mut u32,
+    ) -> c_int;
+    fn oc_achievements(each: AchievementFn, user: *mut c_void);
     fn oc_frame();
     fn oc_idle();
     fn oc_reset();
     fn oc_answer(id: u32, status: c_int, body: *const c_char, length: usize);
 }
+
+type AchievementFn = extern "C" fn(
+    user: *mut c_void,
+    title: *const c_char,
+    description: *const c_char,
+    points: u32,
+    unlocked: c_int,
+    progress: *const c_char,
+);
 
 /// The client is made, and every oc_ call may be made.
 static STARTED: AtomicBool = AtomicBool::new(false);
@@ -144,9 +161,24 @@ pub enum GameLoad {
 /// The game's achievements, and how many of them the player has.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Summary {
+    /// The game's name on RetroAchievements, and its number there: what the ROM was taken for.
     pub title: String,
+    pub id: u32,
     pub unlocked: u32,
     pub total: u32,
+    pub points_unlocked: u32,
+    pub points_total: u32,
+}
+
+/// One of the game's achievements, as the player stands with it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Achievement {
+    pub title: String,
+    pub description: String,
+    pub points: u32,
+    pub unlocked: bool,
+    /// How far along a measured one is, as "3/10"; empty for the rest.
+    pub progress: String,
 }
 
 /// Makes the client, in hardcore or not; `version` is omega-zero's, for the requests' agent.
@@ -248,15 +280,56 @@ pub fn game_load() -> GameLoad {
 /// The game's achievements, once they are loaded.
 pub fn summary() -> Option<Summary> {
     with_client(|| {
-        let (mut title, mut unlocked, mut total) = (std::ptr::null(), 0, 0);
+        let mut title = std::ptr::null();
+        let (mut id, mut unlocked, mut total, mut points_unlocked, mut points_total) =
+            (0, 0, 0, 0, 0);
         // SAFETY: under the lock; the title lives in the client with the game
-        (unsafe { oc_summary(&mut title, &mut unlocked, &mut total) } != 0).then(|| Summary {
+        let loaded = unsafe {
+            oc_summary(
+                &mut title,
+                &mut id,
+                &mut unlocked,
+                &mut total,
+                &mut points_unlocked,
+                &mut points_total,
+            )
+        } != 0;
+        loaded.then(|| Summary {
             title: text(title),
+            id,
             unlocked,
             total,
+            points_unlocked,
+            points_total,
         })
     })
     .flatten()
+}
+
+/// The game's achievements, once they are loaded: none before, or with no game.
+pub fn achievements() -> Vec<Achievement> {
+    extern "C" fn each(
+        user: *mut c_void,
+        title: *const c_char,
+        description: *const c_char,
+        points: u32,
+        unlocked: c_int,
+        progress: *const c_char,
+    ) {
+        // SAFETY: `user` is the Vec handed to oc_achievements below, alive through its call
+        let list = unsafe { &mut *(user as *mut Vec<Achievement>) };
+        list.push(Achievement {
+            title: text(title),
+            description: text(description),
+            points,
+            unlocked: unlocked != 0,
+            progress: text(progress),
+        });
+    }
+    let mut list: Vec<Achievement> = Vec::new();
+    // SAFETY: under the lock; `each` only pushes onto `list`, which outlives the call
+    with_client(|| unsafe { oc_achievements(each, &mut list as *mut _ as *mut c_void) });
+    list
 }
 
 /// The game is played in hardcore: no states loaded, no rewinding.

@@ -106,9 +106,15 @@ Shelf ›, Labels ›. GENERAL is unchanged.
 | Turbo Buttons | On, Off | On |
 | Frame Blending | Off, Mix, Ghosting (mGBA only; gpSP takes it as Mix) | Off |
 | Game Boy Palette | Auto, then mGBA's 48 palettes (original Game Boy games on mGBA) | Auto |
-| RetroAchievements | On, Off | Off |
+| RetroAchievements › | Opens the ACHIEVEMENTS panel below; its value says whether they are on | Off |
+
+**GAMEPLAY › RetroAchievements ›** (B goes back to GAMEPLAY)
+
+| Row | Choices | Default |
+|---|---|---|
+| Achievements | On, Off | Off |
 | Account | Sign in on the keyboard (see [RetroAchievements](#retroachievements)) | |
-| Hardcore | On, Off, from the next game | Off |
+| Hardcore | On, Off | Off |
 
 **SHELF ›**
 
@@ -130,17 +136,22 @@ goes straight to the save states without the menu flashing up first.
 
 | Page | Rows |
 |---|---|
-| MENU | Resume · Undo Save · Undo Load · States · Settings › · Exit Game |
-| SETTINGS | Screen › · Gameplay › · Controls › |
+| MENU | Resume · Undo Save · Undo Load · States · Settings › · Restart · Exit Game |
+| SETTINGS | Screen › · Gameplay › · Achievements › · Controls › |
 | SCREEN | Screen Filter · Palette · Colour Correction · Frame Blending · Brightness · Blue Light |
 | GAMEPLAY | Fast Forward · Fast Forward Sound · Rewind · Turbo Buttons · Rumble · Load State on Insert · Save State on Eject |
+| ACHIEVEMENTS | Game · Unlocked · View All › · RetroAchievements · Hardcore |
+| ALL ACHIEVEMENTS | Every achievement of the game, unlocked or locked |
 | CONTROLS | Every button, for the system being played |
 
 - **Undo Save** takes back the state just saved, and puts back the oldest state that the save
   pushed out of a full ring. **Undo Load** returns to where the game was before the load. Each
   is offered for 30 seconds.
+- **Restart** starts the game over from power on, like the console's reset button. The battery
+  save is untouched; an Undo Save or Undo Load on offer is dropped. It is hidden during a link.
 - Rows a game has no use for are hidden, as on Slot: States with no states saved, Exit Game on a
-  card with one cart, the Palette away from original Game Boy games.
+  card with one cart, the Palette away from original Game Boy games, Achievements on the
+  PlayStation.
 - The SCREEN page does not dim the game, and its panel sits at the bottom, so each change shows
   on the game as you make it.
 - B steps back one page, MENU closes the menu from any page, and holding MENU still ejects.
@@ -160,6 +171,9 @@ the handheld to sleep.
   first, Favorites and Recents included. Moving to another shelf or cart moves the carts on
   screen to the front of the labels still waiting, so you never have to visit a cart's own
   system shelf to see its new label.
+- **Clear shells look clear.** A clear or glitter shell shows much more of what is behind the
+  plastic: the board is seen through it, its top edge above the label on a GBA cart, and where
+  there is no board the cart's hollow inside shows, tinted by the plastic.
 - **Mixed shelves draw cleanly.** Carts on screen are spaced by the widest of them, and the
   picked cart is drawn in front. A narrow cart beside a wide one, such as a Game Boy pak beside
   a GBA cart on Favorites, no longer covers it.
@@ -173,7 +187,7 @@ achievements are evaluated exactly as in RetroArch.
 
 ### Signing in
 
-1. Settings › Gameplay › **Account**, then press A.
+1. Settings › Gameplay › RetroAchievements › **Account**, then press A.
 2. Type your user name, press START, then type your password and press START.
 3. RetroAchievements turns on and signs in. The note under the panel shows *Signed in as …*, or
    the reason it could not sign in.
@@ -197,7 +211,24 @@ The handheld needs Wi-Fi. Requests go out through `curl`, like the label downloa
 - Each achievement you earn pops up with its title. Mastering a game, leaderboard scores, and
   unlocks held back while offline (and sent later) get toasts too.
 - **Hardcore** loads no states, rewinds nothing, and starts every game from its beginning rather
-  than its last state, as the site asks. Fast forward still works. It applies from the next game.
+  than its last state, as the site asks. Fast forward still works. Switched on in a game, the
+  game restarts, as RetroArch does, so nothing done before counts.
+- Turning RetroAchievements on in a game signs in, and achievements start with the next game.
+  Turning it off signs out at once.
+
+### In a game
+
+MENU › Settings › **Achievements** shows the game as RetroAchievements has it:
+
+| Row | Shows |
+|---|---|
+| Game | FOUND, with the title and game number it was matched to in the note, so you can check the ROM was taken for the right game. NOT FOUND, with the reason, when the site does not know the ROM's hash. LOOKING while it asks, SIGNED OUT, OFF, or NOT STARTED when achievements were switched on after the game began |
+| Unlocked | How many of the game's achievements you have, e.g. 12/58, with the points in the note |
+| View All › | Every achievement, six at a time: unlocked ones bright, locked ones dim, measured ones with their progress (37/60). The note under the list gives the lit one's description and points |
+| RetroAchievements | On, Off |
+| Hardcore | On, Off |
+
+Unlocked and View All show once the game is found.
 - Without hardcore, loading a state or rewinding restarts achievement tracking, so the jump in
   the game's memory cannot earn anything.
 
@@ -215,7 +246,7 @@ The handheld needs Wi-Fi. Requests go out through `curl`, like the label downloa
 ### Not yet
 
 - PlayStation games: their discs are not hashed.
-- A list of a game's achievements: for now there are only toasts.
+- Achievement badges: the list is text only.
 
 ## Files on the card
 
