@@ -101,6 +101,10 @@ pub trait RetroCore: Send {
     fn serialize(&mut self) -> Result<Vec<u8>, CoreError>;
     fn unserialize(&mut self, data: &[u8]) -> Result<(), CoreError>;
     fn save_ram(&self) -> Option<Vec<u8>>;
+    /// The loaded game's memory, for RetroAchievements; none for a core that shows none.
+    fn memory(&self) -> Option<CoreMemory> {
+        None
+    }
     fn load_save_ram(&mut self, data: &[u8]) -> Result<(), CoreError>;
     fn av_info(&self) -> AvInfo;
     fn rumble(&self) -> Rumble {
@@ -182,3 +186,16 @@ mod tests {
         assert_eq!(core.0, vec![ButtonMask(ButtonMask::A)]);
     }
 }
+
+/// A loaded game's memory as RetroAchievements reads it: the map the core declared, and the
+/// regions it answers for by number, each its bytes and its length. The pointers are the core's
+/// and stay good while the game is loaded.
+pub struct CoreMemory {
+    pub map: Vec<crate::ffi::MemoryDescriptor>,
+    pub system: (*mut u8, usize),
+    pub save: (*mut u8, usize),
+    pub video: (*mut u8, usize),
+}
+
+// SAFETY: the pointers are only read on the thread that runs the core, while it is loaded
+unsafe impl Send for CoreMemory {}

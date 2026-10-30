@@ -1,0 +1,12 @@
+[package]
+name = "omega-cheevos"
+version = "1.2.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+omega-retro = { path = "../omega-retro" }
+
+[build-dependencies]
+cc = "1"

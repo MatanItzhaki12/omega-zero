@@ -48,6 +48,8 @@ impl OptionsPage {
                 OptionRow::Turbo,
                 OptionRow::Blending,
                 OptionRow::Palette,
+                OptionRow::Cheevos,
+                OptionRow::Hardcore,
             ],
             OptionsPage::Shelf => &[
                 OptionRow::Recents,
@@ -81,6 +83,8 @@ pub enum OptionRow {
     Titles,
     Clock,
     LidOff,
+    Cheevos,
+    Hardcore,
 }
 
 impl OptionRow {
@@ -98,6 +102,8 @@ impl OptionRow {
             OptionRow::Titles => "Game Titles",
             OptionRow::Clock => "Clock",
             OptionRow::LidOff => "Lid Power Off",
+            OptionRow::Cheevos => "RetroAchievements",
+            OptionRow::Hardcore => "Hardcore",
         }
     }
 
@@ -116,6 +122,8 @@ impl OptionRow {
             OptionRow::Titles => "The cart's name over the shelf",
             OptionRow::Clock => "12 or 24-hour time",
             OptionRow::LidOff => "A shut lid powers off after this",
+            OptionRow::Cheevos => "Sign in with Config/retroachievements.ini",
+            OptionRow::Hardcore => "No state loads or rewind, from the next game",
         }
     }
 }
@@ -142,6 +150,8 @@ pub struct OptionsView {
     pub title: &'static str,
     pub lines: Vec<(OptionRow, String)>,
     pub lit: usize,
+    /// The lit row's note: what it does, or for RetroAchievements who is signed in.
+    pub note: String,
 }
 
 /// A panel in `pal`, every value between carets while its row is lit, and the lit row's note.
@@ -170,10 +180,9 @@ pub fn options_panel_face(view: &OptionsView, pal: &Palette) -> UndoFace {
         );
         over(&mut panel.face, &face, x, y);
     }
-    let note = view.lines.get(view.lit).map(|(r, _)| r.note().to_string());
     notes(
         &mut panel,
-        &note.into_iter().collect::<Vec<_>>(),
+        std::slice::from_ref(&view.note),
         held + NOTE_GAP,
         pal,
     );
@@ -212,6 +221,8 @@ impl App {
             OptionRow::Titles => if s.show_titles { "SHOW" } else { "HIDE" }.to_string(),
             OptionRow::Clock => if s.clock_24h { "24-HOUR" } else { "12-HOUR" }.to_string(),
             OptionRow::LidOff => format!("{} MIN", s.lid_off_min),
+            OptionRow::Cheevos => on_off(s.cheevos),
+            OptionRow::Hardcore => on_off(s.cheevos_hardcore),
         }
     }
 
@@ -242,6 +253,20 @@ impl App {
             }
             OptionRow::Titles => s.show_titles = !s.show_titles,
             OptionRow::Clock => s.clock_24h = !s.clock_24h,
+            OptionRow::Cheevos => {
+                s.cheevos = !s.cheevos;
+                match s.cheevos {
+                    true => self.start_achievements(),
+                    false => self.stop_achievements(),
+                }
+            }
+            OptionRow::Hardcore => {
+                s.cheevos_hardcore = !s.cheevos_hardcore;
+                // taken by the next game: the client switches it between games
+                if self.state.cheevos {
+                    omega_cheevos::start(self.state.cheevos_hardcore, env!("CARGO_PKG_VERSION"));
+                }
+            }
             OptionRow::LidOff => {
                 s.lid_off_min = step(&LID_OFF_MINUTES, s.lid_off_min, right);
                 let timeout = self.lid_timeout();
@@ -263,6 +288,10 @@ impl App {
             title: screen.page.title(),
             lines: rows.iter().map(|r| (*r, self.option_text(*r))).collect(),
             lit: rows.iter().position(|r| *r == screen.row).unwrap_or(0),
+            note: match screen.row {
+                OptionRow::Cheevos => self.achievements_note(),
+                row => row.note().to_string(),
+            },
         })
     }
 

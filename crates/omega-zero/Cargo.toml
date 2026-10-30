@@ -11,6 +11,7 @@ host = ["dep:winit", "dep:cpal", "dep:gilrs", "omega-gfx/host"]
 device = ["omega-gfx/device"]
 
 [dependencies]
+omega-cheevos = { path = "../omega-cheevos" }
 omega-gfx = { path = "../omega-gfx", default-features = false }
 omega-input = { path = "../omega-input" }
 omega-power = { path = "../omega-power" }

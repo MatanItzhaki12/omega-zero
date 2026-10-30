@@ -24,6 +24,7 @@ pub const EXPERIMENTAL: c_uint = 0x10000;
 pub const GET_AUDIO_VIDEO_ENABLE: c_uint = 47 | EXPERIMENTAL;
 pub const SET_AUDIO_BUFFER_STATUS_CALLBACK: c_uint = 62;
 pub const SET_NETPACKET_INTERFACE: c_uint = 78;
+pub const SET_MEMORY_MAPS: c_uint = 36 | EXPERIMENTAL;
 
 pub const RUMBLE_STRONG: c_uint = 0;
 pub const RUMBLE_WEAK: c_uint = 1;
@@ -33,6 +34,8 @@ pub const PIXEL_FORMAT_XRGB8888: c_uint = 1;
 pub const PIXEL_FORMAT_RGB565: c_uint = 2;
 pub const DEVICE_JOYPAD: c_uint = 1;
 pub const MEMORY_SAVE_RAM: c_uint = 0;
+pub const MEMORY_SYSTEM_RAM: c_uint = 2;
+pub const MEMORY_VIDEO_RAM: c_uint = 3;
 pub const JOYPAD_MASK: c_uint = 256;
 
 pub const NETPACKET_UNRELIABLE: i32 = 0;
@@ -270,4 +273,30 @@ impl Api {
             get_memory_size: get!("retro_get_memory_size"),
         })
     }
+}
+
+/// One region of a core's memory as `retro_memory_descriptor` lays it out: where it is in the
+/// system's address space and where its bytes are.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MemoryDescriptor {
+    pub flags: u64,
+    pub ptr: *mut c_void,
+    pub offset: usize,
+    pub start: usize,
+    pub select: usize,
+    pub disconnect: usize,
+    pub len: usize,
+    pub addrspace: *const c_char,
+}
+
+// SAFETY: a descriptor points into the core's own memory, which only the thread running the
+// core reads, and its address space names are the core's static strings
+unsafe impl Send for MemoryDescriptor {}
+
+/// `retro_memory_map`: the descriptors a core hands over with SET_MEMORY_MAPS.
+#[repr(C)]
+pub struct MemoryMap {
+    pub descriptors: *const MemoryDescriptor,
+    pub num_descriptors: c_uint,
 }

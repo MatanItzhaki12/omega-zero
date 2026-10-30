@@ -38,10 +38,14 @@ impl From<std::io::Error> for StoreError {
 
 pub fn scan(root: &Path) -> Result<Vec<Cart>, StoreError> {
     let read = |file: &str| std::fs::read_to_string(root.join(file)).unwrap_or_default();
-    let shells = crate::cart_shell::layered(
-        &read(crate::CART_SHELL_FILE),
-        &read(crate::LABELS_SHELL_FILE),
+    // Slot's cart_shell.txt first, so a line for the same game in omega-zero's own file wins
+    let labels = format!(
+        "{}
+{}",
+        read(crate::SLOT_SHELL_FILE),
+        read(crate::LABELS_SHELL_FILE)
     );
+    let shells = crate::cart_shell::layered(&read(crate::CART_SHELL_FILE), &labels);
     let mut carts = Vec::new();
     for platform in Platform::ALL {
         let dir = root.join("Games").join(platform.dir_name());

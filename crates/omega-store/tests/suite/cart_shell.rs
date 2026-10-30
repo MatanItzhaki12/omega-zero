@@ -175,3 +175,33 @@ fn a_line_matches_its_cart_whichever_way_the_accent_is_spelled() {
         );
     }
 }
+
+/// Slot reads Labels/cart_shell.txt, which Cart Studio writes: a card moved over from Slot keeps
+/// its shells, and omega-zero's own Labels/cart_shell.ini wins for a game both name.
+#[test]
+fn slots_cart_shell_txt_is_read_and_the_ini_wins_over_it() {
+    let d = tempfile::tempdir().unwrap();
+    for dir in ["Games/GBA", "System", "Config", "Labels"] {
+        std::fs::create_dir_all(d.path().join(dir)).unwrap();
+    }
+    for stem in ["Pokemon - Unbound", "Both"] {
+        std::fs::write(d.path().join(format!("Games/GBA/{stem}.gba")), [0u8; 0xC0]).unwrap();
+    }
+    std::fs::write(
+        d.path().join(omega_store::SLOT_SHELL_FILE),
+        "Pokemon - Unbound = auto 46006b glitter\r\nBoth = auto 111111 solid\r\n",
+    )
+    .unwrap();
+    std::fs::write(
+        d.path().join(omega_store::LABELS_SHELL_FILE),
+        "Both = auto 222222 clear\n",
+    )
+    .unwrap();
+    let carts = omega_store::scan(d.path()).unwrap();
+    let shell = |stem: &str| carts.iter().find(|c| c.stem == stem).unwrap().shell;
+    assert_eq!(
+        shell("Pokemon - Unbound"),
+        ShellChoice::parse("auto 46006b glitter")
+    );
+    assert_eq!(shell("Both"), ShellChoice::parse("auto 222222 clear"));
+}

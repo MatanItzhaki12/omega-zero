@@ -111,6 +111,8 @@ impl Pace {
 pub struct Rules {
     pub turbo: bool,
     pub rewinds: bool,
+    /// The console RetroAchievements checks the game as, 0 for none.
+    pub cheevos: u32,
 }
 
 impl Rules {
@@ -118,6 +120,7 @@ impl Rules {
         Rules {
             turbo: platform.turbo_xy(),
             rewinds: platform.rewinds(),
+            cheevos: 0,
         }
     }
 }
@@ -616,6 +619,16 @@ impl Drop for EmuHandle {
     }
 }
 
+/// Ends the game's achievements as the emulator's thread finishes with it, before the core and
+/// the memory they read are dropped.
+struct EndAchievements;
+
+impl Drop for EndAchievements {
+    fn drop(&mut self) {
+        omega_cheevos::end_game();
+    }
+}
+
 struct Worker {
     frames: Arc<Frames>,
     shared: Arc<Shared>,
@@ -681,6 +694,15 @@ impl Worker {
         self.shared
             .state
             .store(CoreState::Ready as u8, Ordering::Release);
+        // the game's achievements, read from its memory on this thread, which runs the core
+        let cheevos = self.rules.cheevos != 0;
+        let _achievements = match (cheevos, core.memory()) {
+            (true, Some(memory)) => {
+                omega_cheevos::begin_game(self.rules.cheevos, &rom, &memory);
+                Some(EndAchievements)
+            }
+            _ => None,
+        };
 
         let mut out = Vec::new();
         let mut gated = (false, false);
@@ -793,6 +815,7 @@ impl Worker {
                     if let Err(e) = core.unserialize(&state) {
                         eprintln!("omega-zero: rewind: {e}");
                     }
+                    omega_cheevos::reset();
                     core.set_frame_skip(false);
                     core.run_frame(ButtonMask(0));
                     self.publish(core.video_xrgb8888(), core.video_size());
@@ -861,6 +884,9 @@ impl Worker {
                             }
                         }
                         None => core.run_frame(input),
+                    }
+                    if cheevos {
+                        omega_cheevos::frame();
                     }
                     let took = frame_began.elapsed();
                     if last {
@@ -1048,6 +1074,8 @@ impl Worker {
                 if let Err(e) = core.unserialize(&self.for_core(state)) {
                     eprintln!("omega-zero: {e}");
                 }
+                // no achievement is earned by the jump a load makes
+                omega_cheevos::reset();
             }
             Cmd::Sav(reply) => {
                 let _ = reply.send(core.save_ram());

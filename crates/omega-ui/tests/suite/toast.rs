@@ -96,6 +96,8 @@ fn the_banner_says_what_happened_and_never_what_is_on_screen() {
             Toast::Unfavorited,
             Toast::SaveUndone,
             Toast::LoadUndone,
+            Toast::Achievement(""),
+            Toast::Cheevos(""),
         ],
         "a banner was added or dropped"
     );

@@ -419,6 +419,8 @@ pub struct App {
     pub(crate) core_options_pending: bool,
     /// The picked cart's name over the shelf, baked, with its size in art pixels.
     pub(crate) title_face: Option<(TexId, u32, u32)>,
+    /// Where signing in to RetroAchievements stands.
+    pub(crate) cheevos: crate::achievements::Cheevos,
 }
 
 fn shelves_of(carts: Vec<Cart>, favorites: &[(Platform, String)]) -> Vec<(ShelfKind, Shelf)> {
@@ -480,6 +482,7 @@ impl App {
             options_panel: None,
             core_options_pending: false,
             title_face: None,
+            cheevos: Default::default(),
             phase: Phase::Shelf,
             shelves,
             favorites,
@@ -577,6 +580,7 @@ impl App {
         app.ssh.start(app.state.ssh, Some(root));
         app.bluetooth.start(app.state.bluetooth);
         app.labels = Labels::new(label_jobs(root), Account::load(root));
+        app.start_achievements();
         app.recents = read_recents(root);
         app.refresh_recents();
         app.refresh_marks();
@@ -928,7 +932,7 @@ impl App {
     pub fn keys(&self) -> Keys {
         Keys {
             game_l2_r2: self.platform.game_owns_l2_r2(),
-            rewind: self.platform.rewinds() && self.state.rewind,
+            rewind: self.platform.rewinds() && self.state.rewind && !self.hardcore(),
             colour: self.platform.colour_correction(),
         }
     }
@@ -990,11 +994,12 @@ impl App {
     }
 
     pub fn may_rewind(&self) -> bool {
-        !self.link_active()
+        !self.link_active() && !self.hardcore()
     }
 
+    /// No state loads while linked, nor in RetroAchievements' hardcore.
     pub fn may_load_state(&self) -> bool {
-        !self.link_active()
+        !self.link_active() && !self.hardcore()
     }
 
     pub fn may_fast_forward(&self) -> bool {
@@ -1563,23 +1568,43 @@ impl App {
         shelf.find(stem)?.1
     }
 
-    /// Every cart, the shelf in view first and on each shelf the carts nearest its picked one
-    /// first, either way round: the order a boot draws their labels in, so the ones on screen
-    /// come first.
+    /// Every cart once, the shelf in view first and on each shelf the carts nearest its picked
+    /// one first, either way round: the order a boot draws their labels in, so the ones on
+    /// screen come first, on FAVORITES and RECENTS as on a system's shelf.
     pub fn carts_nearest_first(&self) -> Vec<&Cart> {
         let n = self.shelves.len();
         let mut carts = Vec::new();
-        let shelves = self.shelves.iter().cycle().skip(self.shelf_at).take(n);
-        for (_, shelf) in shelves.filter(|(kind, _)| *kind != ShelfKind::Favorites) {
+        let mut seen = std::collections::HashSet::new();
+        for (_, shelf) in self.shelves.iter().cycle().skip(self.shelf_at).take(n) {
             let len = shelf.carts.len();
             let mut row: Vec<(usize, &Cart)> = shelf.carts.iter().enumerate().collect();
             row.sort_by_key(|(i, _)| {
                 let d = i.abs_diff(shelf.index);
                 d.min(len - d)
             });
-            carts.extend(row.into_iter().map(|(_, c)| c));
+            let fresh = row
+                .into_iter()
+                .map(|(_, c)| c)
+                .filter(|c| seen.insert((c.platform as u8, c.stem.as_str())));
+            carts.extend(fresh);
         }
         carts
+    }
+
+    /// Which shelf is in view and which cart on it is picked: a change brings the carts now on
+    /// screen to the front of the label queue.
+    pub fn view_key(&self) -> (usize, usize) {
+        (self.shelf_at, self.shelf().index)
+    }
+
+    /// The carts on screen now, the picked one first and then out to either side.
+    pub fn carts_in_view(&self) -> Vec<(Platform, String)> {
+        let shelf = self.shelf();
+        [0, -1, 1, -2, 2, -3, 3]
+            .into_iter()
+            .filter_map(|off| shelf.cart_at_offset(off))
+            .map(|i| (shelf.carts[i].platform, shelf.carts[i].stem.clone()))
+            .collect()
     }
 
     pub fn set_label_jobs(&mut self, jobs: Box<dyn LabelJobs>) {
@@ -1904,6 +1929,7 @@ impl App {
     }
 
     fn timers(&mut self) {
+        self.tick_achievements();
         let (now, watch) = (self.now(), self.wifi_watch());
         self.wifi.tick(now, watch);
         self.bluetooth.tick(now, self.bluetooth_watch());

@@ -426,7 +426,8 @@ impl Session {
         self.app
             .set_video_mode(crate::video_mode::video_mode_for(&self.root, stem));
         self.app.set_link_loaded(serial);
-        let resume = (!self.app.starting_clean())
+        // hardcore picks up from no state, as it loads none
+        let resume = (!self.app.starting_clean() && !self.app.hardcore())
             .then(|| persist::read_resume(&self.root, platform, core, stem))
             .flatten();
         let player = self.app.link_player();
@@ -460,7 +461,9 @@ impl Session {
             // rewind keeps its snapshots whatever the setting, which L2 itself follows, so
             // switching it on in a game rewinds at once
             rewinds: platform.rewinds(),
+            cheevos: self.app.achievements_console(),
         };
+        self.app.achievements_game_starts();
         let emu =
             EmuHandle::spawn_with_rules(platform, rules, game, rom, ring, sav, resume, player);
         // frame blending and the Game Boy's palette, as Settings has them

@@ -86,6 +86,8 @@ pub struct Frontend {
     /// Draws each cart's face from its label, the scans with no cut yet cut first, for compose
     /// to upload as they come back.
     cutter: LabelCutter,
+    /// The shelf and cart in view when the label queue was last brought to them.
+    label_view: Option<(usize, usize)>,
     /// The link screen's art, LINK panel and bar.
     link: LinkTexes,
     /// The DISC screen's panel and bar.
@@ -183,6 +185,7 @@ impl Frontend {
             polaroid_texes: Vec::new(),
             faces: FaceBuilder::spawn(),
             cutter: LabelCutter::spawn(),
+            label_view: None,
             link: LinkTexes::default(),
             disc: DiscTexes::default(),
             pause: PauseTex::default(),
@@ -416,6 +419,15 @@ impl Frontend {
         }
         for (cart, _) in self.session.app_mut().take_stale_faces() {
             self.cutter.request(cart);
+        }
+        // a shelf or a cart come into view has its labels drawn next, wherever they stand in
+        // the queue: on FAVORITES and RECENTS as on a system's shelf
+        let view = self.session.app().view_key();
+        if self.label_view != Some(view) {
+            self.label_view = Some(view);
+            if self.cutter.waiting() > 0 {
+                self.cutter.hurry(&self.session.app().carts_in_view());
+            }
         }
     }
 

@@ -4,9 +4,9 @@
 //! its face comes back. A scan with no cut yet is cut first, so its face is drawn from the cut,
 //! and once its face is handed back the scan is shrunk to what its faces need.
 
-use std::collections::HashMap;
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::collections::{HashMap, VecDeque};
+use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
 use omega_store::{Cart, Platform};
@@ -54,8 +54,34 @@ pub struct Drawn {
     pub face: CartFace,
 }
 
+/// The carts waiting to be drawn, in the order the workers take them, and whether the cutter is
+/// gone, which sends the workers home. A deque rather than a channel, so the carts that come
+/// into view can be moved to its front.
+#[derive(Default)]
+struct Queue {
+    jobs: VecDeque<Job>,
+    closed: bool,
+}
+
+type Inbox = Arc<(Mutex<Queue>, Condvar)>;
+
+/// The next job, waiting for one; none once the cutter is gone.
+fn next_job(inbox: &Inbox) -> Option<Job> {
+    let (lock, ready) = &**inbox;
+    let mut queue = lock.lock().ok()?;
+    loop {
+        if queue.closed {
+            return None;
+        }
+        if let Some(job) = queue.jobs.pop_front() {
+            return Some(job);
+        }
+        queue = ready.wait(queue).ok()?;
+    }
+}
+
 pub struct LabelCutter {
-    requests: Sender<Job>,
+    inbox: Inbox,
     drawn: Receiver<(u64, Drawn)>,
     /// The ticket of the last face asked for each cart whose face has not come back yet: a face
     /// drawn for an ask a newer one has overtaken is not drawn over the newer one.
@@ -65,9 +91,8 @@ pub struct LabelCutter {
 
 impl LabelCutter {
     pub fn spawn() -> Self {
-        let (requests, inbox) = mpsc::channel::<Job>();
         let (outbox, drawn) = mpsc::sync_channel(READY_FACES);
-        let inbox = Arc::new(Mutex::new(inbox));
+        let inbox: Inbox = Arc::new((Mutex::new(Queue::default()), Condvar::new()));
         let workers = thread::available_parallelism()
             .map_or(1, |n| n.get().saturating_sub(1))
             .clamp(1, MAX_WORKERS);
@@ -79,8 +104,7 @@ impl LabelCutter {
                 .spawn(move || {
                     stand_back();
                     loop {
-                        let next = inbox.lock().map(|rx| rx.recv());
-                        let Ok(Ok(Job { cart, ticket })) = next else {
+                        let Some(Job { cart, ticket }) = next_job(&inbox) else {
                             return;
                         };
                         cut_label(&cart);
@@ -100,7 +124,7 @@ impl LabelCutter {
             }
         }
         LabelCutter {
-            requests,
+            inbox,
             drawn,
             asked: HashMap::new(),
             tickets: 0,
@@ -113,10 +137,38 @@ impl LabelCutter {
         self.tickets += 1;
         let key = (cart.platform as u8, cart.stem.clone());
         self.asked.insert(key, self.tickets);
-        let _ = self.requests.send(Job {
-            cart,
-            ticket: self.tickets,
-        });
+        let (lock, ready) = &*self.inbox;
+        if let Ok(mut queue) = lock.lock() {
+            queue.jobs.push_back(Job {
+                cart,
+                ticket: self.tickets,
+            });
+            ready.notify_one();
+        }
+    }
+
+    /// Moves the carts named, those still waiting, to the front of the queue in the order given:
+    /// the carts that came into view are drawn next, on whichever shelf they are, FAVORITES and
+    /// RECENTS too.
+    pub fn hurry(&self, carts: &[(Platform, String)]) {
+        let (lock, _) = &*self.inbox;
+        let Ok(mut queue) = lock.lock() else {
+            return;
+        };
+        for (platform, stem) in carts.iter().rev() {
+            let at = queue
+                .jobs
+                .iter()
+                .position(|j| j.cart.platform == *platform && j.cart.stem == *stem);
+            if let Some(job) = at.and_then(|i| queue.jobs.remove(i)) {
+                queue.jobs.push_front(job);
+            }
+        }
+    }
+
+    /// How many carts are still waiting to be drawn, not counting those being drawn.
+    pub fn waiting(&self) -> usize {
+        self.inbox.0.lock().map_or(0, |q| q.jobs.len())
     }
 
     /// The faces handed back and not taken yet, until `bytes` of them are taken, the rest left
@@ -143,5 +195,16 @@ impl LabelCutter {
     /// Whether every face asked for has come back and been taken.
     pub fn idle(&self) -> bool {
         self.asked.is_empty()
+    }
+}
+
+impl Drop for LabelCutter {
+    /// Sends the workers home, as dropping the channel's sender once did.
+    fn drop(&mut self) {
+        let (lock, ready) = &*self.inbox;
+        if let Ok(mut queue) = lock.lock() {
+            queue.closed = true;
+        }
+        ready.notify_all();
     }
 }

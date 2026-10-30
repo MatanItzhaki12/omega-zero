@@ -388,3 +388,29 @@ fn game_titles_name_the_picked_cart_only_while_shown() {
     let a = booted_with(&d, |s| s.show_titles = true);
     assert_eq!(a.shelf_title().as_deref(), Some("Emerald"));
 }
+
+#[test]
+fn a_boot_on_favorites_draws_its_labels_first_and_no_cart_twice() {
+    let d = tmp_root_with_carts(&["Advance Wars", "Emerald", "Fusion", "Zero"]);
+    std::fs::write(d.path().join("Config/favorites.txt"), "gba/Zero\n").unwrap();
+    let a = boot(d.path());
+    assert!(a.on_favorites());
+    let order: Vec<&str> = a
+        .carts_nearest_first()
+        .into_iter()
+        .map(|c| c.stem.as_str())
+        .collect();
+    assert_eq!(
+        order[0], "Zero",
+        "FAVORITES, in view, is not drawn first: {order:?}"
+    );
+    assert_eq!(order.len(), 4, "a favorite was drawn twice: {order:?}");
+    assert_eq!(
+        a.carts_in_view()
+            .into_iter()
+            .map(|(_, s)| s)
+            .collect::<Vec<_>>(),
+        ["Zero"],
+        "the carts on screen are not FAVORITES' own"
+    );
+}

@@ -36,6 +36,17 @@ turned off.
 - On a row of carts of different shapes, as FAVORITES and a SNES shelf are, a narrow cart beside
   a wide one no longer reaches into it or covers it: the carts in view stand the widest one's
   width apart, and the row is drawn from the outside in, the cart picked in front.
+- RetroAchievements, through rcheevos 12.5 (MIT): with Settings > Gameplay > RetroAchievements
+  on and an account in `Config/retroachievements.ini`, every Game Boy, Game Boy Color, GBA and
+  SNES game is checked for achievements as it plays, each one earned said in a toast, with the
+  game's progress when it starts. The password is swapped for the site's token on the first
+  sign-in. Hardcore loads no state, rewinds nothing and picks up from no resume. omega-retro now
+  keeps the memory map a core declares, which achievements read the game's memory by.
+- A cart's shell set in `Labels/cart_shell.txt`, the file Slot and Cart Studio write, is now
+  drawn; `Labels/cart_shell.ini` still wins for a game both name.
+- Labels are drawn for the carts in view first, on FAVORITES and RECENTS as on a system's shelf:
+  a boot starts with the shelf in view, and a shelf or cart come into view moves its carts to the
+  front of the labels still waiting.
 
 ## omega-zero 1.2.0
 

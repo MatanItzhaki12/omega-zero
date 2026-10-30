@@ -78,6 +78,10 @@ pub struct AppState {
     pub clock_24h: bool,
     /// Minutes a shut lid sleeps before the handheld powers off: one of `LID_OFF_MINUTES`.
     pub lid_off_min: u8,
+    /// Games are checked for RetroAchievements.
+    pub cheevos: bool,
+    /// RetroAchievements' hardcore: no state loads, no rewinding.
+    pub cheevos_hardcore: bool,
 }
 
 impl Default for AppState {
@@ -115,6 +119,8 @@ impl Default for AppState {
             show_titles: false,
             clock_24h: true,
             lid_off_min: 3,
+            cheevos: false,
+            cheevos_hardcore: false,
         }
     }
 }
@@ -133,7 +139,7 @@ pub fn read_app_state(root: &Path) -> AppState {
 
 pub fn write_app_state(root: &Path, s: &AppState) -> std::io::Result<()> {
     let text = format!(
-        "cart={}\ncart_platform={}\nbrightness={}\nblue_light={}\nvolume={}\nvolume_hp={}\nmuted={}\nmuted_hp={}\nclock_set={}\nutc_offset_min={}\nrumble={}\nff_speed={}\nff_sound={}\ncolour_correction={}\nscreen_filter={}\nwifi={}\nssh={}\nbluetooth={}\nbackdrop={}\nbackdrop_moving={}\nbackdrop_colour={}\nfont={}\nauto_load={}\neject_save={}\nrewind={}\nturbo={}\nblending={}\ngb_palette={}\nshow_recents={}\nshow_titles={}\nclock_24h={}\nlid_off_min={}\n",
+        "cart={}\ncart_platform={}\nbrightness={}\nblue_light={}\nvolume={}\nvolume_hp={}\nmuted={}\nmuted_hp={}\nclock_set={}\nutc_offset_min={}\nrumble={}\nff_speed={}\nff_sound={}\ncolour_correction={}\nscreen_filter={}\nwifi={}\nssh={}\nbluetooth={}\nbackdrop={}\nbackdrop_moving={}\nbackdrop_colour={}\nfont={}\nauto_load={}\neject_save={}\nrewind={}\nturbo={}\nblending={}\ngb_palette={}\nshow_recents={}\nshow_titles={}\nclock_24h={}\nlid_off_min={}\ncheevos={}\ncheevos_hardcore={}\n",
         s.cart.as_deref().unwrap_or(""),
         s.cart_platform.map_or(String::new(), platform_key),
         s.brightness,
@@ -166,6 +172,8 @@ pub fn write_app_state(root: &Path, s: &AppState) -> std::io::Result<()> {
         s.show_titles as u8,
         s.clock_24h as u8,
         s.lid_off_min,
+        s.cheevos as u8,
+        s.cheevos_hardcore as u8,
     );
     atomic_write(&state_path(root), text.as_bytes())
 }
@@ -203,6 +211,8 @@ fn parse(text: &str) -> Option<AppState> {
     let mut show_titles = None;
     let mut clock_24h = None;
     let mut lid_off_min = None;
+    let mut cheevos = None;
+    let mut cheevos_hardcore = None;
     for line in text.lines().filter(|l| !l.is_empty()) {
         let Some((key, value)) = line.split_once('=') else {
             continue;
@@ -239,6 +249,8 @@ fn parse(text: &str) -> Option<AppState> {
             "show_recents" => show_recents = flag(value),
             "show_titles" => show_titles = flag(value),
             "clock_24h" => clock_24h = flag(value),
+            "cheevos" => cheevos = flag(value),
+            "cheevos_hardcore" => cheevos_hardcore = flag(value),
             "lid_off_min" => {
                 lid_off_min = value.parse().ok().filter(|m| LID_OFF_MINUTES.contains(m))
             }
@@ -280,6 +292,8 @@ fn parse(text: &str) -> Option<AppState> {
         show_titles: show_titles.unwrap_or(fallback.show_titles),
         clock_24h: clock_24h.unwrap_or(fallback.clock_24h),
         lid_off_min: lid_off_min.unwrap_or(fallback.lid_off_min),
+        cheevos: cheevos.unwrap_or(fallback.cheevos),
+        cheevos_hardcore: cheevos_hardcore.unwrap_or(fallback.cheevos_hardcore),
     })
 }
 

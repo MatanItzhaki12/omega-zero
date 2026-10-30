@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use libloading::Library;
 
 use crate::core::{
-    AvInfo, ButtonMask, CoreError, RetroCore, GBA_H, GBA_W, MAX_FRAME_H, MAX_FRAME_W,
+    AvInfo, ButtonMask, CoreError, CoreMemory, RetroCore, GBA_H, GBA_W, MAX_FRAME_H, MAX_FRAME_W,
 };
 use crate::ffi::*;
 use crate::link::Link;
@@ -52,6 +52,8 @@ struct Host {
     /// omega-zero leaves alone reads as, as in any frontend, so no core falls back on defaults
     /// of its own. Supafaust forgets its own once a game is loaded.
     defaults: std::collections::HashMap<String, std::ffi::CString>,
+    /// The memory map the core declared, for RetroAchievements to read the game's memory by.
+    memory_map: Vec<MemoryDescriptor>,
 }
 
 impl Host {
@@ -81,6 +83,7 @@ impl Host {
             options_dirty: false,
             declared: std::collections::HashMap::new(),
             defaults: std::collections::HashMap::new(),
+            memory_map: Vec::new(),
         }
     }
 
@@ -377,6 +380,17 @@ unsafe extern "C" fn environment(cmd: c_uint, data: *mut c_void) -> bool {
                 h.netpacket = Some(std::ptr::read(data as *const NetpacketCallback));
             })
             .is_some()
+        }
+        SET_MEMORY_MAPS => {
+            if data.is_null() {
+                return false;
+            }
+            let map = &*(data as *const MemoryMap);
+            if map.descriptors.is_null() {
+                return false;
+            }
+            let all = std::slice::from_raw_parts(map.descriptors, map.num_descriptors as usize);
+            with_host(|h| h.memory_map = all.to_vec()).is_some()
         }
         _ => false,
     }
@@ -879,6 +893,26 @@ impl RetroCore for LibretroCore {
         } else {
             Err(CoreError::State("unserialize refused".into()))
         }
+    }
+
+    fn memory(&self) -> Option<CoreMemory> {
+        if !self.loaded {
+            return None;
+        }
+        let region = |id| {
+            let data = unsafe { (self.api.get_memory_data)(id) } as *mut u8;
+            let len = unsafe { (self.api.get_memory_size)(id) };
+            match data.is_null() {
+                true => (ptr::null_mut(), 0),
+                false => (data, len),
+            }
+        };
+        Some(CoreMemory {
+            map: self.host.memory_map.clone(),
+            system: region(MEMORY_SYSTEM_RAM),
+            save: region(MEMORY_SAVE_RAM),
+            video: region(MEMORY_VIDEO_RAM),
+        })
     }
 
     fn save_ram(&self) -> Option<Vec<u8>> {

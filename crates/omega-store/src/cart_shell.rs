@@ -4,6 +4,9 @@ use unicode_normalization::UnicodeNormalization;
 
 pub const CART_SHELL_FILE: &str = "Config/cart_shell.ini";
 pub const LABELS_SHELL_FILE: &str = "Labels/cart_shell.ini";
+/// The same lines under the name Slot reads them from, which Cart Studio writes and a card moved
+/// over from Slot already has. Labels/cart_shell.ini wins over it for a game both name.
+pub const SLOT_SHELL_FILE: &str = "Labels/cart_shell.txt";
 
 /// The shape a cart is drawn in, where its system has more than one: `auto` leaves it to the
 /// ROM. The Game Boy pak comes notched (the grey and black paks) or rounded (the Game Boy

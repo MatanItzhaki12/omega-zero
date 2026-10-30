@@ -28,6 +28,10 @@ pub enum Toast {
     /// The in-game menu's Undo Save took the state just saved back, or Undo Load the load.
     SaveUndone,
     LoadUndone,
+    /// RetroAchievements: an achievement earned, by its title.
+    Achievement(&'static str),
+    /// RetroAchievements: signing in, a game's progress, a mastery.
+    Cheevos(&'static str),
 }
 
 /// What the toast says once disc `n` is in, for every disc a PlayStation game can have.
@@ -45,7 +49,7 @@ const DISC_IN: [&str; 9] = [
 
 impl Toast {
     /// Every toast there is, a disc's once, as disc 1.
-    pub const ALL: [Toast; 16] = [
+    pub const ALL: [Toast; 18] = [
         Toast::StateSaved,
         Toast::StateLoaded,
         Toast::NeedsGpsp,
@@ -62,6 +66,8 @@ impl Toast {
         Toast::Unfavorited,
         Toast::SaveUndone,
         Toast::LoadUndone,
+        Toast::Achievement(""),
+        Toast::Cheevos(""),
     ];
 
     /// Its place in `ALL`: every disc's toast is the one place.
@@ -83,6 +89,8 @@ impl Toast {
             Toast::Unfavorited => 13,
             Toast::SaveUndone => 14,
             Toast::LoadUndone => 15,
+            Toast::Achievement(_) => 16,
+            Toast::Cheevos(_) => 17,
         }
     }
 
@@ -101,6 +109,8 @@ impl Toast {
             Toast::OneDisc | Toast::Disc(_) => "DISC",
             Toast::Filter(_) => "FILTER",
             Toast::Favorited | Toast::Unfavorited => "FAVORITES",
+            Toast::Achievement(_) => "ACHIEVEMENT",
+            Toast::Cheevos(_) => "RETROACHIEVEMENTS",
         }
     }
 
@@ -128,6 +138,7 @@ impl Toast {
             Toast::Unfavorited => "Removed",
             Toast::SaveUndone => "Save undone",
             Toast::LoadUndone => "Load undone",
+            Toast::Achievement(title) | Toast::Cheevos(title) => title,
         }
     }
 
