@@ -54,11 +54,28 @@ jobs:
       - name: Clippy, host
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # Each failing test, and where it panicked, is also written as an error annotation: the
+      # run's page lists them, and GitHub's API gives them to anyone, signed in or not.
       - name: Test
-        run: cargo test --workspace --no-fail-fast
+        shell: bash
+        run: |
+          cargo test --workspace --no-fail-fast 2>&1 | tee test.log
+          status=${PIPESTATUS[0]}
+          # one annotation for them all, its lines joined as an annotation takes them
+          failed=$( { grep -E "^test .* FAILED$|^error(\[|:)" test.log; grep -A4 "panicked at" test.log; } | grep -v "^--$" | head -120 | awk 'BEGIN { ORS = "%0A" } { print }' ) || true
+          [ -z "$failed" ] || echo "::error title=Failing tests::$failed"
+          exit "$status"
 
       - name: Test on the 640x480 canvas
-        run: cargo test --workspace --no-fail-fast
+        if: success() || failure()
+        shell: bash
+        run: |
+          cargo test --workspace --no-fail-fast 2>&1 | tee test-640.log
+          status=${PIPESTATUS[0]}
+          # one annotation for them all, its lines joined as an annotation takes them
+          failed=$( { grep -E "^test .* FAILED$|^error(\[|:)" test-640.log; grep -A4 "panicked at" test-640.log; } | grep -v "^--$" | head -120 | awk 'BEGIN { ORS = "%0A" } { print }' ) || true
+          [ -z "$failed" ] || echo "::error title=Failing tests::640x480: $failed"
+          exit "$status"
         env:
           OMEGA_CANVAS: 640x480
 
