@@ -11,7 +11,7 @@ use omega_ui::photo_face;
 use crate::app::{App, Phase};
 use crate::frontend::faces::upload_nearest;
 use crate::frontend::lone::Baked;
-use crate::screens::delete_state::delete_face;
+use crate::screens::delete_state::{delete_face, delete_hint_face};
 
 #[derive(Default)]
 pub(crate) struct Switcher {
@@ -22,6 +22,8 @@ pub(crate) struct Switcher {
     baked: Option<Panel>,
     /// The DELETE STATE panel, by the age it says and the palette colour.
     delete: Baked<(String, u8)>,
+    /// The X DELETE line, by the palette colour.
+    hint: Baked<u8>,
 }
 
 /// What the panel shows: the age of the save shown, which of how many it is, the panel's width
@@ -70,6 +72,13 @@ pub(crate) fn sync_switcher(
         return;
     }
     sync_panel(app, compositor, state);
+    let pal = app.palette();
+    if let Some(hint) = state
+        .hint
+        .bake(compositor, app.palette_colour(), |_| delete_hint_face(pal))
+    {
+        app.set_delete_hint(hint);
+    }
     if app.delete_asked() {
         let age = app
             .polaroids()

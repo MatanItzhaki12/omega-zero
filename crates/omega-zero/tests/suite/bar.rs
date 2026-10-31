@@ -1076,29 +1076,15 @@ fn the_save_states_have_return_and_load_and_the_game_none() {
     assert_eq!(a.bar_place(), None, "the bar stayed over the game");
 }
 
-/// The save states' bar has X DELETE between RETURN and LOAD, and nothing between CANCEL and
-/// DELETE while it asks.
+/// The save states' bar has no hints of its own between RETURN and LOAD: X DELETE stands on a
+/// line of its own there (polaroids.rs), since bare hints would sit on the game's screenshot.
 #[test]
-fn x_delete_is_between_return_and_load() {
-    use omega_zero::screens::bar::DELETE;
+fn nothing_of_the_bars_own_is_between_return_and_load() {
     let d = tmp_root_with_carts(&["Emerald"]);
     let mut a = common::app_playing_in(d.path(), "Emerald");
     a.apply_at(Action::SaveState, 1_000);
     a.apply_at(Action::Polaroids, 1_100);
     assert!(matches!(a.phase(), Phase::Polaroids { .. }));
-    assert_eq!(
-        a.bar_hints(a.phase()),
-        vec![DELETE],
-        "the bar has no X DELETE"
-    );
-    assert_eq!(
-        a.bar_hints_shown(),
-        vec![DELETE],
-        "the bar shows no X DELETE"
-    );
-    a.apply_at(Action::GbaDown(Btn::X), 1_200);
-    assert!(
-        a.bar_hints_shown().is_empty(),
-        "X DELETE stayed while it asks"
-    );
+    assert!(a.bar_hints(a.phase()).is_empty(), "the bar has hints");
+    assert!(a.bar_hints_shown().is_empty(), "the bar shows hints");
 }

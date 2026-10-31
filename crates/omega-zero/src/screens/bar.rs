@@ -3,9 +3,10 @@
 //! two actions shown as hints. The shelf's actions are SELECT CONTROLS and START SETTINGS, a
 //! menu's B RETURN and A CONFIRM. Setting the clock on first boot has nowhere to go back to, so
 //! its left action is the kit's empty one: the bar keeps its shape and offers only CONFIRM. The
-//! save-state switcher over a game has B RETURN and A LOAD with X DELETE between them, and while
-//! it asks whether to delete a save, B CANCEL and A DELETE (delete_state.rs). The bar comes and
-//! goes with the switcher, at once.
+//! save-state switcher over a game has B RETURN and A LOAD, and while it asks whether to delete a
+//! save, B CANCEL and A DELETE. Between them its X DELETE stands on a line of its own, the kit's
+//! hint line, since there the bar's hints would sit bare on the game's screenshot
+//! (delete_state.rs). The bar comes and goes with the switcher, at once.
 //!
 //! The hints never move with the screens. When a slide's two ends have different actions, the
 //! old ones sink out of the screen over its first half and the new ones rise into place over
@@ -277,7 +278,7 @@ impl App {
     /// picker over it shows RETURN and CONFIRM, ◀▶ SWAP. They are asked of `phase` rather than
     /// the screen on show so a slide can show the hints of the screen it leaves. A screen with
     /// more keys adds them here; Settings and SSH have none, the keyboard keeps its own line in
-    /// its modal, and the save states have X DELETE while they are not asking about it.
+    /// its modal, and the save states their own line over the game (delete_state.rs).
     pub fn bar_hints(&self, phase: &Phase) -> Vec<Hint<'static>> {
         match phase {
             Phase::Shelf if self.picker_has_bar() => vec![SWAP],
@@ -293,7 +294,6 @@ impl App {
             Phase::Labels(screen) if screen.typing.is_none() => {
                 labels_hints(&screen.view(&self.labels, self.online()).legend)
             }
-            Phase::Polaroids { .. } if !self.delete_asked() => vec![DELETE],
             _ => Vec::new(),
         }
     }

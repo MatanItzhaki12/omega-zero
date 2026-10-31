@@ -212,13 +212,8 @@ fn two_saves_shown() -> (tempfile::TempDir, App, StateRing) {
 
 #[test]
 fn x_asks_before_deleting_and_b_or_x_keeps_the_save() {
-    use omega_zero::screens::bar::{Actions, DELETE};
+    use omega_zero::screens::bar::Actions;
     let (_d, mut a, ring) = two_saves_shown();
-    assert_eq!(
-        a.bar_hints(a.phase()),
-        vec![DELETE],
-        "no X DELETE on the bar"
-    );
     assert_eq!(a.bar_place().map(|p| p.actions), Some(Actions::Switcher));
 
     a.apply(Action::GbaDown(Btn::X));
@@ -278,4 +273,44 @@ fn a_deletes_the_save_shown_and_the_switcher_shows_the_next() {
         matches!(a.phase(), Phase::Playing { .. }),
         "the switcher stayed open with nothing in it"
     );
+}
+
+/// X DELETE stands on the kit's hint line, as tall as the bar and on its row, in the middle
+/// between RETURN and LOAD; it goes while the question is up.
+#[test]
+fn x_delete_stands_level_with_return_and_load() {
+    use omega_gfx::{out_h, out_w};
+    use omega_ui::kit::hints::HINT_LINE_H;
+    use omega_ui::kit::palette::palette;
+    use omega_zero::screens::delete_state::delete_hint_face;
+    use omega_zero::screens::lone::Lone;
+    let face = delete_hint_face(palette(0));
+    assert_eq!(face.h, HINT_LINE_H, "the line is not the bar's height");
+    let (_d, mut a, _ring) = two_saves_shown();
+    a.set_delete_hint(Lone {
+        tex: omega_ui::TexId::from_raw(4_242),
+        w: face.w,
+        h: face.h,
+    });
+    let px = omega_ui::SPRITE_PX;
+    let [x, y] = a.delete_hint_at().expect("a place for the line");
+    assert_eq!(
+        y + HINT_LINE_H,
+        out_h() / px,
+        "it does not stand on the bar's row"
+    );
+    assert_eq!(
+        x * 2 + face.w,
+        out_w() / px - (out_w() / px - face.w) % 2,
+        "not centred"
+    );
+    let drawn = |a: &App| {
+        let mut out = Vec::new();
+        a.draw(&mut out);
+        out.iter()
+            .any(|d| matches!(d, Draw::Tex { tex, .. } if *tex == omega_ui::TexId::from_raw(4_242)))
+    };
+    assert!(drawn(&a), "X DELETE is not drawn");
+    a.apply(Action::GbaDown(Btn::X));
+    assert!(!drawn(&a), "X DELETE stayed under the question");
 }

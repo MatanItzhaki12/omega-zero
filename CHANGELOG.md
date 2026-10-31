@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## omega-zero 2.1.3: X DELETE fits the bar, toasts over it
+
+- The save states' X DELETE stands on the kit's hint line, a SAVE tab and the key in its dark
+  well, as tall as the bar and level with RETURN and LOAD, rather than bare on the game's
+  screenshot.
+- Over the save states, a toast (State deleted, State loaded and the rest) stands just above the
+  bar rather than at the top, where it covered the SAVE STATES panel.
+
 ## omega-zero 2.1.2: delete save states in a game
 
 - In a game's save states (MENU twice, or MENU > States), X asks whether to delete the save

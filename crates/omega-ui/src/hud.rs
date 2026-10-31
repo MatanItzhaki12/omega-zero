@@ -300,6 +300,27 @@ impl Hud {
         self.draw_at(now, 0.0, out);
     }
 
+    /// The gauge or the toast standing on `bottom`, that many pixels down the screen, rather than
+    /// at the top, and the badge in the corner: over the save states, whose panel the top holds.
+    pub fn draw_above(&self, now: Millis, bottom: f32, out: &mut Vec<Draw>) {
+        let toast = stepped(self.toast_alpha(now));
+        let gauge = stepped(self.alpha(now));
+        let shown = match (toast > 0.0, gauge > 0.0) {
+            (true, _) => face_of(self.toast_face, self.last_toast()).map(|f| (f, toast)),
+            (false, true) => face_of(self.gauge_face, self.gauge()).map(|f| (f, gauge)),
+            (false, false) => None,
+        };
+        if let Some((face, by)) = shown {
+            // on the art grid, its foot `MARGIN` over `bottom`
+            let y = ((bottom - MARGIN - (face.h * SPRITE_PX) as f32) / 2.0).floor() * 2.0;
+            out.push(faded(centred(face, y), by));
+        }
+        if let Some(face) = face_of(self.badge_face, self.badge()) {
+            let x = out_w().saturating_sub(BADGE_RIGHT + face.w * SPRITE_PX);
+            out.push(quad(face.tex, face.w, face.h, x as f32, BADGE_TOP as f32));
+        }
+    }
+
     /// The gauge or the toast `top` pixels down the screen, under whatever bar stands across
     /// the top, and the badge in the corner.
     pub fn draw_at(&self, now: Millis, top: f32, out: &mut Vec<Draw>) {

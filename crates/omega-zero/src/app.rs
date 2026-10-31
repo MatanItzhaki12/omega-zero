@@ -347,9 +347,11 @@ pub struct App {
     link: Option<LinkSession>,
     pub(crate) sfx: Option<Sfx>,
     pub(crate) polaroids: Option<Polaroids>,
-    /// The switcher asking whether to delete the save it shows, and that question's panel.
+    /// The switcher asking whether to delete the save it shows, that question's panel, and the
+    /// X DELETE line between RETURN and LOAD.
     pub(crate) delete_asked: bool,
     pub(crate) delete_panel: Option<Lone>,
+    pub(crate) delete_hint: Option<Lone>,
     pub(crate) clock_panel: Option<Lone>,
     pub(crate) settings_faces: Option<SettingsFaces>,
     pub(crate) about_modal: Option<Lone>,
@@ -552,6 +554,7 @@ impl App {
             polaroids: None,
             delete_asked: false,
             delete_panel: None,
+            delete_hint: None,
             clock_panel: None,
             settings_faces: None,
             about_modal: None,
@@ -2169,7 +2172,15 @@ impl App {
         if let Some(screen) = &self.disc_screen {
             self.draw_disc_screen(screen, out);
         }
-        self.hud.draw_at(self.now(), self.top_bar_reach(), out);
+        match self.phase {
+            // the save states' panel holds the top: a toast stands over the bar instead
+            Phase::Polaroids { .. } => {
+                let bar = omega_ui::kit::action::TALL * omega_ui::SPRITE_PX;
+                self.hud
+                    .draw_above(self.now(), out_h().saturating_sub(bar) as f32, out)
+            }
+            _ => self.hud.draw_at(self.now(), self.top_bar_reach(), out),
+        }
         self.draw_opening(out);
         self.draw_start_notice(out);
         self.draw_boot_logo(out);

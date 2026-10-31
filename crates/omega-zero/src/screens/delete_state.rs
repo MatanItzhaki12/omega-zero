@@ -2,18 +2,40 @@
 //! STATE panel over its screenshot says how old it is, and the bar's actions turn to B CANCEL
 //! and A DELETE. A deletes it, its picture with it, and the switcher shows the one after it, or
 //! goes back to the game when it was the last; B, or X again, keeps it.
+//!
+//! The key is shown between RETURN and LOAD, level with them, on the kit's hint line (a SAVE
+//! tab and X DELETE in its well, as tall as the bar): the bar's own hints would stand bare on
+//! the game's screenshot there.
 
+use omega_gfx::{out_h, out_w};
 use omega_input::{Action, Btn};
+use omega_ui::kit::hints::{hint_line_face, hint_line_width, HINT_LINE_H};
+use omega_ui::kit::layout::screen_px;
 use omega_ui::kit::palette::Palette;
 use omega_ui::kit::panel::panel_face;
+use omega_ui::kit::pixel::quad;
 use omega_ui::kit::pixel::LINE;
 use omega_ui::kit::row::panel_height;
 use omega_ui::{Draw, Toast, UndoFace};
 
 use crate::app::App;
 use crate::pause_menu::PendingUndo;
+use crate::screens::bar::DELETE;
 use crate::screens::lone::{notes, Lone, NOTE_GAP};
 use crate::screens::power::WIDTH;
+
+/// The hint line's title.
+pub const HINT_TITLE: &str = "SAVE";
+
+/// The line between RETURN and LOAD saying X deletes, in `pal`.
+pub fn delete_hint_face(pal: &Palette) -> UndoFace {
+    hint_line_face(
+        hint_line_width(HINT_TITLE, &[DELETE]),
+        HINT_TITLE,
+        &[DELETE],
+        pal,
+    )
+}
 
 /// The panel's title.
 pub const TITLE: &str = "DELETE STATE";
@@ -47,6 +69,21 @@ impl App {
 
     pub fn set_delete_panel(&mut self, panel: Lone) {
         self.delete_panel = Some(panel);
+    }
+
+    pub fn set_delete_hint(&mut self, hint: Lone) {
+        self.delete_hint = Some(hint);
+    }
+
+    /// Where the X DELETE line goes, `[x, y]` in art pixels: across the middle, on the bar's
+    /// row, level with RETURN and LOAD.
+    pub fn delete_hint_at(&self) -> Option<[u32; 2]> {
+        let hint = self.delete_hint.as_ref()?;
+        let px = omega_ui::SPRITE_PX;
+        Some([
+            (out_w() / px).saturating_sub(hint.w) / 2,
+            (out_h() / px).saturating_sub(HINT_LINE_H),
+        ])
     }
 
     /// X on the switcher: the question goes up over the save shown, or comes down again.
@@ -99,10 +136,16 @@ impl App {
         }
     }
 
-    /// The question over the switcher, while it is up.
+    /// The question over the switcher while it is up, and the X DELETE line while it is not.
     pub(crate) fn draw_delete(&self, out: &mut Vec<Draw>) {
-        if let (true, Some(panel)) = (self.delete_asked, &self.delete_panel) {
-            panel.draw(out);
+        match (self.delete_asked, &self.delete_panel, &self.delete_hint) {
+            (true, Some(panel), _) => panel.draw(out),
+            (false, _, Some(hint)) => {
+                if let Some([x, y]) = self.delete_hint_at() {
+                    out.push(quad(hint.tex, hint.w, hint.h, screen_px(x), screen_px(y)));
+                }
+            }
+            _ => {}
         }
     }
 }
