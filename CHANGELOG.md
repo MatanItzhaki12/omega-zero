@@ -69,10 +69,10 @@ turned off.
   time the site answers.
 - Sliding from GAMEPLAY to ACHIEVEMENTS and back, the panel leaving keeps its own face: each
   options panel has a texture of its own.
-- A game's first start after boot no longer stalls on RetroAchievements: its ROM is hashed on a
-  thread of its own, outside the lock the menus and the game wait on.
-- Clear shells are clearer, and show a board with a ROM, a save chip and a mapper, their pins, a
-  coin cell, small parts, vias and traces.
+- Clear shells are clearer, the plastic pale where nothing stands behind it, and show the board
+  Pokémon Emerald's pak is built on: the flash, the clock's chip and crystal, the ROM under a coin
+  cell, small parts, the maker's lettering, traces and the contacts. A GBA cart's board spans its
+  hollow, wider than the label, so its edge no longer lines up with the label's well.
 - RetroAchievements moved out of GAMEPLAY to CONFIGS, under Labels, a row with only its ›; Fast
   Forward's speed moved from CONFIGS into GAMEPLAY to make room.
 - GAMEPLAY › Emulators: each system's default core, kept in `Config/default_core.ini`, which every
@@ -85,7 +85,9 @@ turned off.
 - Brightness' three lowest steps dim the picture too, below where the backlight goes; from the
   fourth step up nothing changed.
 - Settings › Update fetches the latest release from GitHub and puts its omega-zero in place,
-  keeping the old one as `System/omega-zero.previous`, then restarts onto it.
+  keeping the old one as `System/omega-zero.previous`, then restarts onto it. It always stands
+  above About: on a 480-line screen Settings' modal reaches a pixel into the margin above it to
+  hold GENERAL's six rows.
 - GitHub Actions: the tests run on every push and pull request, and a push to main with a new
   version builds and publishes its release, with `omega-zero-aarch64` for Update.
 

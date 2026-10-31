@@ -94,8 +94,8 @@ Slot's extra settings live in two panels that CONFIGS opens, like THEME.
 **CONFIGS:** Colour Correction, Screen Filter, Gameplay ›, Shelf ›, Labels ›, RetroAchievements ›.
 Fast Forward's speed moved into GAMEPLAY to make room for RetroAchievements.
 
-**GENERAL:** Date & Time, Network, Bluetooth, Theme, Update, About. Update shows on a handheld
-with Wi-Fi, where GENERAL has room for it (see [Updating on the console](#updating-on-the-console)).
+**GENERAL:** Date & Time, Network, Bluetooth, Theme, Update, About (see
+[Updating on the console](#updating-on-the-console)).
 
 **GAMEPLAY ›** (each row shows a line under the panel saying what it does)
 
@@ -332,8 +332,7 @@ Settings › **Update**, with Wi-Fi on. Its value is the version running.
 
 *NO NETWORK*, *BAD DOWNLOAD* and the like say what stopped it, and leave omega-zero as it was.
 Only omega-zero itself is updated this way; a release that changes the cores says so, and needs
-its zip. Update is not shown where GENERAL has no room for it, on a handheld with both Wi-Fi and
-Bluetooth.
+its zip.
 
 ### Releases
 

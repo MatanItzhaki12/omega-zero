@@ -373,8 +373,11 @@ impl App {
 
     /// Loads the achievements of the game in play again.
     fn reload_achievements(&mut self) {
+        let Some(rom) = self.seated_cart().map(|c| c.rom.clone()) else {
+            return;
+        };
         self.cheevos.told_game = false;
-        omega_cheevos::reload_game();
+        omega_cheevos::reload_game(self.achievements_console(), &rom);
     }
 
     /// Hardcore switched: the client takes it at once. Switched on in a game, the game starts

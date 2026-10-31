@@ -1396,17 +1396,26 @@ fn bevel() -> u32 {
     (3 * CART_W + seated_box(Platform::Gba).0 / 2) / seated_box(Platform::Gba).0
 }
 
+/// A clear GBA cart shows its board round the label, darker than the hollow above it, as a
+/// clear pak does; and the board's edge stands clear of the label's well, so the two never
+/// read as one crooked frame.
 #[test]
-fn a_clear_gba_cart_keeps_its_board_behind_the_label() {
+fn a_clear_gba_cart_shows_its_board_round_the_label_its_edge_clear_of_the_well() {
     let d = tmp_root();
     let face = clear_gba(&d);
-    let green = |[r, g, b]: [u8; 3]| g as i32 - (r as i32 + b as i32) / 2;
+    let luma = |[r, g, b]: [u8; 3]| r as u32 * 54 + g as u32 * 183 + b as u32 * 19;
     let y = LABEL_Y + LABEL_H / 2;
-    let beside = pixel(&face, LABEL_X - bevel() - 2, y);
-    let above = pixel(&face, LABEL_X - bevel() - 2, CART_H / 20);
+    let well = LABEL_X - bevel();
+    let beside = pixel(&face, well - 2, y);
+    let above = pixel(&face, well - 2, CART_H / 20);
     assert!(
-        green(beside) - green(above) < 8,
-        "board shows beside the label: {beside:?} against plastic {above:?}"
+        luma(beside) < luma(above),
+        "no board beside the label: {beside:?} against the hollow {above:?}"
+    );
+    let run: Vec<[u8; 3]> = (well - 8..well).map(|x| pixel(&face, x, y)).collect();
+    assert!(
+        run.iter().all(|p| *p == run[0]),
+        "the board's edge meets the label's well: {run:?}"
     );
 }
 

@@ -60,7 +60,7 @@ fn over(under: &mut UndoFace, top: &UndoFace, x: u32, y: u32) {
 fn composed(shown: &[RowShown], pal: &Palette) -> UndoFace {
     let rows: Vec<SettingsRow> = shown.iter().map(|s| s.row).collect();
     let frame = settings_frame(omega_ui::configs_in(&rows), pal);
-    let [mx, my, ..] = modal_rect();
+    let [mx, my] = frame.at;
     let mut modal = UndoFace {
         rgba: frame.face.rgba.clone(),
         w: frame.face.w,
@@ -133,15 +133,11 @@ fn configs_is_as_tall_as_its_rows_and_general_takes_the_rest() {
     }
 }
 
-/// The rows a handheld with Wi-Fi lists: with Bluetooth as well, GENERAL has no room for Update.
+/// The rows a handheld lists, with Bluetooth or without.
 fn listed(bluetooth: bool) -> Vec<SettingsRow> {
-    let skip = match bluetooth {
-        true => SettingsRow::Update,
-        false => SettingsRow::Bluetooth,
-    };
     SettingsRow::ALL
         .into_iter()
-        .filter(|r| *r != skip)
+        .filter(|r| bluetooth || *r != SettingsRow::Bluetooth)
         .collect()
 }
 
@@ -160,11 +156,16 @@ fn every_row_stands_in_its_own_panels_well() {
             .filter(|r| r.group() == SettingsGroup::General)
             .count() as u32
     };
-    let room = omega_ui::general_room(omega_ui::configs_in(&listed(false)));
+    // the modal reaches up for every row, so Update stands above About beside Bluetooth too
+    let room = omega_ui::general_room(omega_ui::configs_in(&listed(true)));
     assert!(
-        general(&listed(false)) <= room,
-        "Update has no room beside Theme"
+        general(&listed(true)) <= room,
+        "GENERAL has no room for Update"
     );
+    let [_, y, _, h] = omega_ui::settings_rect(omega_ui::configs_in(&listed(true)));
+    let [_, my, _, mh] = modal_rect();
+    assert_eq!(y + h, my + mh, "the modal's foot moved");
+    assert!(my - y <= 1, "it reached up {} pixels", my - y);
     let frame = settings_frame(omega_ui::configs_in(&listed(true)), palette(NIGHT));
     let rects = settings_row_rects(&listed(true), frame.wells);
     let at = |row: SettingsRow| rects.iter().find(|(r, _)| *r == row).unwrap().1;
@@ -210,7 +211,7 @@ fn without_a_radio_the_rows_after_network_close_up_and_the_panels_stay() {
 fn the_frame_is_the_modal_with_both_titles_dim() {
     let pal = palette(NIGHT);
     let frame = settings_frame(5, pal);
-    let [_, _, mw, mh] = modal_rect();
+    let [_, _, mw, mh] = omega_ui::settings_rect(5);
     assert_eq!((frame.face.w, frame.face.h), (mw, mh));
     // the frame's corners and edges are the modal's own
     let modal = modal_face(mw, mh, pal);
@@ -228,7 +229,7 @@ fn the_frame_is_the_modal_with_both_titles_dim() {
     assert_eq!(px(&frame.face, 3, 0), Some(pal.dark), "the outline");
     assert_eq!(px(&frame.face, 1, 3), Some(pal.frame_hi), "the bright line");
     // both titles are dim, in the very pixels the lit ones ink
-    let [mx, my, ..] = modal_rect();
+    let [mx, my] = frame.at;
     for g in SettingsGroup::ALL {
         let [tx, ty, tw, th] = frame.titles[g.index()];
         let lit = settings_title_face(g, pal);

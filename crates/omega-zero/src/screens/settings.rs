@@ -100,13 +100,13 @@ impl App {
     }
 
     /// The rows Settings lists on this handheld: Network only where there is a Wi-Fi radio,
-    /// Bluetooth only where there is Bluetooth, and Update where there is Wi-Fi to fetch it
-    /// over and GENERAL has room for it on this screen.
+    /// Bluetooth only where there is Bluetooth. Update is always there, the modal reaching up
+    /// for it (`settings_rect`), unless a screen too short for it leaves GENERAL no room.
     pub fn settings_rows(&self) -> Vec<SettingsRow> {
         let mut rows: Vec<SettingsRow> = SettingsRow::ALL
             .into_iter()
             .filter(|r| match r {
-                SettingsRow::Network | SettingsRow::Update => self.wifi.present(),
+                SettingsRow::Network => self.wifi.present(),
                 SettingsRow::Bluetooth => self.bluetooth.present(),
                 _ => true,
             })

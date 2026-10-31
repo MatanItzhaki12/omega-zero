@@ -260,8 +260,10 @@ pub struct RowShown {
 /// The modal and its two panels as one face, both titles dim, and where its parts land on the
 /// screen, all in art pixels from the screen's top left.
 pub struct SettingsFrame {
-    /// The modal with its panels in it, at `modal_rect()`.
+    /// The modal with its panels in it, at `at`.
     pub face: UndoFace,
+    /// Where the modal's top left goes: `settings_rect`'s.
+    pub at: [u32; 2],
     /// Where each group's title is, by `SettingsGroup::index`: a `title_face` goes there.
     pub titles: [[u32; 4]; 2],
     /// Each group's well, by `SettingsGroup::index`: where its rows go.
@@ -277,9 +279,26 @@ pub fn settings_panels(w: u32, h: u32, configs: u32) -> [[u32; 4]; 2] {
     [[x, y, pw, hug], [x, y + hug - 1, pw, ph + 1 - hug]]
 }
 
+/// Where Settings' modal goes, `[x, y, w, h]`: at `modal_rect()`, reaching up into the margin
+/// above it as far as GENERAL needs to hold every row it has beside CONFIGS holding `configs`.
+/// On a 480-line screen that is a pixel: CONFIGS' six rows and GENERAL's six would otherwise
+/// leave Update or About no room.
+pub fn settings_rect(configs: u32) -> [u32; 4] {
+    let [x, y, w, h] = modal_rect();
+    let general = SettingsRow::ALL
+        .iter()
+        .filter(|r| r.group() == SettingsGroup::General)
+        .count() as u32;
+    let need = panel_height(general * ROW_H);
+    let rise = (0..=y)
+        .find(|rise| settings_panels(w, h + rise, configs)[1][3] >= need)
+        .unwrap_or(y);
+    [x, y - rise, w, h + rise]
+}
+
 /// How many rows GENERAL has room for on this canvas, beside CONFIGS holding `configs`.
 pub fn general_room(configs: u32) -> u32 {
-    let [_, _, mw, mh] = modal_rect();
+    let [_, _, mw, mh] = settings_rect(configs);
     let [_, general] = settings_panels(mw, mh, configs);
     general[3].saturating_sub(panel_height(0)) / ROW_H
 }
@@ -291,10 +310,10 @@ pub fn configs_in(rows: &[SettingsRow]) -> u32 {
         .count() as u32
 }
 
-/// The modal at `modal_rect()` with CONFIGS (holding `configs` rows) and GENERAL in it, drawn
-/// in `pal`, both titles dim.
+/// The modal at `settings_rect()` with CONFIGS (holding `configs` rows) and GENERAL in it,
+/// drawn in `pal`, both titles dim.
 pub fn settings_frame(configs: u32, pal: &Palette) -> SettingsFrame {
-    let [mx, my, mw, mh] = modal_rect();
+    let [mx, my, mw, mh] = settings_rect(configs);
     let mut face = modal_face(mw, mh, pal);
     let mut titles = [[0; 4]; 2];
     let mut wells = [[0; 4]; 2];
@@ -308,6 +327,7 @@ pub fn settings_frame(configs: u32, pal: &Palette) -> SettingsFrame {
     }
     SettingsFrame {
         face,
+        at: [mx, my],
         titles,
         wells,
     }
@@ -402,7 +422,7 @@ pub struct SettingsFaces {
 impl SettingsFaces {
     /// `frame` uploaded as `frame_tex` and the lit titles as `titles`, with no rows yet.
     pub fn new(frame: &SettingsFrame, frame_tex: TexId, titles: [(TexId, [u32; 2]); 2]) -> Self {
-        let [x, y, ..] = modal_rect();
+        let [x, y] = frame.at;
         let lit = |g: usize| {
             let (tex, [w, h]) = titles[g];
             let [tx, ty, ..] = frame.titles[g];

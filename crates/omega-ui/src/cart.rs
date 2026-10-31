@@ -142,9 +142,10 @@ pub(crate) fn spec(model: CartModel) -> Spec {
             max_h: (LABEL_H - 2 * PAD) as f32,
             rim: RIM,
             board: Board {
-                x: (0.135, 0.875),
+                // wider than the label, so the board's edge stands clear of the label's well
+                x: (0.07, 0.93),
                 // the board's top edge shows through over the label, as on a clear pak
-                top: 0.16,
+                top: 0.12,
                 pins: (0.17, 0.84),
                 contacts_from: 0.85,
                 traces_from: 0.76,
@@ -387,46 +388,88 @@ fn shell_face(s: &Spec, shell: &Shell) -> CartFace {
 
 /// How much of a clear shell's colour is its own surface, of 255; the rest is what shows through
 /// it, tinted: low, so the board and the hollow inside read through the plastic.
-const SURFACE: u32 = 50;
+const SURFACE: u32 = 40;
 
-/// What a clear shell shows where no board stands behind it: the cart's hollow, a light grey the
-/// plastic tints, so its colour stays as rich as a solid shell's.
-const HOLLOW: [u8; 3] = [0xb4, 0xb6, 0xbc];
+/// What a clear shell shows where no board stands behind it: the cart's hollow, a pale grey the
+/// plastic tints, so it reads as the plastic itself, lit, and its colour stays as rich as a
+/// solid shell's.
+const HOLLOW: [u8; 3] = [0xd2, 0xd4, 0xd8];
 
-const BOARD: [u8; 3] = [0x2c, 0x96, 0x52];
-const BOARD_EDGE: [u8; 3] = [0x1c, 0x6a, 0x3a];
-const TRACE: [u8; 3] = [0x5a, 0xb4, 0x74];
+const BOARD: [u8; 3] = [0x62, 0xb6, 0x78];
+const BOARD_EDGE: [u8; 3] = [0x3c, 0x88, 0x52];
+const TRACE: [u8; 3] = [0x8c, 0xd2, 0x9c];
 const GOLD: [u8; 3] = [0xe6, 0xb4, 0x46];
-const CHIP: [u8; 3] = [0x26, 0x26, 0x2a];
-const CHIP_MARK: [u8; 3] = [0x44, 0x44, 0x4a];
-const PIN: [u8; 3] = [0xc4, 0xc6, 0xc8];
-const BATTERY: [u8; 3] = [0xb8, 0xbc, 0xc2];
-const BATTERY_RIM: [u8; 3] = [0x80, 0x84, 0x8a];
-const PART: [u8; 3] = [0x8a, 0x6a, 0x4a];
+const CHIP: [u8; 3] = [0x40, 0x42, 0x48];
+const CHIP_MARK: [u8; 3] = [0x5c, 0x5e, 0x64];
+const PIN: [u8; 3] = [0xc8, 0xca, 0xcc];
+const SILK: [u8; 3] = [0xe4, 0xe6, 0xdc];
+const CELL_FACE: [u8; 3] = [0xc4, 0xc8, 0xcc];
+const CELL_RIM: [u8; 3] = [0x3c, 0x6c, 0xc4];
+const CELL_TAB: [u8; 3] = [0x9c, 0xa0, 0xa6];
+const PART: [u8; 3] = [0x9a, 0x76, 0x4e];
 
-/// The chips on a clear cart's board, as fractions of the board across and down from its top:
-/// the ROM, the save memory beside it, and a small mapper under it. Most stand behind the label;
-/// their edges and pins show past it. The board's sides, under the shell's shoulders, are left
-/// plain, as `MARGIN` is wide, so the shoulders' ribs read alone.
-const CHIPS: [(f32, f32, f32, f32); 3] = [
-    (0.13, 0.46, 0.04, 0.42),
-    (0.54, 0.80, 0.06, 0.30),
-    (0.56, 0.74, 0.40, 0.56),
+/// A chip on the board: its corners as fractions of the board across and down from its top
+/// left, and whether its legs stand down its left and right sides, as a TSOP's do, or along
+/// its top and bottom.
+struct Chip {
+    at: (f32, f32, f32, f32),
+    legs_on_sides: bool,
+}
+
+/// The parts of a clear cart's board, after the AGB-E05 board Pokémon Emerald is built on: the
+/// flash on the left, the clock's chip and its crystal along the top, the ROM on the right under
+/// the coin cell, the maker's lettering above the contacts. The label stands over most of it;
+/// what shows past its edges is what a clear cart shows.
+const CHIPS: [Chip; 3] = [
+    // the flash save
+    Chip {
+        at: (0.12, 0.40, 0.30, 0.62),
+        legs_on_sides: true,
+    },
+    // the real-time clock
+    Chip {
+        at: (0.46, 0.56, 0.05, 0.17),
+        legs_on_sides: false,
+    },
+    // the ROM, mostly under the cell
+    Chip {
+        at: (0.60, 0.88, 0.08, 0.52),
+        legs_on_sides: true,
+    },
 ];
 
-/// The save battery, a coin cell: its centre and radius as fractions of the board's width.
-const CELL: (f32, f32, f32) = (0.80, 0.50, 0.11);
+/// The clock's crystal, a silver can: its corners as fractions of the board.
+const CRYSTAL: (f32, f32, f32, f32) = (0.16, 0.28, 0.07, 0.14);
+
+/// The coin cell: its centre as fractions of the board, and its radius as a fraction of its
+/// width.
+const CELL: (f32, f32, f32) = (0.74, 0.30, 0.15);
+
+/// The small parts, resistors and capacitors: each one's top left as fractions of the board.
+const PARTS: [(f32, f32); 7] = [
+    (0.32, 0.18),
+    (0.48, 0.24),
+    (0.50, 0.58),
+    (0.44, 0.66),
+    (0.62, 0.62),
+    (0.80, 0.58),
+    (0.22, 0.66),
+];
+
+/// Where the maker's lettering runs, as fractions of the board: across, and down.
+const LETTERING: (f32, f32, f32, f32) = (0.14, 0.72, 0.74, 0.78);
 
 /// How far in from each side of the board, as a fraction of its width, nothing stands on it.
 const MARGIN: f32 = 0.1;
+
 fn through(plastic: [u8; 3], behind: [u8; 3]) -> [u8; 3] {
     let filter =
         |a: [u8; 3], b: [u8; 3]| [0, 1, 2].map(|c| (a[c] as u32 * b[c] as u32 / 255) as u8);
     lerp(filter(plastic, behind), plastic, SURFACE, 255)
 }
 
-/// What stands behind the face's pixel `x, y` inside a clear shell: the board, its chips, pins,
-/// battery, parts and traces, or nothing, the shell's hollow.
+/// What stands behind the face's pixel `x, y` inside a clear shell: the board and its parts, or
+/// nothing, the shell's hollow.
 fn inside(s: &Spec, x: u32, y: u32) -> Option<[u8; 3]> {
     let b = &s.board;
     let (fx, fy) = (x as f32 / s.w as f32, y as f32 / s.h as f32);
@@ -444,85 +487,97 @@ fn inside(s: &Spec, x: u32, y: u32) -> Option<[u8; 3]> {
     }
 
     // the board in pixels, from its top left corner, on the art's two-pixel grid
-    let (bx0, bx1) = (b.x.0 * s.w as f32, b.x.1 * s.w as f32);
-    let by0 = b.top * s.h as f32;
-    let (bw, bh) = (bx1 - bx0, s.h as f32 - by0);
+    let (bx0, by0) = (b.x.0 * s.w as f32, b.top * s.h as f32);
+    let (bw, bh) = ((b.x.1 - b.x.0) * s.w as f32, s.h as f32 - by0);
     let (px, py) = ((x & !1) as f32 - bx0, (y & !1) as f32 - by0);
     if px < 2.0 || bw - px < 3.0 || py < 2.0 {
         return Some(BOARD_EDGE);
     }
+    // the board's sides stand plain under the shell's shoulders, whose ribs read alone
+    if px < MARGIN * bw || bw - px < MARGIN * bw {
+        return Some(BOARD);
+    }
+    let (u, v) = (px / bw, py / bh);
+    let within =
+        |(u0, u1, v0, v1): (f32, f32, f32, f32)| (u0..u1).contains(&u) && (v0..v1).contains(&v);
 
-    for (i, &(u0, u1, v0, v1)) in CHIPS.iter().enumerate() {
+    let (cx, cy, r) = (CELL.0 * bw, CELL.1 * bh, CELL.2 * bw);
+    let d = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
+    if d <= r {
+        // the cell's tab, soldered across it to the right
+        let tab = (py - cy).abs() < r * 0.18 && px > cx - r * 0.2;
+        return Some(match (d > r - 4.0, tab) {
+            (true, _) => CELL_RIM,
+            (false, true) => CELL_TAB,
+            (false, false) => CELL_FACE,
+        });
+    }
+
+    for chip in &CHIPS {
+        let (u0, u1, v0, v1) = chip.at;
         let (x0, x1, y0, y1) = (u0 * bw, u1 * bw, v0 * bh, v1 * bh);
-        let reach = 6.0;
         if (x0..x1).contains(&px) && (y0..y1).contains(&py) {
             // the dimple by pin one
-            let (dx, dy) = (px - x0 - 8.0, py - y0 - 8.0);
-            return Some(if dx * dx + dy * dy <= 9.0 {
+            let (dx, dy) = (px - x0 - 6.0, py - y0 - 6.0);
+            return Some(if dx * dx + dy * dy <= 6.0 {
                 CHIP_MARK
             } else {
                 CHIP
             });
         }
-        // pins down both long sides, a gap at each end
-        let pin = ((px - x0) as u32 / 2) % 3 < 2;
-        let on_side = (y0 - reach..y0).contains(&py) || (y1..y1 + reach).contains(&py);
-        if on_side && (x0 + 4.0..x1 - 4.0).contains(&px) && pin && i < 2 {
+        let reach = 4.0;
+        let legs = match chip.legs_on_sides {
+            true => {
+                let beside = (x0 - reach..x0).contains(&px) || (x1..x1 + reach).contains(&px);
+                beside
+                    && (y0 + 2.0..y1 - 2.0).contains(&py)
+                    && ((py - y0) as u32 / 2).is_multiple_of(2)
+            }
+            false => {
+                let over = (y0 - reach..y0).contains(&py) || (y1..y1 + reach).contains(&py);
+                over && (x0 + 2.0..x1 - 2.0).contains(&px)
+                    && ((px - x0) as u32 / 2).is_multiple_of(2)
+            }
+        };
+        if legs {
             return Some(PIN);
         }
-        // the small chip's pins stand on its ends
-        let on_end = (x0 - reach..x0).contains(&px) || (x1..x1 + reach).contains(&px);
-        if on_end && (y0 + 4.0..y1 - 4.0).contains(&py) && ((py - y0) as u32 / 2) % 3 < 2 {
-            return Some(PIN);
+    }
+
+    if within(CRYSTAL) {
+        let (u0, u1, v0, v1) = CRYSTAL;
+        let edge = (u - u0) * bw < 2.0
+            || (u1 - u) * bw < 2.0
+            || (v - v0) * bh < 2.0
+            || (v1 - v) * bh < 2.0;
+        return Some(if edge { CELL_TAB } else { PIN });
+    }
+
+    for &(pu, pv) in &PARTS {
+        let (x0, y0) = (pu * bw, pv * bh);
+        if (x0..x0 + 8.0).contains(&px) && (y0..y0 + 4.0).contains(&py) {
+            let end = px < x0 + 2.0 || px >= x0 + 6.0;
+            return Some(if end { PIN } else { PART });
         }
     }
 
-    let (cx, cy, r) = (CELL.0 * bw, CELL.1 * bh, CELL.2 * bw);
-    let d = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
-    if d <= r {
-        return Some(if d > r - 3.0 { BATTERY_RIM } else { BATTERY });
-    }
-
-    if px < MARGIN * bw || bw - px < MARGIN * bw {
-        return Some(BOARD);
-    }
-
-    // small parts and vias, scattered where the chips leave room
-    let (gx, gy) = ((px / 16.0) as u32, (py / 16.0) as u32);
-    let (ox, oy) = (px % 16.0, py % 16.0);
-    match scatter(gx, gy) % 23 {
-        0 | 1 if (4.0..12.0).contains(&ox) && (6.0..10.0).contains(&oy) => {
-            return Some(if (6.0..10.0).contains(&ox) { PART } else { PIN });
+    // the maker's lettering: short strokes in rows, as small print reads from afar
+    if within(LETTERING) {
+        let (col, row) = ((px as u32 / 2) % 4, (py as u32 / 2) % 3);
+        let word = (px as u32 / 14) % 5 != 4;
+        if word && col != 3 && row != 2 {
+            return Some(SILK);
         }
-        2 | 3 if (6.0..10.0).contains(&ox) && (6.0..10.0).contains(&oy) => {
-            return Some(if (8.0..10.0).contains(&ox) && (8.0..10.0).contains(&oy) {
-                BOARD_EDGE
-            } else {
-                GOLD
-            });
-        }
-        _ => {}
     }
 
-    // traces: buses down from the chips, and runs across to the battery
-    let bus = (px as u32 / 2).is_multiple_of(7)
-        && py > CHIPS[0].3 * bh
-        && py < b.traces_from * s.h as f32 - by0;
-    let run =
-        (py as u32 / 2).is_multiple_of(9) && px > CHIPS[1].0 * bw && py > CHIPS[1].3 * bh + 8.0;
+    // traces: a bus down from the chips to the contacts, and a run across under the cell
+    let bus = (px as u32 / 2).is_multiple_of(6) && v > 0.64 && v < LETTERING.2 - 0.02;
+    let run = (py as u32 / 2).is_multiple_of(5) && v > 0.54 && v < 0.62 && u > 0.44;
     if bus || run {
         Some(TRACE)
     } else {
         Some(BOARD)
     }
-}
-
-/// A steady scatter for the board's parts, the same each time a face is made.
-fn scatter(x: u32, y: u32) -> u32 {
-    let mut h = x.wrapping_mul(0x27d4_eb2d) ^ y.wrapping_mul(0x1656_67b1);
-    h ^= h >> 13;
-    h = h.wrapping_mul(0x85eb_ca6b);
-    h ^ (h >> 16)
 }
 
 fn fleck(x: u32, y: u32) -> bool {

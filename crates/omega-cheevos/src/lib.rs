@@ -14,7 +14,7 @@
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use omega_retro::{CoreMemory, MemoryDescriptor};
@@ -71,10 +71,7 @@ extern "C" {
         video: *mut u8,
         video_size: usize,
     );
-    fn oc_hash_rom(console: u32, path: *const c_char, out: *mut c_char) -> c_int;
-    fn oc_game_looking();
-    fn oc_load_hash(hash: *const c_char);
-    fn oc_reload_game();
+    fn oc_load_game(console: u32, path: *const c_char);
     fn oc_game_state(error: *mut *const c_char) -> c_int;
     fn oc_unload_game();
     fn oc_summary(
@@ -108,8 +105,6 @@ static STARTED: AtomicBool = AtomicBool::new(false);
 static OFFLINE: AtomicBool = AtomicBool::new(false);
 /// Held across every call into the client.
 static CLIENT: Mutex<()> = Mutex::new(());
-/// Counts the games begun and ended: a ROM hashed for a game since ended is let go.
-static GAME_TURN: AtomicU32 = AtomicU32::new(0);
 /// Answers come back from the network, waiting to be handed to the client.
 static ANSWERS: Mutex<Vec<(u32, c_int, Vec<u8>)>> = Mutex::new(Vec::new());
 static EVENTS: Mutex<Vec<Event>> = Mutex::new(Vec::new());
@@ -274,13 +269,9 @@ pub fn login() -> Login {
 
 /// Starts the achievements of the game `rom` of `console` the core has just loaded, read from
 /// `memory`. Called on the thread that runs the core, which `frame` must be called on too.
-///
-/// The ROM is hashed on a thread of its own, outside the lock: read whole from the card, a big
-/// one takes long enough that the game, and the menus waiting on the lock, would stall for it.
 pub fn begin_game(console: u32, rom: &Path, memory: &CoreMemory) {
     let path = c(&rom.to_string_lossy());
-    let turn = GAME_TURN.fetch_add(1, Ordering::AcqRel) + 1;
-    let begun = with_client(|| unsafe {
+    with_client(|| unsafe {
         // SAFETY: the shim keeps the region pointers, the core's, for as long as the game is
         // loaded; `end_game` drops them before the core goes
         oc_set_memory(
@@ -294,31 +285,8 @@ pub fn begin_game(console: u32, rom: &Path, memory: &CoreMemory) {
             memory.video.0,
             memory.video.1,
         );
-        oc_game_looking();
+        oc_load_game(console, path.as_ptr());
     });
-    if begun.is_none() {
-        return;
-    }
-    let hashed = move || {
-        let mut hash = [0 as c_char; 33];
-        // SAFETY: the hasher touches no client; the buffer holds 32 digits and the end
-        if unsafe { oc_hash_rom(console, path.as_ptr(), hash.as_mut_ptr()) } == 0 {
-            hash[0] = 0;
-        }
-        with_client(|| {
-            if GAME_TURN.load(Ordering::Acquire) == turn {
-                // SAFETY: under the lock; the shim copies the hash
-                unsafe { oc_load_hash(hash.as_ptr()) };
-            }
-        });
-    };
-    if std::thread::Builder::new()
-        .name("omega-cheevos-hash".into())
-        .spawn(hashed)
-        .is_err()
-    {
-        eprintln!("omega-zero: cheevos: no thread to hash the game with");
-    }
 }
 
 pub fn game_load() -> GameLoad {
@@ -341,13 +309,14 @@ pub fn game_unreachable() -> bool {
     with_client(|| unsafe { oc_game_unreachable() } != 0).unwrap_or(false)
 }
 
-/// Loads the achievements of the game in play again, by the hash `begin_game` made of it, its
-/// memory as it set it: after a sign-in or a network that came too late for the game's start.
-pub fn reload_game() {
+/// Loads the achievements of the game `rom` of `console` again, its memory as `begin_game`
+/// set it: after a sign-in or a network that came too late for the game's start.
+pub fn reload_game(console: u32, rom: &Path) {
+    let path = c(&rom.to_string_lossy());
     with_client(|| unsafe {
-        // SAFETY: under the lock
+        // SAFETY: under the lock; the shim copies the path
         if oc_has_memory() != 0 {
-            oc_reload_game();
+            oc_load_game(console, path.as_ptr());
         }
     });
 }
@@ -442,7 +411,6 @@ pub fn reset() {
 
 /// The game is put away: the client lets go of it and of its memory, before the core goes.
 pub fn end_game() {
-    GAME_TURN.fetch_add(1, Ordering::AcqRel);
     // SAFETY: under the lock
     with_client(|| unsafe { oc_unload_game() });
 }

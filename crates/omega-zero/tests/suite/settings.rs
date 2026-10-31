@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 
 use omega_input::{Action, Btn};
 use omega_store::{read_app_state, write_app_state, AppState};
-use omega_ui::kit::layout::modal_rect;
 use omega_ui::kit::palette::palette;
 use omega_ui::kit::row::ROW_H;
 use omega_ui::{
@@ -129,7 +128,6 @@ fn up_and_down_move_the_bar_and_wrap_at_the_ends() {
         Some(SettingsRow::About),
         "up from the top did not wrap to the bottom"
     );
-    // Update stays out: with Bluetooth as well, GENERAL has no room left for it
     for want in [
         SettingsRow::ColourCorrection,
         SettingsRow::ScreenFilter,
@@ -141,6 +139,7 @@ fn up_and_down_move_the_bar_and_wrap_at_the_ends() {
         SettingsRow::Network,
         SettingsRow::Bluetooth,
         SettingsRow::Background,
+        SettingsRow::Update,
         SettingsRow::About,
         SettingsRow::ColourCorrection,
     ] {
@@ -456,7 +455,7 @@ fn the_modal_fills_the_page_and_the_lit_title_follows_the_cursor() {
         let out = frame(&a);
         assert_eq!(
             placed(&out, 100),
-            Some(at_2x(modal_rect())),
+            Some(at_2x(omega_ui::settings_rect(6))),
             "{row:?}: the frame"
         );
         let (configs, general) = (drawn(&out, 110), drawn(&out, 111));
@@ -643,7 +642,7 @@ fn without_a_radio_network_is_not_listed_drawn_or_stepped_onto() {
     let date = placed(&out, 200 + SettingsRow::DateTime.index()).unwrap();
     let bluetooth = placed(&out, 200 + SettingsRow::Bluetooth.index()).unwrap();
     assert_eq!(bluetooth[1], date[1] + (2 * ROW_H) as f32);
-    assert_eq!(placed(&out, 100), Some(at_2x(modal_rect())));
+    assert_eq!(placed(&out, 100), Some(at_2x(omega_ui::settings_rect(6))));
     assert_eq!(placed(&out, 111), Some(at_2x(faces.titles[1].at)));
 }
 
