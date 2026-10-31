@@ -214,7 +214,7 @@ fn settings_draws_the_modal_and_the_lit_rows_band_over_the_backdrop() {
     assert_eq!(art(&px, x + 2, y + 2), pal.tab, "the band");
     assert_eq!(art(&px, x + w / 2, y + h - 2), pal.tab, "the band");
     assert_eq!(art(&px, x, y), pal.well, "the band's corner is the well's");
-    let [x, y, w, h] = row_rect(&f, SettingsRow::ColourCorrection);
+    let [x, y, w, h] = row_rect(&f, SettingsRow::ScreenFilter);
     for (dx, dy) in [(1, 0), (2, 2), (w / 2, h - 2)] {
         assert_eq!(
             art(&px, x + dx, y + dy),
@@ -302,7 +302,7 @@ fn the_cursor_in_general_lights_its_title_and_its_row() {
     assert_eq!(
         art(&px, x + 2, y + 2),
         pal.well,
-        "Fast Forward is still lit"
+        "Colour Correction is still lit"
     );
 }
 
@@ -315,15 +315,22 @@ fn a_new_value_is_on_the_screen_the_frame_after() {
         return;
     };
     let (_d, mut f, mut input) = settings_over(NIGHT, &mut c);
-    let px = composed(&mut f, &mut c, "speed-before");
+    // the cursor opens on Colour Correction, and Down is Screen Filter
+    let px = composed(&mut f, &mut c, "correction-before");
     holds_the_modal(&px, &f, "before");
-    let was = f.app().ff_speed();
+    let was = f.app().colour_correction();
     tap(&mut f, &mut input, Btn::Left);
-    assert_ne!(f.app().ff_speed(), was, "Left changed no speed");
-    let px = composed(&mut f, &mut c, "speed-after");
+    assert_ne!(f.app().colour_correction(), was, "Left changed nothing");
+    let px = composed(&mut f, &mut c, "correction-after");
     holds_the_modal(&px, &f, "after");
+    let filter = f.app().settings_value(SettingsRow::ScreenFilter);
     tap(&mut f, &mut input, Btn::Down);
     tap(&mut f, &mut input, Btn::Right);
-    let px = composed(&mut f, &mut c, "sound-on");
-    holds_the_modal(&px, &f, "sound on");
+    assert_ne!(
+        f.app().settings_value(SettingsRow::ScreenFilter),
+        filter,
+        "Right changed no filter"
+    );
+    let px = composed(&mut f, &mut c, "filter-next");
+    holds_the_modal(&px, &f, "filter next");
 }

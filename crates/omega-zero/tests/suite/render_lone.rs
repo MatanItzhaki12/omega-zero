@@ -1,7 +1,7 @@
 #![cfg(target_os = "macos")]
 //! The lone panels as the frontend draws them: each is its face (held to flow.html in lone.rs)
 //! at two screen pixels to an art pixel, where flow.html centres it on this canvas, over the
-//! backdrop, the POWER menu and the screens after its choice among them; and a new colour on the
+//! backdrop, and the screen holding POWER slides in as it powers off; and a new colour on the
 //! Background screen re-tints its panel in the next frame.
 //!
 //! Set SCRATCH_PNG_DIR to a folder to have each frame written there as a PNG.
@@ -25,7 +25,7 @@ use omega_zero::screens::background::background_face;
 use omega_zero::screens::clock::clock_face;
 use omega_zero::screens::controls::{controls_face, ControlsView};
 use omega_zero::screens::labels::labels_face;
-use omega_zero::screens::power::{going_face, power_menu_face};
+use omega_zero::screens::power::going_face;
 use tempfile::TempDir;
 
 struct Script(VecDeque<Vec<RawEvent>>);
@@ -42,18 +42,15 @@ enum Screen {
     Background,
     DateTime,
     Labels,
-    Power,
-    Restarting,
+    /// POWER held: it powers off at once, as on Slot, the screen saying so slid in.
     PoweringOff,
 }
 
-const SCREENS: [Screen; 7] = [
+const SCREENS: [Screen; 5] = [
     Screen::Controls,
     Screen::Background,
     Screen::DateTime,
     Screen::Labels,
-    Screen::Power,
-    Screen::Restarting,
     Screen::PoweringOff,
 ];
 
@@ -95,15 +92,9 @@ impl Rig {
             Screen::Background => SettingsRow::Background,
             Screen::DateTime => SettingsRow::DateTime,
             Screen::Labels => SettingsRow::Labels,
-            // POWER held on the shelf, and its choice made
-            Screen::Power | Screen::Restarting | Screen::PoweringOff => {
+            // POWER held on the shelf: it powers off at once
+            Screen::PoweringOff => {
                 r.f.app_mut().apply(Action::PowerHold);
-                if screen == Screen::PoweringOff {
-                    r.f.app_mut().apply(Action::GbaDown(Btn::Down));
-                }
-                if screen != Screen::Power {
-                    r.f.app_mut().apply(Action::GbaDown(Btn::A));
-                }
                 return r;
             }
         };
@@ -147,8 +138,6 @@ impl Rig {
             Screen::Background => background_face(&app.background_view().expect("open"), pal),
             Screen::DateTime => clock_face(app.picker().expect("open"), pal),
             Screen::Labels => labels_face(&app.labels_view().expect("open"), pal),
-            Screen::Power => power_menu_face(PowerChoice::Restart, pal),
-            Screen::Restarting => going_face(PowerChoice::Restart, pal),
             Screen::PoweringOff => going_face(PowerChoice::PowerOff, pal),
         }
     }

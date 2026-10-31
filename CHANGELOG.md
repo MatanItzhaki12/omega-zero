@@ -1,6 +1,24 @@
 # Changelog
 
-## omega-zero 1.4.0: Slot's buttons, favorites and the screen filter
+## Unreleased
+
+## omega-zero 2.1.0: clear carts show their board
+
+A small update, the first released on its own: Settings > Update on the console fetches it.
+
+- The parts on a clear cart's board keep some of their own colour through the plastic: the gold
+  contacts along the foot and the black chips read as such, not as more green. The clock's chip,
+  its crystal, the ROM and the coin cell stand higher on the board, so more of them shows over
+  a GBA cart's label.
+- Releases are numbered for what they hold: a big feature release moves the first number, a
+  small update the second (`scripts/version.sh big` or `small`, or `task version:big` and
+  `task version:small`, name the next one from this changelog's Unreleased section). The fork's
+  releases start at 2.0.0; 1.2.0 and before are upstream's.
+- CI names each failing test in an annotation anyone can read on the run.
+
+## omega-zero 2.0.0: Slot's buttons, favorites, RetroAchievements and updates on the console
+
+This fork's first release over omega-zero 1.2.0, everything it adds until now.
 
 The buttons are Slot's again, a FAVORITES shelf stands first, and the LCD over a game can be
 turned off.

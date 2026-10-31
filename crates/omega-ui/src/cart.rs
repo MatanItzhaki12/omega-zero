@@ -370,7 +370,16 @@ fn shell_face(s: &Spec, shell: &Shell) -> CartFace {
             Finish::Solid => (shell.colour, 255),
             Finish::Translucent | Finish::Glitter => {
                 let behind = inside(s, x, y);
-                let body = through(shell.colour, behind.unwrap_or(HOLLOW));
+                let body = match behind {
+                    // the bare board takes the plastic's colour, so a clear shell stays as rich
+                    // as a solid one
+                    Some(BOARD | BOARD_EDGE | TRACE) | None => {
+                        through(shell.colour, behind.unwrap_or(HOLLOW))
+                    }
+                    // a part on it keeps some of its own colour through the plastic: the gold
+                    // of the contacts and the black of the chips read as such, not as more green
+                    Some(part) => lerp(through(shell.colour, part), part, PART_SHOWS, 255),
+                };
                 let c = lerp(edge, body, rim, s.rim);
                 // where no board stands behind it, the light comes through the plastic: the
                 // shelf shows through it, less so towards the rim, where it is thickest
@@ -397,6 +406,9 @@ fn shell_face(s: &Spec, shell: &Shell) -> CartFace {
 /// How much of a clear shell's colour is its own surface, of 255; the rest is what shows through
 /// it, tinted: low, so the board and the hollow inside read through the plastic.
 const SURFACE: u32 = 40;
+
+/// How much of a part's own colour shows through a clear shell, of 255.
+const PART_SHOWS: u32 = 80;
 
 /// How opaque a clear shell is, of 255, where no board stands behind it, inside its rim: the
 /// shelf shows through the rest.
@@ -440,22 +452,22 @@ const CHIPS: [Chip; 3] = [
     },
     // the real-time clock
     Chip {
-        at: (0.46, 0.56, 0.05, 0.17),
+        at: (0.46, 0.56, 0.02, 0.14),
         legs_on_sides: false,
     },
     // the ROM, mostly under the cell
     Chip {
-        at: (0.60, 0.88, 0.08, 0.52),
+        at: (0.60, 0.88, 0.03, 0.52),
         legs_on_sides: true,
     },
 ];
 
 /// The clock's crystal, a silver can: its corners as fractions of the board.
-const CRYSTAL: (f32, f32, f32, f32) = (0.16, 0.28, 0.07, 0.14);
+const CRYSTAL: (f32, f32, f32, f32) = (0.16, 0.28, 0.03, 0.10);
 
 /// The coin cell: its centre as fractions of the board, and its radius as a fraction of its
 /// width.
-const CELL: (f32, f32, f32) = (0.74, 0.30, 0.15);
+const CELL: (f32, f32, f32) = (0.74, 0.22, 0.15);
 
 /// The small parts, resistors and capacitors: each one's top left as fractions of the board.
 const PARTS: [(f32, f32); 7] = [

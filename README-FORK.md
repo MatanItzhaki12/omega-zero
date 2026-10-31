@@ -344,6 +344,15 @@ builds the card tree for the H700 and publishes the release `v<version>`, with t
 release takes. Without the `OMEGA_SS_DEVID` and `OMEGA_SS_DEVPASSWORD` secrets the build still
 goes out, but its Cart Labels cannot reach ScreenScraper.
 
+Releases are numbered for what they hold. A big feature release moves the first number (2.1.0
+to 3.0.0), a small update the second (2.1.0 to 2.2.0). The fork's releases start at 2.0.0;
+1.2.0 and before are upstream's. To release:
+
+1. Write what changed under `## Unreleased` in `CHANGELOG.md`.
+2. `scripts/version.sh small` (or `big`), or `task version:small` / `task version:big`: it
+   bumps every crate's version and `Cargo.lock`, and names the Unreleased section.
+3. Commit and push to `main`.
+
 The upstream route works as before and builds in an arm64 container:
 
 ```sh
