@@ -3,8 +3,8 @@
 # changelog's "## Unreleased" section that number. Pushing the commit to main releases it: the
 # release workflow builds and publishes every version that has no release yet.
 #
-#   scripts/version.sh small   a small update: 2.1.0 to 2.2.0
-#   scripts/version.sh big     a big feature release: 2.1.0 to 3.0.0
+#   scripts/version.sh small   a small update or a bug fix: 2.1.0 to 2.1.1
+#   scripts/version.sh big     a big feature release: 2.1.1 to 2.2.0
 #
 # Write what changed under "## Unreleased" in CHANGELOG.md first; the script stops without it.
 set -eu
@@ -16,9 +16,10 @@ current="$(tr -d '\r' < crates/omega-zero/Cargo.toml | sed -n 's/^version = "\(.
 major="${current%%.*}"
 rest="${current#*.}"
 minor="${rest%%.*}"
+patch="${rest#*.}"
 case "$kind" in
-small) next="$major.$((minor + 1)).0" ;;
-big) next="$((major + 1)).0.0" ;;
+small) next="$major.$minor.$((patch + 1))" ;;
+big) next="$major.$((minor + 1)).0" ;;
 *)
 	echo "usage: scripts/version.sh small|big   (now $current)" >&2
 	exit 2
@@ -41,7 +42,8 @@ awk -v from="$current" -v to="$next" '
 	{ own = ($0 ~ /^name = "omega-/); print }
 ' Cargo.lock > Cargo.lock.new
 mv Cargo.lock.new Cargo.lock
-sed "0,/^## Unreleased/s//## omega-zero $next/" CHANGELOG.md > CHANGELOG.md.new
+# the section named, and a fresh Unreleased one over it for what comes next
+sed "0,/^## Unreleased/s//## Unreleased\n\n## omega-zero $next/" CHANGELOG.md > CHANGELOG.md.new
 mv CHANGELOG.md.new CHANGELOG.md
 
 echo "omega-zero $current -> $next: commit and push to main to release it"

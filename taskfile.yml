@@ -35,12 +35,12 @@ tasks:
       - cargo build --release -p omega-zero
 
   version:small:
-    desc: Name the next small update (2.1.0 to 2.2.0) from the changelog's Unreleased section
+    desc: Name the next small update or bug fix (2.1.0 to 2.1.1) from the changelog's Unreleased section
     cmds:
       - sh scripts/version.sh small
 
   version:big:
-    desc: Name the next big feature release (2.1.0 to 3.0.0) from the changelog's Unreleased section
+    desc: Name the next big feature release (2.1.1 to 2.2.0) from the changelog's Unreleased section
     cmds:
       - sh scripts/version.sh big
 

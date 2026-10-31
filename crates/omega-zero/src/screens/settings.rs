@@ -131,6 +131,8 @@ impl App {
             Action::GbaDown(Btn::A) if row == SettingsRow::Update => return self.press_update(),
             Action::GbaDown(Btn::A) => return self.open_settings_row(row),
             Action::GbaDown(Btn::B | Btn::Start) | Action::QuickMenu => {
+                // what Update said goes with Settings: the version shows again when it opens
+                self.updater.settle();
                 return self.go(Phase::Shelf, Dir::FromAside);
             }
             _ => return,
@@ -186,9 +188,11 @@ impl App {
         use crate::update::Update;
         match self.updater.state() {
             Update::Idle | Update::Latest | Update::Failed(_) => self.updater.check(),
-            Update::Available { .. } => match std::env::current_exe() {
-                Ok(exe) => self.updater.install(exe),
-                Err(_) => self.refuse(),
+            // omega-zero on the card: the running program's own path is the loader it starts
+            // through
+            Update::Available { .. } => match &self.root {
+                Some(root) => self.updater.install(crate::update::program(root)),
+                None => self.refuse(),
             },
             Update::Installed(_) => self.begin_restart(),
             Update::Checking | Update::Downloading(_) => self.refuse(),

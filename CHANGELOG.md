@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## omega-zero 2.1.1: Update installs on the card
+
+A bug fix for Settings > Update.
+
+- Update put the new omega-zero beside the program it was started as, which is the loader
+  `launch_frontend.sh` starts it through, `/lib/ld-linux-aarch64.so.1`, and said CARD FULL when
+  that read-only folder refused it. It now always replaces `System/omega-zero` on the card, and
+  says CARD FULL only when the card is full; CARD READ-ONLY and WRITE FAILED say what else went
+  wrong.
+- What Update says, a check's answer or what went wrong, stays on its row until Settings closes;
+  opened again, the row shows the version running. An update put in place still asks for its
+  restart.
+
 ## omega-zero 2.1.0: clear carts show their board
 
 A small update, the first released on its own: Settings > Update on the console fetches it.
@@ -10,10 +23,10 @@ A small update, the first released on its own: Settings > Update on the console 
   contacts along the foot and the black chips read as such, not as more green. The clock's chip,
   its crystal, the ROM and the coin cell stand higher on the board, so more of them shows over
   a GBA cart's label.
-- Releases are numbered for what they hold: a big feature release moves the first number, a
-  small update the second (`scripts/version.sh big` or `small`, or `task version:big` and
-  `task version:small`, name the next one from this changelog's Unreleased section). The fork's
-  releases start at 2.0.0; 1.2.0 and before are upstream's.
+- Releases are numbered for what they hold: a big feature release moves the middle number, a
+  small update or a bug fix the last (`scripts/version.sh big` or `small`, or `task version:big`
+  and `task version:small`, name the next one from this changelog's Unreleased section). The
+  fork's releases start at 2.0.0; 1.2.0 and before are upstream's.
 - CI names each failing test in an annotation anyone can read on the run.
 
 ## omega-zero 2.0.0: Slot's buttons, favorites, RetroAchievements and updates on the console

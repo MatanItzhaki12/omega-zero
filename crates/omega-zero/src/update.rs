@@ -25,6 +25,16 @@ pub const ASSET_SUM: &str = "omega-zero-aarch64.sha256";
 /// What the running build is: the version it was released as.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Where omega-zero is on the card, from its root: what an update replaces. Not the running
+/// program's own path, which is the loader `launch_frontend.sh` starts it through,
+/// `/lib/ld-linux-aarch64.so.1`.
+pub const PROGRAM: &str = "System/omega-zero";
+
+/// omega-zero on the card rooted at `root`.
+pub fn program(root: &Path) -> PathBuf {
+    root.join(PROGRAM)
+}
+
 /// Where the update stands.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Update {
@@ -103,6 +113,20 @@ impl Updater {
         }
     }
 
+    /// Settings closing: what the row said, a check's answer or what went wrong, goes, and the
+    /// version running shows again. A check or a download under way goes on, and an update put
+    /// in place still asks for its restart.
+    pub fn settle(&self) {
+        if let Ok(mut s) = self.state.lock() {
+            if matches!(
+                *s,
+                Update::Latest | Update::Available { .. } | Update::Failed(_)
+            ) {
+                *s = Update::Idle;
+            }
+        }
+    }
+
     /// Asks GitHub for the latest release, on a thread of its own.
     pub fn check(&self) {
         if self.state().busy() {
@@ -135,8 +159,9 @@ impl Updater {
         }
     }
 
-    /// Downloads the release found and puts it in place of `exe`, on a thread of its own.
-    pub fn install(&self, exe: PathBuf) {
+    /// Downloads the release found and puts it in place of `program`, omega-zero on the card,
+    /// on a thread of its own.
+    pub fn install(&self, program: PathBuf) {
         let Update::Available {
             version,
             url,
@@ -150,7 +175,7 @@ impl Updater {
         let spawned = std::thread::Builder::new()
             .name("omega-update".into())
             .spawn(move || {
-                let done = match install(&exe, &url, &sum_url) {
+                let done = match install(&program, &url, &sum_url) {
                     Ok(()) => Update::Installed(version),
                     Err(why) => {
                         eprintln!("omega-zero: update: {why}");
@@ -212,7 +237,10 @@ pub fn sum_of(sum: &str) -> Option<String> {
     (hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit())).then_some(hex)
 }
 
-fn install(exe: &Path, url: &str, sum_url: &str) -> Result<(), &'static str> {
+fn install(program: &Path, url: &str, sum_url: &str) -> Result<(), &'static str> {
+    if !program.is_file() {
+        return Err("NOT ON CARD");
+    }
     let sum = fetch(sum_url).body()?;
     let want = sum_of(&String::from_utf8_lossy(&sum)).ok_or("BAD RELEASE")?;
     let bytes = fetch(url).body()?;
@@ -222,16 +250,28 @@ fn install(exe: &Path, url: &str, sum_url: &str) -> Result<(), &'static str> {
     if !is_aarch64_elf(&bytes) {
         return Err("BAD RELEASE");
     }
-    let dir = exe.parent().ok_or("FAILED")?;
-    let name = exe.file_name().ok_or("FAILED")?.to_string_lossy();
+    let dir = program.parent().ok_or("NOT ON CARD")?;
+    let name = program.file_name().ok_or("NOT ON CARD")?.to_string_lossy();
     let fresh = dir.join(format!("{name}.download"));
     let previous = dir.join(format!("{name}.previous"));
-    std::fs::write(&fresh, &bytes).map_err(|_| "CARD FULL")?;
+    std::fs::write(&fresh, &bytes).map_err(|e| unwritten(&e))?;
     set_executable(&fresh);
     // the running one is kept to go back to; the new one takes its name in one step
-    std::fs::copy(exe, &previous).map_err(|_| "CARD FULL")?;
-    std::fs::rename(&fresh, exe).map_err(|_| "FAILED")?;
+    std::fs::copy(program, &previous).map_err(|e| unwritten(&e))?;
+    std::fs::rename(&fresh, program).map_err(|e| unwritten(&e))?;
     Ok(())
+}
+
+/// What the row says for a write to the card that failed with `e`: CARD FULL only when the
+/// card is.
+pub fn unwritten(e: &std::io::Error) -> &'static str {
+    const NO_SPACE: i32 = 28;
+    const READ_ONLY: i32 = 30;
+    match (e.kind(), e.raw_os_error()) {
+        (_, Some(NO_SPACE)) | (std::io::ErrorKind::StorageFull, _) => "CARD FULL",
+        (_, Some(READ_ONLY)) | (std::io::ErrorKind::PermissionDenied, _) => "CARD READ-ONLY",
+        _ => "WRITE FAILED",
+    }
 }
 
 #[cfg(unix)]
@@ -465,6 +505,43 @@ mod tests {
         assert_eq!(answered(b"\n403").why(), "GITHUB BUSY");
         assert_eq!(answered(b"\n000").why(), "NO NETWORK");
         assert_eq!(answered(b"").why(), "NO NETWORK");
+    }
+
+    #[test]
+    fn only_a_full_card_says_it_is_full() {
+        let e = |code| std::io::Error::from_raw_os_error(code);
+        assert_eq!(unwritten(&e(28)), "CARD FULL");
+        assert_eq!(unwritten(&e(30)), "CARD READ-ONLY");
+        assert_eq!(unwritten(&e(13)), "CARD READ-ONLY");
+        assert_eq!(unwritten(&e(5)), "WRITE FAILED");
+    }
+
+    #[test]
+    fn the_update_replaces_omega_zero_on_the_card_never_the_loader() {
+        let root = Path::new("/mnt/sdcard");
+        assert_eq!(program(root), Path::new("/mnt/sdcard/System/omega-zero"));
+    }
+
+    #[test]
+    fn closing_settings_takes_a_message_away_but_not_a_restart_or_a_download() {
+        let u = Updater::default();
+        for (said, kept) in [
+            (Update::Failed("CARD FULL"), Update::Idle),
+            (Update::Latest, Update::Idle),
+            (
+                Update::Downloading("2.2.0".into()),
+                Update::Downloading("2.2.0".into()),
+            ),
+            (
+                Update::Installed("2.2.0".into()),
+                Update::Installed("2.2.0".into()),
+            ),
+        ] {
+            u.set(said);
+            u.settle();
+            assert_eq!(u.state(), kept);
+        }
+        assert_eq!(Update::Idle.text(), format!("V{VERSION}"));
     }
 
     #[test]
