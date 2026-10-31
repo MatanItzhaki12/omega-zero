@@ -426,8 +426,9 @@ fn a_boot_on_favorites_draws_its_labels_first_and_no_cart_twice() {
     );
 }
 
-/// Settings > Gameplay > Account, on the keyboard: the user name, then the password, kept on
-/// the card for the sign-in, which turns RetroAchievements on; Y signs out and forgets them.
+/// Settings > RetroAchievements > Account, on the keyboard: the user name, then the password,
+/// kept on the card for the sign-in, which turns RetroAchievements on; Y signs out and forgets
+/// them.
 #[test]
 fn account_signs_in_to_retroachievements_on_the_keyboard_and_y_signs_out() {
     // no request may leave the test: the sign-in is answered as a network error
@@ -435,10 +436,10 @@ fn account_signs_in_to_retroachievements_on_the_keyboard_and_y_signs_out() {
     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
     let mut a = boot(d.path());
     a.apply(Action::QuickMenu);
-    for _ in 0..3 {
+    for _ in 0..5 {
         press(&mut a, Btn::Down);
     }
-    assert_eq!(a.settings_row(), Some(omega_ui::SettingsRow::Gameplay));
+    assert_eq!(a.settings_row(), Some(omega_ui::SettingsRow::Achievements));
     press(&mut a, Btn::A);
     a.finish_slide();
     let lit = |a: &App| a.options_view().map(|v| v.lines[v.lit].0);
@@ -451,9 +452,6 @@ fn account_signs_in_to_retroachievements_on_the_keyboard_and_y_signs_out() {
         }
         panic!("Down never reached {row:?}");
     };
-    down_to(&mut a, omega_zero::options::OptionRow::Achievements);
-    press(&mut a, Btn::A);
-    a.finish_slide();
     assert_eq!(a.options_view().unwrap().title, "ACHIEVEMENTS");
     down_to(&mut a, omega_zero::options::OptionRow::Account);
     let view = a.options_view().expect("the ACHIEVEMENTS panel");
@@ -503,27 +501,27 @@ fn account_signs_in_to_retroachievements_on_the_keyboard_and_y_signs_out() {
     assert!(!a.achievements_account());
 }
 
-/// GAMEPLAY's last row opens RetroAchievements' own panel, and B comes back to it.
+/// RetroAchievements stands in CONFIGS under Labels, a row with only its ›, and opens its own
+/// panel; B comes back to it. GAMEPLAY holds none of it.
 #[test]
-fn gameplay_opens_a_panel_of_its_own_for_retroachievements() {
+fn retroachievements_opens_from_configs_under_labels() {
+    use omega_ui::SettingsRow;
     use omega_zero::options::OptionRow;
     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
     let mut a = boot(d.path());
     a.apply(Action::QuickMenu);
-    for _ in 0..3 {
+    for _ in 0..4 {
         press(&mut a, Btn::Down);
     }
-    press(&mut a, Btn::A);
-    a.finish_slide();
-    let view = a.options_view().expect("the GAMEPLAY panel");
-    assert_eq!(view.title, "GAMEPLAY");
-    let (last, value) = view.lines.last().unwrap().clone();
-    assert_eq!((last, value.as_str()), (OptionRow::Achievements, "OFF"));
-    assert!(
-        !view.lines.iter().any(|(r, _)| *r == OptionRow::Account),
-        "the account stayed on GAMEPLAY"
+    assert_eq!(a.settings_row(), Some(SettingsRow::Labels));
+    press(&mut a, Btn::Down);
+    assert_eq!(a.settings_row(), Some(SettingsRow::Achievements));
+    assert_eq!(
+        a.settings_text(SettingsRow::Achievements),
+        None,
+        "no ON or OFF"
     );
-    press(&mut a, Btn::Up);
+    assert!(SettingsRow::Achievements.opens());
     press(&mut a, Btn::A);
     a.finish_slide();
     let view = a.options_view().expect("the ACHIEVEMENTS panel");
@@ -534,12 +532,91 @@ fn gameplay_opens_a_panel_of_its_own_for_retroachievements() {
     );
     press(&mut a, Btn::B);
     a.finish_slide();
-    let view = a.options_view().expect("B left GAMEPLAY");
-    assert_eq!(view.title, "GAMEPLAY");
-    assert_eq!(view.lines[view.lit].0, OptionRow::Achievements);
+    assert_eq!(a.settings_row(), Some(SettingsRow::Achievements));
+    assert!(
+        !omega_zero::options::OptionsPage::Gameplay
+            .rows()
+            .iter()
+            .any(|r| matches!(
+                r,
+                OptionRow::Cheevos | OptionRow::Account | OptionRow::Hardcore
+            )),
+        "achievements stayed on GAMEPLAY"
+    );
+}
+
+/// GAMEPLAY's last row, Emulators, opens EMULATORS: each system's default core, which the
+/// games not switched by hand follow, and how many were switched, which A puts back.
+#[test]
+fn emulators_set_each_systems_default_and_put_switched_games_back() {
+    use omega_store::{core_for_platform, write_selected_core, Core, Platform};
+    use omega_zero::options::OptionRow;
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    write_selected_core(d.path(), "Emerald", Core::Gpsp).unwrap();
+    let mut a = boot(d.path());
+    a.apply(Action::QuickMenu);
+    for _ in 0..2 {
+        press(&mut a, Btn::Down);
+    }
+    press(&mut a, Btn::A);
+    a.finish_slide();
+    let view = a.options_view().expect("the GAMEPLAY panel");
+    let (last, value) = view.lines.last().unwrap().clone();
+    assert_eq!(
+        (last, value.as_str()),
+        (OptionRow::Emulators, ""),
+        "only a ›"
+    );
+    press(&mut a, Btn::Up);
+    press(&mut a, Btn::A);
+    a.finish_slide();
+    let view = a.options_view().expect("the EMULATORS panel");
+    assert_eq!(view.title, "EMULATORS");
+    let said: Vec<(OptionRow, String)> = view.lines.clone();
+    assert_eq!(
+        said,
+        [
+            (OptionRow::DefaultCore(Platform::Gba), "MGBA".to_string()),
+            (OptionRow::Switched(Platform::Gba), "1".to_string()),
+            (OptionRow::DefaultCore(Platform::Snes), "SNES9X".to_string()),
+            (OptionRow::Switched(Platform::Snes), "NONE".to_string()),
+        ]
+    );
+
+    // the default moves the games not switched, and leaves the switched one where it is
+    press(&mut a, Btn::Right);
+    assert_eq!(a.option_text(OptionRow::DefaultCore(Platform::Gba)), "GPSP");
+    assert_eq!(
+        core_for_platform(d.path(), "Fusion", Platform::Gba),
+        Core::Gpsp
+    );
+    assert_eq!(a.option_text(OptionRow::Switched(Platform::Gba)), "NONE");
+    press(&mut a, Btn::Left);
+    assert_eq!(
+        core_for_platform(d.path(), "Fusion", Platform::Gba),
+        Core::Mgba
+    );
+    assert_eq!(
+        core_for_platform(d.path(), "Emerald", Platform::Gba),
+        Core::Gpsp
+    );
+
+    // A on Switched puts Emerald back on the default
+    press(&mut a, Btn::Down);
+    assert_eq!(a.option_text(OptionRow::Switched(Platform::Gba)), "1");
+    press(&mut a, Btn::A);
+    assert_eq!(a.option_text(OptionRow::Switched(Platform::Gba)), "NONE");
+    assert_eq!(
+        core_for_platform(d.path(), "Emerald", Platform::Gba),
+        Core::Mgba
+    );
+    assert!(omega_store::read_selected_cores(d.path()).is_empty());
+
     press(&mut a, Btn::B);
     a.finish_slide();
-    assert_eq!(a.settings_row(), Some(omega_ui::SettingsRow::Gameplay));
+    let view = a.options_view().expect("B left EMULATORS");
+    assert_eq!(view.title, "GAMEPLAY");
+    assert_eq!(view.lines[view.lit].0, OptionRow::Emulators);
 }
 
 /// Settings > Achievements in a game: whether the game was found, and the switches; with

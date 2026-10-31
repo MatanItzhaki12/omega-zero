@@ -32,7 +32,9 @@ pub use cart_shell::{
 };
 pub use config::{move_config, CONFIG_DIR};
 pub use core::{
-    core_for, core_for_platform, read_selected_cores, write_selected_core, Core, SELECTED_CORE_FILE,
+    clear_selected_core, core_for, core_for_platform, default_core, read_selected_cores,
+    switched_core, write_default_core, write_selected_core, Core, DEFAULT_CORE_FILE,
+    SELECTED_CORE_FILE,
 };
 pub use font::Font;
 pub use gb_palette::{GbColors, GbPalette};

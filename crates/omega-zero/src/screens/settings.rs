@@ -5,6 +5,8 @@ use omega_input::{Action, Btn};
 use omega_store::FF_SPEEDS;
 use omega_ui::{date_time_text_in, Draw, QuickValue, RowShown, SettingsFaces, SettingsMenu};
 
+use crate::options::OptionRow;
+
 pub use omega_ui::{SettingsGroup, SettingsRow};
 
 use crate::app::{App, Phase};
@@ -28,16 +30,17 @@ impl App {
     /// What a config row is set to; a row that opens a screen shows none of these.
     pub fn settings_value(&self, row: SettingsRow) -> Option<QuickValue> {
         match row {
-            SettingsRow::FastForward => QuickValue::speed(self.state.ff_speed),
             SettingsRow::ColourCorrection => Some(QuickValue::flag(self.state.colour_correction)),
             SettingsRow::ScreenFilter => Some(QuickValue::filter(self.state.screen_filter)),
             SettingsRow::Gameplay
             | SettingsRow::Shelf
             | SettingsRow::Labels
+            | SettingsRow::Achievements
             | SettingsRow::DateTime
             | SettingsRow::Network
             | SettingsRow::Bluetooth
             | SettingsRow::Background
+            | SettingsRow::Update
             | SettingsRow::About => None,
         }
     }
@@ -60,6 +63,7 @@ impl App {
                 BluetoothSummary::On => QuickValue::On.text().to_string(),
                 BluetoothSummary::Connected(name) => name.to_uppercase(),
             }),
+            SettingsRow::Update => Some(self.updater.state().text()),
             _ => self.settings_value(row).map(|v| v.text().to_string()),
         }
     }
@@ -96,16 +100,25 @@ impl App {
     }
 
     /// The rows Settings lists on this handheld: Network only where there is a Wi-Fi radio,
-    /// Bluetooth only where there is Bluetooth.
+    /// Bluetooth only where there is Bluetooth, and Update where there is Wi-Fi to fetch it
+    /// over and GENERAL has room for it on this screen.
     pub fn settings_rows(&self) -> Vec<SettingsRow> {
-        SettingsRow::ALL
+        let mut rows: Vec<SettingsRow> = SettingsRow::ALL
             .into_iter()
             .filter(|r| match r {
-                SettingsRow::Network => self.wifi.present(),
+                SettingsRow::Network | SettingsRow::Update => self.wifi.present(),
                 SettingsRow::Bluetooth => self.bluetooth.present(),
                 _ => true,
             })
-            .collect()
+            .collect();
+        let general = rows
+            .iter()
+            .filter(|r| r.group() == SettingsGroup::General)
+            .count() as u32;
+        if general > omega_ui::general_room(omega_ui::configs_in(&rows)) {
+            rows.retain(|r| *r != SettingsRow::Update);
+        }
+        rows
     }
 
     pub(crate) fn settings_input(&mut self, row: SettingsRow, action: Action) {
@@ -115,6 +128,7 @@ impl App {
             Action::GbaDown(Btn::Down) => row.down_in(&rows),
             Action::GbaDown(Btn::Left) => return self.change_setting(row, false),
             Action::GbaDown(Btn::Right) => return self.change_setting(row, true),
+            Action::GbaDown(Btn::A) if row == SettingsRow::Update => return self.press_update(),
             Action::GbaDown(Btn::A) => return self.open_settings_row(row),
             Action::GbaDown(Btn::B | Btn::Start) | Action::QuickMenu => {
                 return self.go(Phase::Shelf, Dir::FromAside);
@@ -129,14 +143,17 @@ impl App {
             SettingsRow::Gameplay => Phase::Options(OptionsScreen::new(OptionsPage::Gameplay)),
             SettingsRow::Shelf => Phase::Options(OptionsScreen::new(OptionsPage::Shelf)),
             SettingsRow::Labels => Phase::Labels(LabelsScreen::default()),
+            SettingsRow::Achievements => {
+                Phase::Options(OptionsScreen::new(OptionsPage::Achievements))
+            }
             SettingsRow::DateTime => clock_screen(self.utc_secs(), self.state.utc_offset_min, true),
             SettingsRow::Network => Phase::Network(WifiScreen::default()),
             SettingsRow::Bluetooth => Phase::Bluetooth(BluetoothScreen::default()),
             SettingsRow::Background => Phase::Background(BackgroundScreen::default()),
             SettingsRow::About => Phase::About,
-            SettingsRow::FastForward
-            | SettingsRow::ColourCorrection
-            | SettingsRow::ScreenFilter => return,
+            SettingsRow::ColourCorrection | SettingsRow::ScreenFilter | SettingsRow::Update => {
+                return
+            }
         };
         self.go(to, Dir::Deeper);
     }
@@ -144,13 +161,6 @@ impl App {
     pub(crate) fn change_setting(&mut self, row: SettingsRow, right: bool) {
         let s = &mut self.state;
         match row {
-            SettingsRow::FastForward => {
-                let to = ff_next(s.ff_speed, right);
-                if to == s.ff_speed {
-                    return;
-                }
-                s.ff_speed = to;
-            }
             SettingsRow::ColourCorrection => {
                 s.colour_correction = !s.colour_correction;
                 self.colour_pending = Some(s.colour_correction);
@@ -159,13 +169,35 @@ impl App {
             SettingsRow::Gameplay
             | SettingsRow::Shelf
             | SettingsRow::Labels
+            | SettingsRow::Achievements
             | SettingsRow::DateTime
             | SettingsRow::Network
             | SettingsRow::Bluetooth
             | SettingsRow::Background
+            | SettingsRow::Update
             | SettingsRow::About => return,
         }
         self.persist();
+    }
+
+    /// A on Update: checks for a newer release, installs the one found, or restarts onto the
+    /// one installed; while it is checking or downloading, A is refused.
+    fn press_update(&mut self) {
+        use crate::update::Update;
+        match self.updater.state() {
+            Update::Idle | Update::Latest | Update::Failed(_) => self.updater.check(),
+            Update::Available { .. } => match std::env::current_exe() {
+                Ok(exe) => self.updater.install(exe),
+                Err(_) => self.refuse(),
+            },
+            Update::Installed(_) => self.begin_restart(),
+            Update::Checking | Update::Downloading(_) => self.refuse(),
+        }
+    }
+
+    /// Steps Fast Forward's speed, which GAMEPLAY and the in-game menu both hold.
+    pub(crate) fn step_ff_speed(&mut self, right: bool) {
+        self.change_option(OptionRow::FastForward, right);
     }
 
     /// The modal with `row` lit, over the backdrop, which shows round it.
@@ -179,7 +211,7 @@ impl App {
     }
 }
 
-fn ff_next(from: u8, right: bool) -> u8 {
+pub(crate) fn ff_next(from: u8, right: bool) -> u8 {
     let at = FF_SPEEDS.iter().position(|&v| v == from).unwrap_or(0);
     // OFF stands below 2X, as on Slot
     let to = if right { at + 1 } else { at.saturating_sub(1) };

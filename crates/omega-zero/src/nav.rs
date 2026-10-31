@@ -1,10 +1,10 @@
 //! Moving between screens. Every move slides: going deeper, the screen left behind leaves to
-//! the right as the one it opens comes in from the left; going back, the screen leaves to the
-//! left as the one it came from comes back from the right. Settings stands beside the shelf
-//! rather than under it, and slides the mirror way: the shelf leaves to the left as Settings
-//! comes in from the right, and going back Settings leaves to the right as the shelf comes back
-//! from the left. Only those two slides go the mirror way: the screens under Settings, and the
-//! Controls panel under the shelf, go deeper and back. The backdrop under them never moves.
+//! the left as the one it opens comes in from the right; going back, the screen leaves to the
+//! right as the one it came from comes back from the left. Settings stands beside the shelf and
+//! slides the same way: the shelf leaves to the left as Settings comes in from the right, and
+//! going back Settings leaves to the right as the shelf comes back from the left. So the screens
+//! under Settings, and the Controls panel under the shelf, carry on the way Settings came in.
+//! The backdrop under them never moves.
 //!
 //! The shelf slides in two layers rather than as one: its carts leave across, the way the
 //! slide goes, and its top bar up off the screen, and they come back the same ways.
@@ -107,11 +107,11 @@ impl Offsets {
 /// How far across a screen is that has to travel `span` to clear a canvas, `p` of the way
 /// through a slide going `dir`, as it leaves or arrives.
 pub fn across(dir: Dir, end: End, p: f32, span: f32) -> f32 {
-    // the way the screen left behind goes: right going deeper or back from Settings, left
-    // going back or out to Settings
+    // the way the screen left behind goes: left going deeper or out to Settings, right going
+    // back or back from Settings
     let rightward = match dir {
-        Dir::Deeper | Dir::FromAside => 1.0,
-        Dir::Back | Dir::Aside => -1.0,
+        Dir::Back | Dir::FromAside => 1.0,
+        Dir::Deeper | Dir::Aside => -1.0,
     };
     match end {
         End::Leaving => rightward * even(p * span),
@@ -142,8 +142,8 @@ pub fn offsets(dir: Dir, end: End, p: f32, w: f32) -> Offsets {
 /// its carts and top bar together.
 pub fn dropping(dir: Dir, end: End, p: f32, h: f32) -> Offsets {
     // as far down as a slide the same way goes across, the screen left behind going down
-    // where it would go right
-    let dy = across(dir, end, p, h);
+    // where it would go left
+    let dy = -across(dir, end, p, h);
     Offsets {
         dy,
         carts_dy: dy,

@@ -31,6 +31,7 @@ fn boot(c: &mut Compositor) -> (TempDir, Frontend) {
     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
     let state = AppState {
         clock_set: true,
+        boot_animation: true,
         ..AppState::default()
     };
     write_app_state(d.path(), &state).unwrap();

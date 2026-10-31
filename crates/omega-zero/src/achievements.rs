@@ -1,10 +1,10 @@
-//! RetroAchievements: with Settings > Gameplay > RetroAchievements switched on, omega-zero signs
+//! RetroAchievements: with Settings > RetroAchievements switched on, omega-zero signs
 //! in to the player's account and every Game Boy, Game Boy Color, GBA and SNES game is checked
 //! for achievements as it plays, each one earned said in a toast. MENU over a game says, under
 //! Settings > Achievements, which game RetroAchievements took the ROM for, and lists its
 //! achievements.
 //!
-//! The player signs in on the keyboard, from Settings > Gameplay > RetroAchievements > Account,
+//! The player signs in on the keyboard, from Settings > RetroAchievements > Account,
 //! or by writing Config/retroachievements.ini by hand:
 //!
 //! ```text
@@ -74,7 +74,7 @@ impl Account {
     /// for a token on the sign-in they are for.
     pub fn keep_password(root: &Path, user: &str, password: &str) -> std::io::Result<()> {
         let text = format!(
-            "# RetroAchievements account, typed in Settings > Gameplay > RetroAchievements >\n\
+            "# RetroAchievements account, typed in Settings > RetroAchievements >\n\
              # Account. omega-zero swaps the password for a token as soon as the site lets it\n\
              # sign in.\n\
              username = {user}\npassword = {password}\n"
@@ -373,11 +373,8 @@ impl App {
 
     /// Loads the achievements of the game in play again.
     fn reload_achievements(&mut self) {
-        let Some(rom) = self.seated_cart().map(|c| c.rom.clone()) else {
-            return;
-        };
         self.cheevos.told_game = false;
-        omega_cheevos::reload_game(self.achievements_console(), &rom);
+        omega_cheevos::reload_game();
     }
 
     /// Hardcore switched: the client takes it at once. Switched on in a game, the game starts

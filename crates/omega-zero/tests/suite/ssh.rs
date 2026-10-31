@@ -169,7 +169,7 @@ impl Rig {
             self.press(Btn::Down);
             assert_ne!(
                 self.a.settings_row(),
-                Some(SettingsRow::FastForward),
+                Some(SettingsRow::ColourCorrection),
                 "the bar went round without reaching Network"
             );
         }

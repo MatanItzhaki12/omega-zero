@@ -9,6 +9,7 @@
 
 #include "rc_api_runtime.h"
 #include "rc_client.h"
+#include "rc_hash.h"
 #include "rc_libretro.h"
 
 extern void omega_cheevos_server_call(uint32_t id, const char* url, const char* post_data,
@@ -42,6 +43,7 @@ static int login_result; /* rcheevos' code for the last sign-in: RC_OK, RC_NO_RE
 static int game_state;  /* 0 none, 1 under way, 2 loaded, 3 refused */
 static char game_error[256];
 static int game_result;
+static char game_hash[33]; /* the ROM's, to load its achievements again by */
 
 static void keep_error(char* into, const char* error) {
   snprintf(into, 256, "%s", error ? error : "");
@@ -277,10 +279,37 @@ void oc_set_memory(const struct retro_memory_descriptor* descriptors, unsigned c
   regions_ready = rc_libretro_memory_init(&regions, count ? &map : NULL, core_memory, console);
 }
 
-void oc_load_game(uint32_t console, const char* path) {
+/* Hashes the ROM at `path` into `out`. Touches no client, so it runs on a thread of its own,
+   outside the lock: reading a big ROM from the card takes a while. */
+int oc_hash_rom(uint32_t console, const char* path, char* out) {
+  return rc_hash_generate_from_file(out, console, path);
+}
+
+/* The game's achievements are being looked for, while its ROM is hashed. */
+void oc_game_looking(void) {
   game_state = 1;
   game_error[0] = '\0';
-  rc_client_begin_identify_and_load_game(client, console, path, NULL, 0, game_done, NULL);
+  game_hash[0] = '\0';
+}
+
+/* Loads the achievements of the game whose ROM hashed to `hash`; an empty one could not be. */
+void oc_load_hash(const char* hash) {
+  game_error[0] = '\0';
+  if (!hash[0]) {
+    game_state = 3;
+    game_result = RC_NOT_FOUND;
+    keep_error(game_error, "Could not read the game");
+    return;
+  }
+  snprintf(game_hash, sizeof(game_hash), "%s", hash);
+  game_state = 1;
+  rc_client_begin_load_game(client, game_hash, game_done, NULL);
+}
+
+/* Loads the last game's achievements again, by its hash. */
+void oc_reload_game(void) {
+  if (game_hash[0])
+    oc_load_hash(game_hash);
 }
 
 int oc_game_state(const char** error) {
@@ -295,6 +324,7 @@ void oc_unload_game(void) {
     rc_libretro_memory_destroy(&regions);
   regions_ready = 0;
   game_state = 0;
+  game_hash[0] = '\0';
 }
 
 int oc_summary(const char** title, uint32_t* id, uint32_t* unlocked, uint32_t* total,

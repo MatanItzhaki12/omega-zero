@@ -54,7 +54,6 @@ impl SettingsGroup {
 /// A row of the settings START opens on the shelf, in the order they are listed.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum SettingsRow {
-    FastForward,
     ColourCorrection,
     /// What a Game Boy or GBA game at 3x is drawn through: LCD, GRID or OFF.
     ScreenFilter,
@@ -63,27 +62,32 @@ pub enum SettingsRow {
     /// The SHELF panel: Recents, Game Titles, the clock and the lid.
     Shelf,
     Labels,
+    /// The ACHIEVEMENTS panel: RetroAchievements, the account and Hardcore.
+    Achievements,
     DateTime,
     Network,
     Bluetooth,
     /// THEME on the screen: the background, its motion and the colour everything takes, and the
     /// bar's font.
     Background,
+    /// omega-zero updating itself from its latest release: A checks, downloads, restarts.
+    Update,
     About,
 }
 
 impl SettingsRow {
-    pub const ALL: [SettingsRow; 11] = [
-        SettingsRow::FastForward,
+    pub const ALL: [SettingsRow; 12] = [
         SettingsRow::ColourCorrection,
         SettingsRow::ScreenFilter,
         SettingsRow::Gameplay,
         SettingsRow::Shelf,
         SettingsRow::Labels,
+        SettingsRow::Achievements,
         SettingsRow::DateTime,
         SettingsRow::Network,
         SettingsRow::Bluetooth,
         SettingsRow::Background,
+        SettingsRow::Update,
         SettingsRow::About,
     ];
 
@@ -93,32 +97,34 @@ impl SettingsRow {
 
     pub fn label(self) -> &'static str {
         match self {
-            SettingsRow::FastForward => "Fast Forward",
             SettingsRow::ColourCorrection => "Colour Correction",
             SettingsRow::ScreenFilter => "Screen Filter",
             SettingsRow::Gameplay => "Gameplay",
             SettingsRow::Shelf => "Shelf",
             SettingsRow::Labels => "Labels",
+            SettingsRow::Achievements => "RetroAchievements",
             SettingsRow::DateTime => "Date & Time",
             SettingsRow::Network => "Network",
             SettingsRow::Bluetooth => "Bluetooth",
             SettingsRow::Background => "Theme",
+            SettingsRow::Update => "Update",
             SettingsRow::About => "About",
         }
     }
 
     pub fn group(self) -> SettingsGroup {
         match self {
-            SettingsRow::FastForward
-            | SettingsRow::ColourCorrection
+            SettingsRow::ColourCorrection
             | SettingsRow::ScreenFilter
             | SettingsRow::Gameplay
             | SettingsRow::Shelf
-            | SettingsRow::Labels => SettingsGroup::Configs,
+            | SettingsRow::Labels
+            | SettingsRow::Achievements => SettingsGroup::Configs,
             SettingsRow::DateTime
             | SettingsRow::Network
             | SettingsRow::Bluetooth
             | SettingsRow::Background
+            | SettingsRow::Update
             | SettingsRow::About => SettingsGroup::General,
         }
     }
@@ -131,6 +137,7 @@ impl SettingsRow {
             SettingsRow::Gameplay
                 | SettingsRow::Shelf
                 | SettingsRow::Labels
+                | SettingsRow::Achievements
                 | SettingsRow::DateTime
                 | SettingsRow::Network
                 | SettingsRow::Bluetooth
@@ -140,11 +147,11 @@ impl SettingsRow {
     }
 
     /// The row's value stands between a ◀ and a ▶ while it is lit: every row Left and Right
-    /// change, Fast Forward's speeds and the ON/OFF switches alike, as on the Network screen.
+    /// change, the ON/OFF switch and the filters alike, as on the Network screen.
     pub fn carets(self) -> bool {
         matches!(
             self,
-            SettingsRow::FastForward | SettingsRow::ColourCorrection | SettingsRow::ScreenFilter
+            SettingsRow::ColourCorrection | SettingsRow::ScreenFilter
         )
     }
 
@@ -268,6 +275,13 @@ pub fn settings_panels(w: u32, h: u32, configs: u32) -> [[u32; 4]; 2] {
     let [x, y, pw, ph] = modal_layout(w, h, &[1])[0];
     let hug = panel_height(configs * ROW_H).min(ph);
     [[x, y, pw, hug], [x, y + hug - 1, pw, ph + 1 - hug]]
+}
+
+/// How many rows GENERAL has room for on this canvas, beside CONFIGS holding `configs`.
+pub fn general_room(configs: u32) -> u32 {
+    let [_, _, mw, mh] = modal_rect();
+    let [_, general] = settings_panels(mw, mh, configs);
+    general[3].saturating_sub(panel_height(0)) / ROW_H
 }
 
 /// How many of `rows` are in CONFIGS.

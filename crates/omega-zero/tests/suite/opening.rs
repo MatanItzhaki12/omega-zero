@@ -26,12 +26,33 @@ fn booted_on_the_shelf() -> (TempDir, App) {
     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
     let state = AppState {
         clock_set: true,
+        boot_animation: true,
         ..AppState::default()
     };
     write_app_state(d.path(), &state).unwrap();
     let (a, _) = app_booting_at(d.path(), CLOCK_IS_SET);
     assert!(matches!(a.phase(), Phase::Shelf));
     (d, a)
+}
+
+#[test]
+fn it_plays_only_where_shelf_switched_the_boot_animation_on() {
+    let d = tmp_root_with_carts(&["Emerald"]);
+    write_app_state(
+        d.path(),
+        &AppState {
+            clock_set: true,
+            ..AppState::default()
+        },
+    )
+    .unwrap();
+    let (mut a, _) = app_booting_at(d.path(), CLOCK_IS_SET);
+    assert!(
+        !AppState::default().boot_animation,
+        "it is on unless switched off"
+    );
+    a.start_opening(&Facts::default());
+    assert!(!a.opening_shown(), "it played with Boot Animation off");
 }
 
 fn opened() -> (TempDir, App) {

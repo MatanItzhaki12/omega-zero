@@ -416,6 +416,10 @@ pub struct App {
     /// The GAMEPLAY or SHELF panel, once baked.
     /// Each options panel as last baked, by its title.
     pub(crate) options_panels: Vec<(&'static str, Lone)>,
+    /// Each system's games switched off its default core by hand, as EMULATORS last counted.
+    pub(crate) switched: Vec<(Platform, Vec<String>)>,
+    /// Settings' Update: omega-zero fetching its latest release.
+    pub(crate) updater: crate::update::Updater,
     /// Frame blending or the Game Boy's palette changed, for the game in play to take.
     pub(crate) core_options_pending: bool,
     /// The picked cart's name over the shelf, baked, with its size in art pixels.
@@ -481,6 +485,8 @@ impl App {
             start_notice: None,
             recents: Vec::new(),
             options_panels: Vec::new(),
+            switched: Vec::new(),
+            updater: Default::default(),
             core_options_pending: false,
             title_face: None,
             cheevos: Default::default(),
@@ -2690,8 +2696,15 @@ impl App {
             return;
         }
         let seat = omega_store::core_for_platform(&root, &cart.stem, cart.platform);
+        let default = omega_store::default_core(&root, cart.platform);
+        let switched = seat != default;
         let now = self.now();
-        let mut picker = CorePicker::open(cores, seat, now);
+        let mut picker = CorePicker::open(cores, seat, default, now);
+        // a game switched by hand: Y puts it back on the default
+        if switched {
+            self.hud
+                .toast(Toast::Emulator("Y puts it on the default"), now);
+        }
         if self.core_faces_ready() {
             picker.start(now);
         }
@@ -2712,6 +2725,7 @@ impl App {
             Action::GbaDown(Btn::Right) | Action::ShelfRight => Press::Right,
             Action::GbaDown(Btn::A) => Press::Keep,
             Action::GbaDown(Btn::B) => Press::Back,
+            Action::GbaDown(Btn::Y) => Press::Default,
             _ => return,
         };
         let now = self.now();
@@ -3028,6 +3042,8 @@ impl App {
         }
     }
 
+    /// Keeps `core` for the cart the shelf is on: its system's default is kept as none, so the
+    /// cart follows the default wherever Settings moves it.
     fn write_core(&self, core: Core) {
         let (Some(root), Some(cart)) = (
             self.root.clone(),
@@ -3035,7 +3051,11 @@ impl App {
         ) else {
             return;
         };
-        if let Err(e) = omega_store::write_selected_core(&root, &cart.stem, core) {
+        let written = match core == omega_store::default_core(&root, cart.platform) {
+            true => omega_store::clear_selected_core(&root, &cart.stem),
+            false => omega_store::write_selected_core(&root, &cart.stem, core),
+        };
+        if let Err(e) = written {
             eprintln!("omega-zero: core: could not write selected_core.ini: {e}");
         }
     }

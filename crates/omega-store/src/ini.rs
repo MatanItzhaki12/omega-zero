@@ -62,13 +62,25 @@ pub fn set(text: &str, key: &str, value: Option<&str>) -> std::io::Result<String
 }
 
 pub fn write(root: &Path, file: &str, key: &str, value: &str) -> std::io::Result<()> {
+    put(root, file, key, Some(value))
+}
+
+/// Takes `key`'s entry out of `file`; one that is not there is left as it was.
+pub fn remove(root: &Path, file: &str, key: &str) -> std::io::Result<()> {
+    if value(root, file, key).is_none() {
+        return Ok(());
+    }
+    put(root, file, key, None)
+}
+
+fn put(root: &Path, file: &str, key: &str, value: Option<&str>) -> std::io::Result<()> {
     let path = root.join(file);
     let existing = match std::fs::read_to_string(&path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(e),
     };
-    let out = set(&existing, key, Some(value))
+    let out = set(&existing, key, value)
         .map_err(|e| std::io::Error::new(e.kind(), format!("{file} {e}")))?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;

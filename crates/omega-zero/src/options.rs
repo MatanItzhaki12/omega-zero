@@ -3,27 +3,29 @@
 //! steps it on, and B or MENU go back to Settings. Each row's note, under the rows, says what it
 //! does.
 //!
-//! GAMEPLAY: Fast Forward Sound and Rumble, which stood in CONFIGS, then Load State on Insert,
-//! Save State on Eject, Rewind, Turbo Buttons, Frame Blending and the Game Boy's Palette.
+//! GAMEPLAY: Fast Forward's speed, its Sound and Rumble, which stood in CONFIGS, then Load State
+//! on Insert, Save State on Eject, Rewind, Turbo Buttons, Frame Blending and the Game Boy's
+//! Palette. Its last row, Emulators, opens EMULATORS: the core each system's games run on unless
+//! one was switched by hand in the core picker, and a row a system to put those back on it.
 //!
-//! SHELF: Recents, Game Titles, the Clock's 12 or 24 hours, and Lid Power Off.
+//! SHELF: Recents, Game Titles, the Clock's 12 or 24 hours, Lid Power Off, and the Boot
+//! Animation, the opening's terminal, off unless switched on.
 //!
-//! GAMEPLAY's last row, RetroAchievements, opens a panel of its own, ACHIEVEMENTS: switching
-//! them on, the account and Hardcore. Its Account row signs in on the keyboard, as Labels signs
-//! in to ScreenScraper: A asks for the user name and then the password, and Y signs out.
+//! ACHIEVEMENTS, opened from CONFIGS' RetroAchievements: switching them on, the account and
+//! Hardcore. Its Account row signs in on the keyboard, as Labels signs in to ScreenScraper: A
+//! asks for the user name and then the password, and Y signs out.
 
 use omega_input::{Action, Btn};
-use omega_store::{Blending, LID_OFF_MINUTES};
+use omega_store::{Blending, Core, Platform, LID_OFF_MINUTES};
 use omega_ui::kit::palette::Palette;
 use omega_ui::kit::panel::panel_face;
 use omega_ui::kit::row::{panel_height, row_face, row_rect, Row};
-use omega_ui::Keyboard;
-use omega_ui::{Draw, UndoFace};
+use omega_ui::{Draw, Keyboard, QuickValue, Toast, UndoFace};
 
 use crate::app::{App, Phase};
 use crate::nav::Dir;
 use crate::screens::lone::{notes, notes_height, over, rows_height, Lone, NOTE_GAP};
-use crate::screens::settings::SettingsRow;
+use crate::screens::settings::{ff_next, SettingsRow};
 
 /// How wide a panel is, in art pixels: room for Load State on Insert and a palette's name.
 pub const PANEL_W: u32 = 268;
@@ -32,9 +34,14 @@ pub const PANEL_W: u32 = 268;
 pub enum OptionsPage {
     Gameplay,
     Shelf,
-    /// RetroAchievements, opened from GAMEPLAY's last row.
+    /// RetroAchievements, opened from CONFIGS.
     Achievements,
+    /// Each system's default core, opened from GAMEPLAY's last row.
+    Emulators,
 }
+
+/// The systems with more than one core to run on, so a default to pick.
+pub const EMULATOR_SYSTEMS: [Platform; 2] = [Platform::Gba, Platform::Snes];
 
 impl OptionsPage {
     pub fn title(self) -> &'static str {
@@ -42,12 +49,14 @@ impl OptionsPage {
             OptionsPage::Gameplay => "GAMEPLAY",
             OptionsPage::Shelf => "SHELF",
             OptionsPage::Achievements => "ACHIEVEMENTS",
+            OptionsPage::Emulators => "EMULATORS",
         }
     }
 
     pub fn rows(self) -> &'static [OptionRow] {
         match self {
             OptionsPage::Gameplay => &[
+                OptionRow::FastForward,
                 OptionRow::FastForwardSound,
                 OptionRow::Rumble,
                 OptionRow::LoadOnInsert,
@@ -56,16 +65,23 @@ impl OptionsPage {
                 OptionRow::Turbo,
                 OptionRow::Blending,
                 OptionRow::Palette,
-                OptionRow::Achievements,
+                OptionRow::Emulators,
             ],
             OptionsPage::Achievements => {
                 &[OptionRow::Cheevos, OptionRow::Account, OptionRow::Hardcore]
             }
+            OptionsPage::Emulators => &[
+                OptionRow::DefaultCore(Platform::Gba),
+                OptionRow::Switched(Platform::Gba),
+                OptionRow::DefaultCore(Platform::Snes),
+                OptionRow::Switched(Platform::Snes),
+            ],
             OptionsPage::Shelf => &[
                 OptionRow::Recents,
                 OptionRow::Titles,
                 OptionRow::Clock,
                 OptionRow::LidOff,
+                OptionRow::BootAnimation,
             ],
         }
     }
@@ -73,8 +89,9 @@ impl OptionsPage {
     /// The Settings row that opens it, or the panel it opens from.
     pub fn settings_row(self) -> SettingsRow {
         match self {
-            OptionsPage::Gameplay | OptionsPage::Achievements => SettingsRow::Gameplay,
+            OptionsPage::Gameplay | OptionsPage::Emulators => SettingsRow::Gameplay,
             OptionsPage::Shelf => SettingsRow::Shelf,
+            OptionsPage::Achievements => SettingsRow::Achievements,
         }
     }
 
@@ -82,14 +99,16 @@ impl OptionsPage {
     /// Settings opens.
     pub fn parent(self) -> Option<(OptionsPage, OptionRow)> {
         match self {
-            OptionsPage::Achievements => Some((OptionsPage::Gameplay, OptionRow::Achievements)),
-            OptionsPage::Gameplay | OptionsPage::Shelf => None,
+            OptionsPage::Emulators => Some((OptionsPage::Gameplay, OptionRow::Emulators)),
+            OptionsPage::Gameplay | OptionsPage::Shelf | OptionsPage::Achievements => None,
         }
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum OptionRow {
+    /// Fast Forward's speed, which stood in CONFIGS.
+    FastForward,
     FastForwardSound,
     Rumble,
     LoadOnInsert,
@@ -102,8 +121,13 @@ pub enum OptionRow {
     Titles,
     Clock,
     LidOff,
-    /// GAMEPLAY's way into the ACHIEVEMENTS panel.
-    Achievements,
+    BootAnimation,
+    /// GAMEPLAY's way into the EMULATORS panel.
+    Emulators,
+    /// The core a system's games run on unless switched by hand.
+    DefaultCore(Platform),
+    /// How many of a system's games were switched to another core by hand: A puts them back.
+    Switched(Platform),
     Cheevos,
     /// The RetroAchievements account: A signs in on the keyboard, Y signs out.
     Account,
@@ -113,11 +137,17 @@ pub enum OptionRow {
 impl OptionRow {
     /// A opens the keyboard or a panel on the row rather than stepping it: the row ends in a ›.
     pub fn opens(self) -> bool {
-        matches!(self, OptionRow::Account | OptionRow::Achievements)
+        matches!(self, OptionRow::Account | OptionRow::Emulators)
+    }
+
+    /// Left and Right step the row's value, which stands between a ◀ and a ▶ while it is lit.
+    pub fn carets(self) -> bool {
+        !self.opens() && !matches!(self, OptionRow::Switched(_))
     }
 
     pub fn label(self) -> &'static str {
         match self {
+            OptionRow::FastForward => "Fast Forward",
             OptionRow::FastForwardSound => "Fast Forward Sound",
             OptionRow::Rumble => "Rumble",
             OptionRow::LoadOnInsert => "Load State on Insert",
@@ -130,7 +160,12 @@ impl OptionRow {
             OptionRow::Titles => "Game Titles",
             OptionRow::Clock => "Clock",
             OptionRow::LidOff => "Lid Power Off",
-            OptionRow::Achievements => "RetroAchievements",
+            OptionRow::BootAnimation => "Boot Animation",
+            OptionRow::Emulators => "Emulators",
+            OptionRow::DefaultCore(Platform::Snes) => "SNES Default",
+            OptionRow::DefaultCore(_) => "GBA Default",
+            OptionRow::Switched(Platform::Snes) => "SNES Switched Games",
+            OptionRow::Switched(_) => "GBA Switched Games",
             OptionRow::Cheevos => "Achievements",
             OptionRow::Account => "Account",
             OptionRow::Hardcore => "Hardcore",
@@ -140,6 +175,7 @@ impl OptionRow {
     /// What the row does, in the note under the rows while it is lit.
     pub fn note(self) -> &'static str {
         match self {
+            OptionRow::FastForward => "How fast fast-forward plays",
             OptionRow::FastForwardSound => "Sound while fast-forwarding",
             OptionRow::Rumble => "For games with a rumble pak",
             OptionRow::LoadOnInsert => "A picks up where you left off",
@@ -152,7 +188,10 @@ impl OptionRow {
             OptionRow::Titles => "The cart's name over the shelf",
             OptionRow::Clock => "12 or 24-hour time",
             OptionRow::LidOff => "A shut lid powers off after this",
-            OptionRow::Achievements => "Account, hardcore and more",
+            OptionRow::BootAnimation => "The terminal before the shelf",
+            OptionRow::Emulators => "Each system's default core",
+            OptionRow::DefaultCore(_) => "Games not switched by hand",
+            OptionRow::Switched(_) => "A puts them on the default",
             OptionRow::Cheevos => "Check games for achievements",
             OptionRow::Account => "A signs in, Y signs out",
             OptionRow::Hardcore => "No state loads or rewind, from the next game",
@@ -230,9 +269,9 @@ pub fn options_panel_face(view: &OptionsView, pal: &Palette) -> UndoFace {
             w,
             &Row {
                 label: row.label(),
-                value: Some(value),
+                value: (!value.is_empty()).then_some(value.as_str()),
                 lit: i == view.lit,
-                carets: !row.opens(),
+                carets: row.carets(),
                 opens: row.opens(),
                 dim: false,
             },
@@ -264,6 +303,9 @@ impl App {
     pub fn option_text(&self, row: OptionRow) -> String {
         let s = &self.state;
         match row {
+            OptionRow::FastForward => QuickValue::speed(s.ff_speed)
+                .map(|v| v.text().to_string())
+                .unwrap_or_default(),
             OptionRow::FastForwardSound => on_off(s.ff_sound),
             OptionRow::Rumble => on_off(s.rumble),
             OptionRow::LoadOnInsert => on_off(s.auto_load),
@@ -281,7 +323,15 @@ impl App {
             OptionRow::Titles => if s.show_titles { "SHOW" } else { "HIDE" }.to_string(),
             OptionRow::Clock => if s.clock_24h { "24-HOUR" } else { "12-HOUR" }.to_string(),
             OptionRow::LidOff => format!("{} MIN", s.lid_off_min),
-            OptionRow::Achievements | OptionRow::Cheevos => on_off(s.cheevos),
+            OptionRow::BootAnimation => on_off(s.boot_animation),
+            // a row that opens a panel shows only its ›
+            OptionRow::Emulators => String::new(),
+            OptionRow::DefaultCore(platform) => self.default_core(platform).name().to_uppercase(),
+            OptionRow::Switched(platform) => match self.switched_games(platform) {
+                0 => "NONE".to_string(),
+                n => n.to_string(),
+            },
+            OptionRow::Cheevos => on_off(s.cheevos),
             OptionRow::Account => match &self.cheevos.signed_in {
                 Some(name) => name.clone(),
                 None => "SIGN IN".to_string(),
@@ -294,6 +344,13 @@ impl App {
     pub(crate) fn change_option(&mut self, row: OptionRow, right: bool) {
         let s = &mut self.state;
         match row {
+            OptionRow::FastForward => {
+                let to = ff_next(s.ff_speed, right);
+                if to == s.ff_speed {
+                    return;
+                }
+                s.ff_speed = to;
+            }
             OptionRow::FastForwardSound => s.ff_sound = !s.ff_sound,
             OptionRow::Rumble => s.rumble = !s.rumble,
             OptionRow::LoadOnInsert => s.auto_load = !s.auto_load,
@@ -317,6 +374,7 @@ impl App {
             }
             OptionRow::Titles => s.show_titles = !s.show_titles,
             OptionRow::Clock => s.clock_24h = !s.clock_24h,
+            OptionRow::BootAnimation => s.boot_animation = !s.boot_animation,
             OptionRow::Cheevos => {
                 s.cheevos = !s.cheevos;
                 match s.cheevos {
@@ -325,7 +383,11 @@ impl App {
                 }
             }
             // the keyboard signs in, not the arrows, and A opens the panel
-            OptionRow::Account | OptionRow::Achievements => return,
+            OptionRow::Account | OptionRow::Emulators => return,
+            // kept in default_core.ini, not the state
+            OptionRow::DefaultCore(platform) => return self.step_default_core(platform, right),
+            // A alone puts them back, not the arrows
+            OptionRow::Switched(_) => return,
             OptionRow::Hardcore => {
                 s.cheevos_hardcore = !s.cheevos_hardcore;
                 self.switch_hardcore();
@@ -355,9 +417,7 @@ impl App {
             lines: rows.iter().map(|r| (*r, self.option_text(*r))).collect(),
             lit: rows.iter().position(|r| *r == screen.row).unwrap_or(0),
             note: match screen.row {
-                OptionRow::Achievements | OptionRow::Cheevos | OptionRow::Account => {
-                    self.achievements_note()
-                }
+                OptionRow::Cheevos | OptionRow::Account => self.achievements_note(),
                 row => row.note().to_string(),
             },
         })
@@ -376,13 +436,20 @@ impl App {
             Action::GbaDown(Btn::Up) => screen.row = step(rows, row, false),
             Action::GbaDown(Btn::Down) => screen.row = step(rows, row, true),
             Action::GbaDown(Btn::A) if row == OptionRow::Account => self.open_sign_in(),
-            Action::GbaDown(Btn::A) if row == OptionRow::Achievements => self.go(
-                Phase::Options(OptionsScreen::new(OptionsPage::Achievements)),
-                Dir::Deeper,
-            ),
+            Action::GbaDown(Btn::A) if row == OptionRow::Emulators => {
+                self.count_switched_games();
+                self.go(
+                    Phase::Options(OptionsScreen::new(OptionsPage::Emulators)),
+                    Dir::Deeper,
+                )
+            }
+            Action::GbaDown(Btn::A) => match row {
+                OptionRow::Switched(platform) => self.unswitch_games(platform),
+                row => self.change_option(row, true),
+            },
             Action::GbaDown(Btn::Y) if row == OptionRow::Account => self.sign_out_achievements(),
             Action::GbaDown(Btn::Left) => self.change_option(row, false),
-            Action::GbaDown(Btn::Right | Btn::A) => self.change_option(row, true),
+            Action::GbaDown(Btn::Right) => self.change_option(row, true),
             Action::GbaDown(Btn::B) | Action::QuickMenu => match page.parent() {
                 Some((parent, row)) => self.go(
                     Phase::Options(OptionsScreen {
@@ -477,6 +544,96 @@ impl App {
                 self.sign_in_achievements(&user, &typed);
             }
         }
+    }
+
+    /// `platform`'s default core, as Settings set it.
+    pub fn default_core(&self, platform: Platform) -> Core {
+        match &self.root {
+            Some(root) => omega_store::default_core(root, platform),
+            None => Core::default_for(platform),
+        }
+    }
+
+    /// Steps `platform`'s default core on to the next that runs it.
+    fn step_default_core(&mut self, platform: Platform, right: bool) {
+        let Some(root) = self.root.clone() else {
+            return;
+        };
+        let to = step(
+            Core::for_platform(platform),
+            self.default_core(platform),
+            right,
+        );
+        if let Err(e) = omega_store::write_default_core(&root, platform, to) {
+            eprintln!("omega-zero: core: could not write default_core.ini: {e}");
+        }
+        self.count_switched_games();
+    }
+
+    /// How many of `platform`'s games run on a core other than its default, switched by hand,
+    /// as last counted.
+    pub fn switched_games(&self, platform: Platform) -> usize {
+        self.switched
+            .iter()
+            .find(|(p, _)| *p == platform)
+            .map_or(0, |(_, stems)| stems.len())
+    }
+
+    /// Counts each system's games switched off its default by hand: on opening EMULATORS and
+    /// after each change there, not each frame, since it reads the card.
+    pub(crate) fn count_switched_games(&mut self) {
+        let Some(root) = self.root.clone() else {
+            return;
+        };
+        let picked = omega_store::read_selected_cores(&root);
+        self.switched = EMULATOR_SYSTEMS
+            .into_iter()
+            .map(|platform| {
+                let default = omega_store::default_core(&root, platform);
+                let stems = self
+                    .carts()
+                    .filter(|c| c.platform == platform)
+                    .filter(|c| {
+                        picked
+                            .get(&c.stem)
+                            .is_some_and(|core| core.runs(platform) && *core != default)
+                    })
+                    .map(|c| c.stem.clone())
+                    .collect();
+                (platform, stems)
+            })
+            .collect();
+    }
+
+    /// A on a Switched row: every one of `platform`'s games switched by hand runs on its
+    /// default again.
+    fn unswitch_games(&mut self, platform: Platform) {
+        let Some(root) = self.root.clone() else {
+            return;
+        };
+        let stems: Vec<String> = self
+            .switched
+            .iter()
+            .find(|(p, _)| *p == platform)
+            .map(|(_, stems)| stems.clone())
+            .unwrap_or_default();
+        if stems.is_empty() {
+            return self.refuse();
+        }
+        for stem in &stems {
+            if let Err(e) = omega_store::clear_selected_core(&root, stem) {
+                eprintln!("omega-zero: core: could not write selected_core.ini: {e}");
+            }
+        }
+        self.count_switched_games();
+        let text = match stems.len() {
+            1 => "1 game on the default".to_string(),
+            n => format!("{n} games on the default"),
+        };
+        self.hud.toast(
+            Toast::Emulator(Box::leak(text.into_boxed_str())),
+            self.now(),
+        );
     }
 
     pub fn set_options_panel(&mut self, title: &'static str, panel: Lone) {

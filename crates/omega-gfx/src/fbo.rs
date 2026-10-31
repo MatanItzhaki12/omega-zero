@@ -1,6 +1,6 @@
 use crate::canvas::{out_h, out_w};
 use crate::draw::{Draw, Sprites, TexId};
-use crate::grade::blue_light_gain;
+use crate::grade::{blue_light_gain, grade_gain};
 use crate::pipeline::{GamePass, GameView};
 use crate::quad::Quad;
 use crate::shaders::{BLIT_FRAG, BLIT_VERT, BLIT_VERT_TURNED};
@@ -157,6 +157,12 @@ impl Compositor {
 
     pub fn set_blue_light(&mut self, step: u8) {
         self.gain = blue_light_gain(step);
+    }
+
+    /// The blue light filter at `blue_light`, and the picture dimmed for brightness
+    /// `brightness`'s lowest steps, below where the backlight goes.
+    pub fn set_grade(&mut self, blue_light: u8, brightness: u8) {
+        self.gain = grade_gain(blue_light, brightness);
     }
 
     pub fn set_screen_power(&mut self, t: f32) {

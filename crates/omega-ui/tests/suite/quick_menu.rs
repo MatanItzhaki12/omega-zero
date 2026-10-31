@@ -24,7 +24,6 @@ fn px(face: &UndoFace, x: u32, y: u32) -> Option<[u8; 3]> {
 /// The rows as flow.html's Settings shows them, with `lit` under the cursor.
 fn flow_rows(lit: SettingsRow) -> Vec<RowShown> {
     let value = |row| match row {
-        SettingsRow::FastForward => Some("6X"),
         SettingsRow::ColourCorrection => Some("OFF"),
         SettingsRow::DateTime => Some("OCT 10 16:00"),
         SettingsRow::Network => Some("HOME"),
@@ -134,18 +133,43 @@ fn configs_is_as_tall_as_its_rows_and_general_takes_the_rest() {
     }
 }
 
+/// The rows a handheld with Wi-Fi lists: with Bluetooth as well, GENERAL has no room for Update.
+fn listed(bluetooth: bool) -> Vec<SettingsRow> {
+    let skip = match bluetooth {
+        true => SettingsRow::Update,
+        false => SettingsRow::Bluetooth,
+    };
+    SettingsRow::ALL
+        .into_iter()
+        .filter(|r| *r != skip)
+        .collect()
+}
+
 #[test]
 fn every_row_stands_in_its_own_panels_well() {
-    let frame = settings_frame(omega_ui::configs_in(&SettingsRow::ALL), palette(NIGHT));
-    let rects = settings_row_rects(&SettingsRow::ALL, frame.wells);
-    for (row, [x, y, w, h]) in &rects {
-        let [wx, wy, ww, wh] = frame.wells[row.group().index()];
-        assert_eq!((*x, *w, *h), (wx - 1, ww + 2, ROW_H), "{row:?}");
-        assert!(*y >= wy && y + h <= wy + wh, "{row:?} is out of its well");
+    for rows in [listed(true), listed(false)] {
+        let frame = settings_frame(omega_ui::configs_in(&rows), palette(NIGHT));
+        for (row, [x, y, w, h]) in settings_row_rects(&rows, frame.wells) {
+            let [wx, wy, ww, wh] = frame.wells[row.group().index()];
+            assert_eq!((x, w, h), (wx - 1, ww + 2, ROW_H), "{row:?}");
+            assert!(y >= wy && y + h <= wy + wh, "{row:?} is out of its well");
+        }
     }
+    let general = |rows: &[SettingsRow]| {
+        rows.iter()
+            .filter(|r| r.group() == SettingsGroup::General)
+            .count() as u32
+    };
+    let room = omega_ui::general_room(omega_ui::configs_in(&listed(false)));
+    assert!(
+        general(&listed(false)) <= room,
+        "Update has no room beside Theme"
+    );
+    let frame = settings_frame(omega_ui::configs_in(&listed(true)), palette(NIGHT));
+    let rects = settings_row_rects(&listed(true), frame.wells);
     let at = |row: SettingsRow| rects.iter().find(|(r, _)| *r == row).unwrap().1;
     assert_eq!(
-        at(SettingsRow::FastForward)[1],
+        at(SettingsRow::ColourCorrection)[1],
         frame.wells[0][1],
         "CONFIGS' first row is not at its well's top"
     );
@@ -155,7 +179,7 @@ fn every_row_stands_in_its_own_panels_well() {
         "GENERAL's first row is not at its well's top"
     );
     assert_eq!(
-        at(SettingsRow::Labels)[1] + ROW_H,
+        at(SettingsRow::Achievements)[1] + ROW_H,
         frame.wells[0][1] + frame.wells[0][3],
         "CONFIGS does not hug its rows"
     );
@@ -163,9 +187,10 @@ fn every_row_stands_in_its_own_panels_well() {
 
 #[test]
 fn without_a_radio_the_rows_after_network_close_up_and_the_panels_stay() {
+    // with no Wi-Fi there is no Update to fetch over it either
     let rows: Vec<SettingsRow> = SettingsRow::ALL
         .into_iter()
-        .filter(|r| *r != SettingsRow::Network)
+        .filter(|r| !matches!(r, SettingsRow::Network | SettingsRow::Update))
         .collect();
     let frame = settings_frame(omega_ui::configs_in(&rows), palette(NIGHT));
     let all = settings_frame(omega_ui::configs_in(&SettingsRow::ALL), palette(NIGHT));
@@ -235,7 +260,7 @@ fn the_lit_row_is_a_band_and_the_others_are_clear_round_their_words() {
         value: Some("6X".into()),
         lit,
     };
-    let lit = settings_row_face(w, &shown(SettingsRow::FastForward, true), pal);
+    let lit = settings_row_face(w, &shown(SettingsRow::ColourCorrection, true), pal);
     assert_eq!((lit.w, lit.h), (w, ROW_H));
     // the band: a frame line with its corner pixels left out, round the tab colour
     assert_eq!(px(&lit, 0, 0), None, "the band's corner");
@@ -248,7 +273,7 @@ fn the_lit_row_is_a_band_and_the_others_are_clear_round_their_words() {
     );
     assert_eq!(px(&lit, 2, 2), Some(pal.tab), "the band's fill");
     assert_eq!(px(&lit, w / 2, ROW_H - 2), Some(pal.tab), "the band's fill");
-    let plain = settings_row_face(w, &shown(SettingsRow::FastForward, false), pal);
+    let plain = settings_row_face(w, &shown(SettingsRow::ColourCorrection, false), pal);
     for (x, y) in [(1, 0), (0, 1), (2, 2), (w / 2, ROW_H - 2)] {
         assert_eq!(
             px(&plain, x, y),
@@ -282,11 +307,7 @@ fn the_rows_left_and_right_change_step_between_arrows_and_the_rows_that_open_end
         .collect();
     assert_eq!(
         carets,
-        [
-            SettingsRow::FastForward,
-            SettingsRow::ColourCorrection,
-            SettingsRow::ScreenFilter
-        ]
+        [SettingsRow::ColourCorrection, SettingsRow::ScreenFilter]
     );
     let pal = palette(NIGHT);
     let w = settings_row_width(268);
@@ -319,9 +340,9 @@ fn the_rows_left_and_right_change_step_between_arrows_and_the_rows_that_open_end
 /// art pixel, at each canvas, in Night with the cursor on Fast Forward and in Amber with it on
 /// Date & Time.
 const FLOW_REFS: [(&str, u8, SettingsRow); 5] = [
-    ("640x480-night-0", NIGHT, SettingsRow::FastForward),
-    ("720x480-night-0", NIGHT, SettingsRow::FastForward),
-    ("720x720-night-0", NIGHT, SettingsRow::FastForward),
+    ("640x480-night-0", NIGHT, SettingsRow::ColourCorrection),
+    ("720x480-night-0", NIGHT, SettingsRow::ColourCorrection),
+    ("720x720-night-0", NIGHT, SettingsRow::ColourCorrection),
     ("640x480-amber-5", AMBER, SettingsRow::DateTime),
     ("720x480-amber-5", AMBER, SettingsRow::DateTime),
 ];
@@ -361,7 +382,7 @@ fn settings_is_flows_pixel_for_pixel() {
 #[test]
 fn a_sync_bakes_the_frame_once_and_a_row_only_when_it_changes() {
     let mut baked = SettingsBaked::default();
-    let rows = flow_rows(SettingsRow::FastForward);
+    let rows = flow_rows(SettingsRow::ColourCorrection);
     let first = baked.rebake(NIGHT, &rows);
     assert!(first.frame, "the first sync baked no frame");
     assert_eq!(first.rows, rows, "the first sync left rows unbaked");
@@ -395,7 +416,7 @@ fn a_sync_bakes_the_frame_once_and_a_row_only_when_it_changes() {
     let rebaked: Vec<SettingsRow> = plan.rows.iter().map(|s| s.row).collect();
     assert_eq!(
         rebaked,
-        [SettingsRow::FastForward, SettingsRow::ColourCorrection]
+        [SettingsRow::ColourCorrection, SettingsRow::ScreenFilter]
     );
     assert!(!plan.frame, "moving the cursor baked the frame");
 
@@ -417,7 +438,7 @@ fn a_sync_bakes_the_frame_once_and_a_row_only_when_it_changes() {
 
 #[test]
 fn the_palette_tints_every_face() {
-    let rows = flow_rows(SettingsRow::FastForward);
+    let rows = flow_rows(SettingsRow::ColourCorrection);
     for colour in [NIGHT, AMBER] {
         let pal = palette(colour);
         let frame = settings_frame(5, pal);
@@ -459,16 +480,17 @@ fn the_rows_run_in_the_order_the_user_chose() {
     assert_eq!(
         labels,
         [
-            "Fast Forward",
             "Colour Correction",
             "Screen Filter",
             "Gameplay",
             "Shelf",
             "Labels",
+            "RetroAchievements",
             "Date & Time",
             "Network",
             "Bluetooth",
             "Theme",
+            "Update",
             "About"
         ]
     );
@@ -479,6 +501,7 @@ fn the_rows_run_in_the_order_the_user_chose() {
             SettingsRow::Gameplay,
             SettingsRow::Shelf,
             SettingsRow::Labels,
+            SettingsRow::Achievements,
             SettingsRow::DateTime,
             SettingsRow::Network,
             SettingsRow::Bluetooth,
@@ -521,7 +544,10 @@ fn a_hidden_row_is_stepped_over_both_ways() {
         .collect();
     assert_eq!(SettingsRow::DateTime.down_in(&rows), SettingsRow::Bluetooth);
     assert_eq!(SettingsRow::Bluetooth.up_in(&rows), SettingsRow::DateTime);
-    assert_eq!(SettingsRow::About.down_in(&rows), SettingsRow::FastForward);
+    assert_eq!(
+        SettingsRow::About.down_in(&rows),
+        SettingsRow::ColourCorrection
+    );
     assert_eq!(SettingsRow::DateTime.down(), SettingsRow::Network);
 }
 

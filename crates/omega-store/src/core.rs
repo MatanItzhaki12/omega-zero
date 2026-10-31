@@ -5,6 +5,10 @@ use crate::Platform;
 
 pub const SELECTED_CORE_FILE: &str = "Config/selected_core.ini";
 
+/// Each system's default core, where Settings changed it: `GBA = gpsp`. A cart with no core of
+/// its own in `SELECTED_CORE_FILE` runs on its system's.
+pub const DEFAULT_CORE_FILE: &str = "Config/default_core.ini";
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Core {
     #[default]
@@ -115,13 +119,35 @@ pub fn core_for(root: &Path, stem: &str) -> Core {
 }
 
 pub fn core_for_platform(root: &Path, stem: &str, platform: Platform) -> Core {
+    switched_core(root, stem, platform).unwrap_or_else(|| default_core(root, platform))
+}
+
+/// The core the cart `stem` was switched to by hand, if it was, and to one that runs it.
+pub fn switched_core(root: &Path, stem: &str, platform: Platform) -> Option<Core> {
     crate::ini::value(root, SELECTED_CORE_FILE, stem)
+        .as_deref()
+        .and_then(Core::parse)
+        .filter(|core| core.runs(platform))
+}
+
+pub fn write_selected_core(root: &Path, stem: &str, core: Core) -> std::io::Result<()> {
+    crate::ini::write(root, SELECTED_CORE_FILE, stem, core.as_str())
+}
+
+/// The cart `stem` runs on its system's default core again.
+pub fn clear_selected_core(root: &Path, stem: &str) -> std::io::Result<()> {
+    crate::ini::remove(root, SELECTED_CORE_FILE, stem)
+}
+
+/// `platform`'s default core: the one Settings set, else the first it lists.
+pub fn default_core(root: &Path, platform: Platform) -> Core {
+    crate::ini::value(root, DEFAULT_CORE_FILE, platform.dir_name())
         .as_deref()
         .and_then(Core::parse)
         .filter(|core| core.runs(platform))
         .unwrap_or_else(|| Core::default_for(platform))
 }
 
-pub fn write_selected_core(root: &Path, stem: &str, core: Core) -> std::io::Result<()> {
-    crate::ini::write(root, SELECTED_CORE_FILE, stem, core.as_str())
+pub fn write_default_core(root: &Path, platform: Platform, core: Core) -> std::io::Result<()> {
+    crate::ini::write(root, DEFAULT_CORE_FILE, platform.dir_name(), core.as_str())
 }

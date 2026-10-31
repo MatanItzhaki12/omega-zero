@@ -40,6 +40,7 @@ fn seated(d: &TempDir, cart: Option<(&str, Platform)>, clock_set: bool) {
         cart: cart.map(|(stem, _)| stem.to_string()),
         cart_platform: cart.map(|(_, p)| p),
         clock_set,
+        boot_animation: true,
         ..AppState::default()
     };
     write_app_state(d.path(), &state).unwrap();

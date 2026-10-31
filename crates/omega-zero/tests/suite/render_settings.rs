@@ -204,7 +204,7 @@ fn settings_draws_the_modal_and_the_lit_rows_band_over_the_backdrop() {
     );
 
     // the lit row's band: a frame line with its corners left out, round the tab colour
-    let [x, y, w, h] = row_rect(&f, SettingsRow::FastForward);
+    let [x, y, w, h] = row_rect(&f, SettingsRow::ColourCorrection);
     assert_eq!(art(&px, x + 1, y), pal.frame, "the band's top line");
     assert_eq!(art(&px, x, y + 1), pal.frame, "the band's left line");
     assert_eq!(
@@ -254,7 +254,7 @@ fn the_palette_tints_settings_with_the_backdrop() {
         holds_the_modal(&px, &f, name);
         assert_eq!(art(&px, 0, 0), pal.bg, "{name}'s backdrop");
         assert_eq!(art(&px, mx + 3, my + mh / 2), pal.frame, "{name}'s frame");
-        let [x, y, ..] = row_rect(&f, SettingsRow::FastForward);
+        let [x, y, ..] = row_rect(&f, SettingsRow::ColourCorrection);
         assert_eq!(art(&px, x + 2, y + 2), pal.tab, "{name}'s band");
         sides.push(art(&px, mx + 3, my + mh / 2));
     }
@@ -299,7 +299,7 @@ fn the_cursor_in_general_lights_its_title_and_its_row() {
     );
     let [x, y, ..] = row_rect(&f, SettingsRow::DateTime);
     assert_eq!(art(&px, x + 2, y + 2), pal.tab, "Date & Time is not lit");
-    let [x, y, ..] = row_rect(&f, SettingsRow::FastForward);
+    let [x, y, ..] = row_rect(&f, SettingsRow::ColourCorrection);
     assert_eq!(
         art(&px, x + 2, y + 2),
         pal.well,

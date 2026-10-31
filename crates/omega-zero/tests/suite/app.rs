@@ -1056,6 +1056,39 @@ fn choosing_a_core_writes_it_and_closes() {
 }
 
 #[test]
+fn y_puts_a_switched_game_back_on_its_systems_default() {
+    let (d, mut app) = on_shelf(&["Emerald", "Zzz"]);
+    omega_store::write_selected_core(d.path(), "Emerald", Core::Gpsp).unwrap();
+    fake_picker_faces(&mut app);
+    app.apply(Action::GbaDown(Btn::X));
+    assert_eq!(app.core_picker(), Some(Core::Gpsp));
+    app.apply(Action::GbaDown(Btn::Y));
+    assert_eq!(
+        app.core_picker(),
+        Some(Core::Mgba),
+        "the chip did not go home"
+    );
+    let_it_close(&mut app);
+    assert_eq!(app.core_picker(), None);
+    assert!(
+        !omega_store::read_selected_cores(d.path()).contains_key("Emerald"),
+        "the game kept a core of its own"
+    );
+}
+
+#[test]
+fn picking_the_default_keeps_no_core_for_the_game() {
+    let (d, mut app) = on_shelf(&["Emerald", "Zzz"]);
+    omega_store::write_selected_core(d.path(), "Emerald", Core::Gpsp).unwrap();
+    fake_picker_faces(&mut app);
+    app.apply(Action::GbaDown(Btn::X));
+    app.apply(Action::GbaDown(Btn::Left));
+    app.apply(Action::GbaDown(Btn::A));
+    assert!(!omega_store::read_selected_cores(d.path()).contains_key("Emerald"));
+    assert_eq!(omega_store::core_for(d.path(), "Emerald"), Core::Mgba);
+}
+
+#[test]
 fn b_closes_the_picker_without_writing() {
     let (d, mut app) = on_shelf(&["Emerald", "Zzz"]);
     fake_picker_faces(&mut app);

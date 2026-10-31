@@ -640,7 +640,7 @@ impl App {
                 self.persist();
             }
             PauseRow::ColourCorrection => self.change_setting(SettingsRow::ColourCorrection, right),
-            PauseRow::FastForward => self.change_setting(SettingsRow::FastForward, right),
+            PauseRow::FastForward => self.step_ff_speed(right),
             PauseRow::Brightness | PauseRow::BlueLight => {
                 let (level, max) = match row {
                     PauseRow::Brightness => (&mut self.state.brightness, BRIGHTNESS_MAX),

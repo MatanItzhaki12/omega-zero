@@ -20,6 +20,9 @@ pub const URL: &str = "https://retroachievements.org/dorequest.php";
 const FORM: &str = "application/x-www-form-urlencoded";
 const PENDING: &str = "pending.txt";
 
+/// Posts a form to an address with its content type, and gives the status and body back.
+type Fetch<'a> = &'a dyn Fn(&str, &str, &str) -> (c_int, Vec<u8>);
+
 static STORE: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// The game a session was last started for, whose kept unlocks an unlock offline joins.
 static GAME: Mutex<Option<String>> = Mutex::new(None);
@@ -278,10 +281,7 @@ pub fn send_pending(
     }
 }
 
-fn send_now(
-    award: &dyn Fn(&Pending, u32) -> Option<String>,
-    fetch: &dyn Fn(&str, &str, &str) -> (c_int, Vec<u8>),
-) -> usize {
+fn send_now(award: &dyn Fn(&Pending, u32) -> Option<String>, fetch: Fetch) -> usize {
     let Some(dir) = store() else {
         return 0;
     };

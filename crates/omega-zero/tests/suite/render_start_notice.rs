@@ -48,6 +48,7 @@ fn boot(c: &mut Compositor) -> (TempDir, Frontend) {
     write_selected_core(d.path(), MMX, Core::Supafaust).unwrap();
     let state = AppState {
         clock_set: true,
+        boot_animation: true,
         cart: Some(MMX.into()),
         cart_platform: Some(Platform::Snes),
         ..AppState::default()

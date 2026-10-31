@@ -24,12 +24,16 @@ controls and conveniences and adds RetroAchievements, drawn in omega-zero's own 
 - **A screen filter**: LCD, Grid or Off, also on SELECT + A / B in a game.
 - **Slot's other settings**: Load State on Insert, Save State on Eject, Rewind, Turbo, Frame
   Blending, Game Boy palettes, Game Titles, 12-hour clock, Lid Power Off and Fast Forward OFF.
+- **A default core for each system**, with the games switched by hand put back in one press,
+  and the boot animation off unless switched on.
+- **Updates on the console**: Settings › Update fetches the latest release from GitHub, where
+  every version bump is tested, built and released by GitHub Actions.
 - **Slot's in-game menu**: Resume, Undo Save / Load, States, Settings, Restart and Exit Game.
 - **RetroAchievements** for Game Boy, Game Boy Color, GBA and SNES games, signed in on the
   keyboard, with hardcore, and an in-game page showing the game it was matched to and every
   achievement. Sign-in retries until Wi-Fi is up, and unlocks earned offline are sent later.
-- **Slot's `cart_shell.txt`** is read, clear shells look clear, and labels load first for the
-  carts on screen.
+- **Slot's `cart_shell.txt`** is read, clear shells look clear with a board, chips and a battery
+  inside, and labels load first for the carts on screen.
 
 Everything, with defaults and the files kept on the card, is in **[README-FORK.md](README-FORK.md)**.
 

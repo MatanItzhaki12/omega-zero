@@ -12,7 +12,7 @@ fn opened(seat: Core, at: Millis) -> CorePicker {
 }
 
 fn opened_over(cores: &'static [Core], seat: Core, at: Millis) -> CorePicker {
-    let mut p = CorePicker::open(cores, seat, at);
+    let mut p = CorePicker::open(cores, seat, cores[0], at);
     p.start(at);
     p
 }
@@ -188,7 +188,7 @@ fn the_open_is_a_slide_then_a_lift_and_the_board_agrees() {
 
 #[test]
 fn a_picker_waits_until_it_is_started() {
-    let mut p = CorePicker::open(GBA, Core::Mgba, 100);
+    let mut p = CorePicker::open(GBA, Core::Mgba, Core::Mgba, 100);
     assert!(p.waiting());
     assert_eq!(p.openness(5_000), 0.0);
     assert_eq!(p.waited(350), 250);
@@ -200,7 +200,7 @@ fn a_picker_waits_until_it_is_started() {
 
 #[test]
 fn a_second_start_keeps_the_first() {
-    let mut p = CorePicker::open(GBA, Core::Mgba, 0);
+    let mut p = CorePicker::open(GBA, Core::Mgba, Core::Mgba, 0);
     p.start(300);
     p.start(500);
     assert_eq!(p.openness(300 + OPEN_MS), 1.0);
@@ -208,7 +208,7 @@ fn a_second_start_keeps_the_first() {
 
 #[test]
 fn backing_out_while_waiting_finishes_at_once() {
-    let mut p = CorePicker::open(GBA, Core::Mgba, 0);
+    let mut p = CorePicker::open(GBA, Core::Mgba, Core::Mgba, 0);
     p.press(Press::Back, 50);
     assert!(p.finished(50));
 }
@@ -223,7 +223,7 @@ fn a_close_from_rest_takes_the_close_time() {
 
 #[test]
 fn the_arrows_do_nothing_while_the_picker_waits() {
-    let mut p = CorePicker::open(GBA, Core::Mgba, 0);
+    let mut p = CorePicker::open(GBA, Core::Mgba, Core::Mgba, 0);
     assert_eq!(p.press(Press::Right, 100), Outcome::Nothing);
     assert_eq!(p.seat(), Core::Mgba, "a hop started while the cart waited");
     let chip = p.chip(100);

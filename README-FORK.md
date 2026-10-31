@@ -91,13 +91,17 @@ SELECT + A / B in a game. A toast names the filter you switched to.
 MENU on the shelf opens Settings. Because the Settings window has room for only a few rows,
 Slot's extra settings live in two panels that CONFIGS opens, like THEME.
 
-**CONFIGS:** Fast Forward (OFF, 2X, 3X, 4X, 6X), Colour Correction, Screen Filter, Gameplay ›,
-Shelf ›, Labels ›. GENERAL is unchanged.
+**CONFIGS:** Colour Correction, Screen Filter, Gameplay ›, Shelf ›, Labels ›, RetroAchievements ›.
+Fast Forward's speed moved into GAMEPLAY to make room for RetroAchievements.
+
+**GENERAL:** Date & Time, Network, Bluetooth, Theme, Update, About. Update shows on a handheld
+with Wi-Fi, where GENERAL has room for it (see [Updating on the console](#updating-on-the-console)).
 
 **GAMEPLAY ›** (each row shows a line under the panel saying what it does)
 
 | Row | Choices | Default |
 |---|---|---|
+| Fast Forward | OFF, 2X, 3X, 4X, 6X: how fast fast-forward plays | 6X |
 | Fast Forward Sound | On, Off | Off |
 | Rumble | On, Off | On |
 | Load State on Insert | On, Off: off starts every game from its beginning | On |
@@ -106,9 +110,22 @@ Shelf ›, Labels ›. GENERAL is unchanged.
 | Turbo Buttons | On, Off | On |
 | Frame Blending | Off, Mix, Ghosting (mGBA only; gpSP takes it as Mix) | Off |
 | Game Boy Palette | Auto, then mGBA's 48 palettes (original Game Boy games on mGBA) | Auto |
-| RetroAchievements › | Opens the ACHIEVEMENTS panel below; its value says whether they are on | Off |
+| Emulators › | Opens the EMULATORS panel below | |
 
-**GAMEPLAY › RetroAchievements ›** (B goes back to GAMEPLAY)
+**GAMEPLAY › Emulators ›** (B goes back to GAMEPLAY)
+
+| Row | Choices | Default |
+|---|---|---|
+| GBA Default | mGBA, gpSP: the core every GBA game runs on unless switched by hand | mGBA |
+| GBA Switched Games | How many GBA games were switched to another core in the core picker; A puts them all back on the default | |
+| SNES Default | Snes9x, Supafaust | Snes9x |
+| SNES Switched Games | The same, for the SNES | |
+
+In the core picker (START on the shelf), Y puts the game back on its system's default, and
+picking the default keeps no core of its own for the game, so it follows the default from then
+on. A toast says so when the picker opens on a game switched by hand.
+
+**RetroAchievements ›** (in CONFIGS, under Labels; B goes back to Settings)
 
 | Row | Choices | Default |
 |---|---|---|
@@ -124,6 +141,7 @@ Shelf ›, Labels ›. GENERAL is unchanged.
 | Game Titles | Show, Hide: the picked cart's name under the top bar | Hide |
 | Clock | 12-hour, 24-hour: the top bar and Date & Time | 24-hour |
 | Lid Power Off | 1, 3, 5, 10, 15, 30 minutes | 3 |
+| Boot Animation | On, Off: the terminal that types out before the shelf at boot | Off |
 
 Turbo and Rewind change at once, even in a game. Frame Blending and the Palette reach a running
 game straight away.
@@ -189,7 +207,7 @@ achievements are evaluated exactly as in RetroArch.
 
 ### Signing in
 
-1. Settings › Gameplay › RetroAchievements › **Account**, then press A.
+1. Settings › RetroAchievements › **Account**, then press A.
 2. Type your user name, press START, then type your password and press START.
 3. RetroAchievements turns on and signs in. The note under the panel shows *Signed in as …*, or
    the reason it could not sign in.
@@ -278,6 +296,8 @@ Unlocked and View All show once the game is found.
 | `Config/retroachievements.ini` | The RetroAchievements user name, and the password until it is swapped for a token |
 | `Config/retroachievements/cache/` | The site's answers, for signing in and loading games offline |
 | `Config/retroachievements/pending.txt` | Unlocks earned offline, waiting to be sent |
+| `Config/default_core.ini` | Each system's default core, where EMULATORS changed it: `GBA = gpsp` |
+| `System/omega-zero.previous` | The omega-zero an update replaced, to go back to |
 | `Labels/cart_shell.txt` | Cart shells as Slot and Cart Studio write them |
 
 New keys in `Config/omega-zero.state`. A card from before this fork reads each one as its default.
@@ -290,14 +310,39 @@ New keys in `Config/omega-zero.state`. A card from before this fork reads each o
 | `gb_palette` | `auto`, or a palette's name as mGBA spells it |
 | `show_recents`, `show_titles`, `clock_24h` | `1`, `0` |
 | `lid_off_min` | `1`, `3`, `5`, `10`, `15`, `30` |
-| `cheevos`, `cheevos_hardcore` | `1`, `0` |
+| `cheevos`, `cheevos_hardcore`, `boot_animation` | `1`, `0` |
 
 `ff_speed` also takes `0` now, for OFF.
 
 ## Building and installing
 
-This fork does not publish binaries yet. Build `omega-zero` for the H700 and copy it over the one
-on a card that already runs omega-zero 1.2.0. The cores and scripts are unchanged.
+Each version is released on GitHub with the whole card tree as a zip, and `omega-zero-aarch64`
+on its own with its SHA-256. On a card that already runs omega-zero, copy `omega-zero-aarch64`
+over `System/omega-zero`, or update from the console. The cores and scripts are unchanged.
+
+### Updating on the console
+
+Settings › **Update**, with Wi-Fi on. Its value is the version running.
+
+1. A asks GitHub for the latest release. The row says *UP TO DATE*, or *GET V…* for a newer one.
+2. A again downloads that release's `omega-zero-aarch64`, checks it against the SHA-256 published
+   beside it and that it is a program for the handheld, and puts it in place. The one it replaces
+   is kept as `System/omega-zero.previous`.
+3. The row says *RESTART*: A restarts the handheld onto the new version.
+
+*NO NETWORK*, *BAD DOWNLOAD* and the like say what stopped it, and leave omega-zero as it was.
+Only omega-zero itself is updated this way; a release that changes the cores says so, and needs
+its zip. Update is not shown where GENERAL has no room for it, on a handheld with both Wi-Fi and
+Bluetooth.
+
+### Releases
+
+GitHub Actions run the tests on every push and pull request (`.github/workflows/ci.yml`). A push
+to `main` whose version in `crates/omega-zero/Cargo.toml` has no release yet runs them again,
+builds the card tree for the H700 and publishes the release `v<version>`, with the zip,
+`omega-zero-aarch64` and its sum (`.github/workflows/release.yml`). Bumping the version is all a
+release takes. Without the `OMEGA_SS_DEVID` and `OMEGA_SS_DEVPASSWORD` secrets the build still
+goes out, but its Cart Labels cannot reach ScreenScraper.
 
 The upstream route works as before and builds in an arm64 container:
 

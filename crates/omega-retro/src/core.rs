@@ -141,6 +141,19 @@ pub trait RetroCore: Send {
     fn set_initial_disc(&mut self, _index: usize, _path: &str) {}
 }
 
+/// A loaded game's memory as RetroAchievements reads it: the map the core declared, and the
+/// regions it answers for by number, each its bytes and its length. The pointers are the core's
+/// and stay good while the game is loaded.
+pub struct CoreMemory {
+    pub map: Vec<crate::ffi::MemoryDescriptor>,
+    pub system: (*mut u8, usize),
+    pub save: (*mut u8, usize),
+    pub video: (*mut u8, usize),
+}
+
+// SAFETY: the pointers are only read on the thread that runs the core, while it is loaded
+unsafe impl Send for CoreMemory {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,16 +201,3 @@ mod tests {
         assert_eq!(core.0, vec![ButtonMask(ButtonMask::A)]);
     }
 }
-
-/// A loaded game's memory as RetroAchievements reads it: the map the core declared, and the
-/// regions it answers for by number, each its bytes and its length. The pointers are the core's
-/// and stay good while the game is loaded.
-pub struct CoreMemory {
-    pub map: Vec<crate::ffi::MemoryDescriptor>,
-    pub system: (*mut u8, usize),
-    pub save: (*mut u8, usize),
-    pub video: (*mut u8, usize),
-}
-
-// SAFETY: the pointers are only read on the thread that runs the core, while it is loaded
-unsafe impl Send for CoreMemory {}

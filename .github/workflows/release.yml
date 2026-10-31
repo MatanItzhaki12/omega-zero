@@ -1,16 +1,74 @@
 name: release
 
+# A release goes out for each version of omega-zero: on a push to main whose version in
+# crates/omega-zero/Cargo.toml has no release yet, so bumping it is all a release takes, or on
+# a pushed v* tag. A run by hand builds the tree without releasing it.
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  version:
+    name: version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      release: ${{ steps.tag.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Name the release
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/omega-zero/Cargo.toml | head -1)"
+          case "$GITHUB_REF" in
+          refs/tags/*)
+            tag="$GITHUB_REF_NAME"
+            release=true
+            ;;
+          refs/heads/main)
+            tag="v$version"
+            # already out: a push that leaves the version as it was releases nothing
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              release=false
+            else
+              release=true
+            fi
+            ;;
+          *)
+            tag="v$version"
+            release=false
+            ;;
+          esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "omega-zero $version: $tag, release $release"
+
+  checks:
+    name: checks
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: card tree
+    needs: [version, checks]
+    # by hand the checks are skipped, and the tree is built all the same
+    if: >-
+      always() && !cancelled() && needs.checks.result != 'failure' &&
+      (needs.version.outputs.release == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04-arm
     container: rust:1-bullseye
     outputs:
@@ -25,15 +83,10 @@ jobs:
         run: |
           set -eu
           # A key ScreenScraper turns away would only show on a console, as Cart Labels saying
-          # it refused this build. A tag goes out to players, so it stops here without a key; a
-          # build by hand only warns. A ScreenScraper that cannot be asked holds nothing up.
+          # it refused this build. A fork may have no key of its own, so a missing one only
+          # warns; a key ScreenScraper refuses stops the release. A ScreenScraper that cannot be
+          # asked holds nothing up.
           if [ -z "$OMEGA_SS_DEVID" ] || [ -z "$OMEGA_SS_DEVPASSWORD" ]; then
-            case "$GITHUB_REF" in
-            refs/tags/*)
-              echo "::error::OMEGA_SS_DEVID and OMEGA_SS_DEVPASSWORD must both be set to release"
-              exit 1
-              ;;
-            esac
             echo "::warning::No ScreenScraper key: Cart Labels will say it cannot reach ScreenScraper"
             exit 0
           fi
@@ -63,8 +116,10 @@ jobs:
           curl -fsSL https://taskfile.dev/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Name the tree
-        # after the tag or branch, its slashes made dashes: an artifact's name takes none
-        run: echo "TREE=omega-zero-$(printf %s "$GITHUB_REF_NAME" | tr / -)" >> "$GITHUB_ENV"
+        # after the release's tag: an artifact's name takes no slashes
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: echo "TREE=omega-zero-$(printf %s "$TAG" | tr / -)" >> "$GITHUB_ENV"
 
       - name: Build the tree
         env:
@@ -129,6 +184,10 @@ jobs:
           zip="$out-h700.zip"
           zip -qry "$zip" "$out"
           echo "zip=$zip" >> "$GITHUB_OUTPUT"
+          # omega-zero on its own, with its sum, for Settings' Update on the console
+          mkdir -p update
+          cp "$out/System/omega-zero" update/omega-zero-aarch64
+          (cd update && sha256sum omega-zero-aarch64 > omega-zero-aarch64.sha256)
 
       - uses: actions/upload-artifact@v7
         with:
@@ -136,10 +195,16 @@ jobs:
           path: ${{ steps.package.outputs.zip }}
           if-no-files-found: error
 
+      - uses: actions/upload-artifact@v7
+        with:
+          name: omega-zero-aarch64
+          path: update/
+          if-no-files-found: error
+
   publish:
     name: release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [version, build]
+    if: needs.version.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -148,18 +213,29 @@ jobs:
         with:
           name: ${{ needs.build.outputs.zip }}
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: omega-zero-aarch64
+
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
           ZIP: ${{ needs.build.outputs.zip }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
           set -eu
           cat > notes.md <<NOTES
           For Anbernic H700 handhelds running [BaseOS](https://github.com/pvaibhav/BaseOS): made for the RG35XX SP, and also run on the RG SP. Other BaseOS devices are untested; see the [wiki](https://github.com/oauramos/omega-zero/wiki).
 
-          Unzip and copy the contents of \`omega-zero-${GITHUB_REF_NAME}/\` to the root of the card omega-zero runs from (SD1 on its own, or SD2 beside it); the [wiki](https://github.com/oauramos/omega-zero/wiki/Installing) has the steps. See the [changelog](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md).
+          Unzip and copy the contents of \`omega-zero-${TAG}/\` to the root of the card omega-zero runs from (SD1 on its own, or SD2 beside it); the [wiki](https://github.com/oauramos/omega-zero/wiki/Installing) has the steps. See the [changelog](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md).
 
           Emulation by mGBA (MPL-2.0) and gpSP (GPL-2.0) for the Game Boys, Snes9x (free for non-commercial use only) and Supafaust (Mednafen's snes_faust, GPL-2.0) for the SNES, and PCSX ReARMed (GPL-2.0) for the PlayStation. Their licences, patches and source (mGBA's aside) are in \`System/licenses/\`. omega-zero is free software under the GPL-3.0-or-later; its credits are in the README.
           NOTES
-          gh release create "$GITHUB_REF_NAME" "$ZIP" --repo "$GITHUB_REPOSITORY" \
-            --title "$GITHUB_REF_NAME" --notes-file notes.md
+          cat >> notes.md <<NOTES
+
+          Already on omega-zero? **Settings > Update** fetches this release's omega-zero on the console itself (\`omega-zero-aarch64\`, checked against \`omega-zero-aarch64.sha256\`). The cores and the card's scripts only change with the zip.
+          NOTES
+          # a tag that is not there yet is made at the commit this run built
+          gh release create "$TAG" "$ZIP" omega-zero-aarch64 omega-zero-aarch64.sha256 \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "$TAG" --notes-file notes.md

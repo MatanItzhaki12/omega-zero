@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased: Slot's buttons, favorites and the screen filter
+## omega-zero 1.3.0: Slot's buttons, favorites and the screen filter
 
 The buttons are Slot's again, a FAVORITES shelf stands first, and the LCD over a game can be
 turned off.
@@ -69,6 +69,25 @@ turned off.
   time the site answers.
 - Sliding from GAMEPLAY to ACHIEVEMENTS and back, the panel leaving keeps its own face: each
   options panel has a texture of its own.
+- A game's first start after boot no longer stalls on RetroAchievements: its ROM is hashed on a
+  thread of its own, outside the lock the menus and the game wait on.
+- Clear shells are clearer, and show a board with a ROM, a save chip and a mapper, their pins, a
+  coin cell, small parts, vias and traces.
+- RetroAchievements moved out of GAMEPLAY to CONFIGS, under Labels, a row with only its ›; Fast
+  Forward's speed moved from CONFIGS into GAMEPLAY to make room.
+- GAMEPLAY › Emulators: each system's default core, kept in `Config/default_core.ini`, which every
+  game not switched by hand runs on, and a row a system that puts the games switched by hand back
+  on it. In the core picker Y puts the game back on the default, and picking the default keeps no
+  core of its own for it.
+- The boot animation is off unless SHELF › Boot Animation switches it on (`boot_animation`).
+- Going deeper, a screen comes in from the right, as Settings does from the shelf; going back,
+  from the left.
+- Brightness' three lowest steps dim the picture too, below where the backlight goes; from the
+  fourth step up nothing changed.
+- Settings › Update fetches the latest release from GitHub and puts its omega-zero in place,
+  keeping the old one as `System/omega-zero.previous`, then restarts onto it.
+- GitHub Actions: the tests run on every push and pull request, and a push to main with a new
+  version builds and publishes its release, with `omega-zero-aarch64` for Update.
 
 ## omega-zero 1.2.0
 

@@ -1,7 +1,8 @@
 //! The core picker: the cart's lid lifted off its board, and the chip hopping between the
 //! board's sockets, one for each core that runs the cart's system, in the order the system lists
 //! them (`Core::for_platform`). Left and Right move the chip a socket that way; A keeps the core
-//! it is in, or heading for, and B leaves the cart as it was.
+//! it is in, or heading for, Y hops it to the system's default and keeps that, and B leaves the
+//! cart as it was.
 
 use omega_store::Core;
 use omega_ui::{ease, Millis, Refusal};
@@ -18,6 +19,8 @@ pub enum Press {
     Right,
     Keep,
     Back,
+    /// Back to the system's default core.
+    Default,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -55,6 +58,8 @@ pub struct CorePicker {
     cores: &'static [Core],
     /// The socket the chip is in, or heading for.
     slot: usize,
+    /// The socket of the system's default core.
+    default: usize,
     opened: Millis,
     started: Option<Millis>,
     hop: Option<Hop>,
@@ -63,12 +68,14 @@ pub struct CorePicker {
 }
 
 impl CorePicker {
-    /// A picker over a socket for each of `cores`, the chip in `seat`'s; a seat that is none of
-    /// them puts it in the first.
-    pub fn open(cores: &'static [Core], seat: Core, now: Millis) -> Self {
+    /// A picker over a socket for each of `cores`, the chip in `seat`'s, `default` the system's
+    /// default; a core that is none of them is the first.
+    pub fn open(cores: &'static [Core], seat: Core, default: Core, now: Millis) -> Self {
+        let at = |core: Core| cores.iter().position(|c| *c == core).unwrap_or(0);
         CorePicker {
             cores,
-            slot: cores.iter().position(|c| *c == seat).unwrap_or(0),
+            slot: at(seat),
+            default: at(default),
             opened: now,
             started: None,
             hop: None,
@@ -130,6 +137,18 @@ impl CorePicker {
             Press::Back => {
                 self.begin_close(now);
                 return Outcome::Nothing;
+            }
+            // the chip hops home as the lid comes down
+            Press::Default => {
+                if !self.waiting() && self.slot != self.default {
+                    self.hop = Some(Hop {
+                        from: self.slot,
+                        started: now,
+                    });
+                    self.slot = self.default;
+                }
+                self.begin_close(now);
+                return Outcome::Write(self.seat());
             }
             Press::Left => self.slot.saturating_sub(1),
             Press::Right => (self.slot + 1).min(last),

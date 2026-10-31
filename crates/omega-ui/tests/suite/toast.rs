@@ -99,6 +99,7 @@ fn the_banner_says_what_happened_and_never_what_is_on_screen() {
             Toast::Achievement(""),
             Toast::Cheevos(""),
             Toast::Restarted,
+            Toast::Emulator(""),
         ],
         "a banner was added or dropped"
     );

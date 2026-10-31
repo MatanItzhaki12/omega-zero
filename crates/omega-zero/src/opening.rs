@@ -383,12 +383,13 @@ fn origin() -> (f32, f32) {
 }
 
 impl App {
-    /// Plays the opening over the shelf from the next frame, telling `facts`. It is only
-    /// played while the boot is still on the shelf it landed on, as the boot logo's fade is.
-    /// The start notice names the handheld as it does, whether it plays or not.
+    /// Plays the opening over the shelf from the next frame, telling `facts`, where SHELF's
+    /// Boot Animation has it played. It is only played while the boot is still on the shelf it
+    /// landed on, as the boot logo's fade is. The start notice names the handheld as it does,
+    /// whether it plays or not.
     pub fn start_opening(&mut self, facts: &Facts) {
         self.tell_start_notice(facts);
-        if self.boot_fades() {
+        if self.state.boot_animation && self.boot_fades() {
             self.opening = Some(Opening::new(facts));
         }
     }

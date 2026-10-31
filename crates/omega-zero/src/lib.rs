@@ -44,6 +44,7 @@ pub mod spawn;
 pub mod ssh;
 pub mod start_notice;
 pub mod thumb;
+pub mod update;
 pub mod video_mode;
 pub mod wallpaper;
 pub mod wifi;
