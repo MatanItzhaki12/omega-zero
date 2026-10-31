@@ -59,6 +59,8 @@ jobs:
       - name: Test
         shell: bash
         run: |
+          # the step's shell stops at the first failure: the tests' own is kept, and given last
+          set +e
           cargo test --workspace --no-fail-fast 2>&1 | tee test.log
           status=${PIPESTATUS[0]}
           # one annotation for them all, its lines joined as an annotation takes them
@@ -70,6 +72,7 @@ jobs:
         if: success() || failure()
         shell: bash
         run: |
+          set +e
           cargo test --workspace --no-fail-fast 2>&1 | tee test-640.log
           status=${PIPESTATUS[0]}
           # one annotation for them all, its lines joined as an annotation takes them
