@@ -347,6 +347,9 @@ pub struct App {
     link: Option<LinkSession>,
     pub(crate) sfx: Option<Sfx>,
     pub(crate) polaroids: Option<Polaroids>,
+    /// The switcher asking whether to delete the save it shows, and that question's panel.
+    pub(crate) delete_asked: bool,
+    pub(crate) delete_panel: Option<Lone>,
     pub(crate) clock_panel: Option<Lone>,
     pub(crate) settings_faces: Option<SettingsFaces>,
     pub(crate) about_modal: Option<Lone>,
@@ -547,6 +550,8 @@ impl App {
             link: None,
             sfx: None,
             polaroids: None,
+            delete_asked: false,
+            delete_panel: None,
             clock_panel: None,
             settings_faces: None,
             about_modal: None,
@@ -1407,7 +1412,9 @@ impl App {
                 Action::FfStart if !self.may_fast_forward() => self.refuse(),
                 _ => {}
             },
+            Phase::Polaroids { .. } if self.delete_asked => self.delete_input(action),
             Phase::Polaroids { .. } => match action {
+                Action::GbaDown(Btn::X) => self.ask_delete(),
                 Action::ShelfLeft | Action::GbaDown(Btn::Left) => self.flick(Polaroids::left),
                 Action::ShelfRight | Action::GbaDown(Btn::Right) => self.flick(Polaroids::right),
                 Action::GbaDown(Btn::A) => self.load_selected(),
@@ -2243,6 +2250,7 @@ impl App {
                     p.draw(out);
                 }
                 self.draw_top_bar(out);
+                self.draw_delete(out);
             }
             Phase::Doze { .. } => out.push(Draw::Rect {
                 x: 0.0,
@@ -3220,12 +3228,13 @@ impl App {
         self.phase = Phase::Polaroids { cart };
     }
 
-    fn close_polaroids(&mut self) {
+    pub(crate) fn close_polaroids(&mut self) {
         let Phase::Polaroids { cart } = &mut self.phase else {
             return;
         };
         let cart = std::mem::take(cart);
         self.polaroids = None;
+        self.delete_asked = false;
         self.phase = Phase::Playing { cart };
     }
 

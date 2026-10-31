@@ -1076,14 +1076,29 @@ fn the_save_states_have_return_and_load_and_the_game_none() {
     assert_eq!(a.bar_place(), None, "the bar stayed over the game");
 }
 
-/// The save states' bar has nothing between RETURN and LOAD: saving and loading is all they do.
+/// The save states' bar has X DELETE between RETURN and LOAD, and nothing between CANCEL and
+/// DELETE while it asks.
 #[test]
-fn nothing_is_between_return_and_load() {
+fn x_delete_is_between_return_and_load() {
+    use omega_zero::screens::bar::DELETE;
     let d = tmp_root_with_carts(&["Emerald"]);
     let mut a = common::app_playing_in(d.path(), "Emerald");
     a.apply_at(Action::SaveState, 1_000);
     a.apply_at(Action::Polaroids, 1_100);
     assert!(matches!(a.phase(), Phase::Polaroids { .. }));
-    assert!(a.bar_hints(a.phase()).is_empty(), "the bar has hints");
-    assert!(a.bar_hints_shown().is_empty(), "the bar shows hints");
+    assert_eq!(
+        a.bar_hints(a.phase()),
+        vec![DELETE],
+        "the bar has no X DELETE"
+    );
+    assert_eq!(
+        a.bar_hints_shown(),
+        vec![DELETE],
+        "the bar shows no X DELETE"
+    );
+    a.apply_at(Action::GbaDown(Btn::X), 1_200);
+    assert!(
+        a.bar_hints_shown().is_empty(),
+        "X DELETE stayed while it asks"
+    );
 }

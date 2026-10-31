@@ -44,7 +44,7 @@ you are on.
 | Button | Does |
 |---|---|
 | **Tap MENU** | The in-game menu |
-| Tap MENU twice | Save states |
+| Tap MENU twice | Save states: ◀ ▶ to pick one, A loads it, X deletes it (asked first) |
 | Hold MENU | Save a state and eject the cart |
 | SELECT + MENU | Link play, or DISC on a PlayStation game on several discs |
 | **SELECT + A / B** | Next or previous screen filter |

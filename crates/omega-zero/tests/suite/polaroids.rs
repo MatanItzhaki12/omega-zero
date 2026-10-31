@@ -195,3 +195,87 @@ fn the_switcher_swallows_the_shelf_and_eject_bindings() {
     a.apply(Action::Insert);
     assert!(matches!(a.phase(), Phase::Polaroids { .. }));
 }
+
+/// Two saves, a second apart, in the switcher over Emerald: the newer one shown.
+fn two_saves_shown() -> (tempfile::TempDir, App, StateRing) {
+    let d = tmp_root_with_carts(&["Emerald"]);
+    let ring = StateRing::new(d.path(), Platform::Gba, Core::Mgba, "Emerald");
+    ring.push(&[1u8; 16], b"png", "2026-08-09_00-00-01")
+        .expect("push");
+    ring.push(&[2u8; 16], b"png", "2026-08-09_00-00-02")
+        .expect("push");
+    let mut a = app_playing_in(d.path(), "Emerald");
+    a.apply(Action::Polaroids);
+    assert!(matches!(a.phase(), Phase::Polaroids { .. }));
+    (d, a, ring)
+}
+
+#[test]
+fn x_asks_before_deleting_and_b_or_x_keeps_the_save() {
+    use omega_zero::screens::bar::{Actions, DELETE};
+    let (_d, mut a, ring) = two_saves_shown();
+    assert_eq!(
+        a.bar_hints(a.phase()),
+        vec![DELETE],
+        "no X DELETE on the bar"
+    );
+    assert_eq!(a.bar_place().map(|p| p.actions), Some(Actions::Switcher));
+
+    a.apply(Action::GbaDown(Btn::X));
+    assert!(a.delete_asked(), "X asked nothing");
+    assert_eq!(
+        a.bar_place().map(|p| p.actions),
+        Some(Actions::Delete),
+        "the bar does not say B CANCEL and A DELETE"
+    );
+    assert!(a.bar_hints(a.phase()).is_empty());
+    assert_eq!(
+        Actions::Delete.action(omega_ui::kit::action::Side::Left),
+        ("CANCEL", "B")
+    );
+    assert_eq!(
+        Actions::Delete.action(omega_ui::kit::action::Side::Right),
+        ("DELETE", "A")
+    );
+
+    a.apply(Action::GbaDown(Btn::B));
+    assert!(!a.delete_asked());
+    assert!(
+        matches!(a.phase(), Phase::Polaroids { .. }),
+        "B left the switcher"
+    );
+    a.apply(Action::GbaDown(Btn::X));
+    a.apply(Action::GbaDown(Btn::X));
+    assert!(!a.delete_asked(), "X again kept the question up");
+    assert_eq!(ring.list().expect("list").len(), 2, "a save went without A");
+}
+
+#[test]
+fn a_deletes_the_save_shown_and_the_switcher_shows_the_next() {
+    let (_d, mut a, ring) = two_saves_shown();
+    a.apply(Action::GbaDown(Btn::X));
+    a.apply(Action::GbaDown(Btn::A));
+    assert!(!a.delete_asked());
+    let left = ring.list().expect("list");
+    assert_eq!(
+        left.iter().map(|e| e.stamp.as_str()).collect::<Vec<_>>(),
+        ["2026-08-09_00-00-01"],
+        "the newer save, the one shown, was not the one deleted"
+    );
+    assert!(!left[0]
+        .thumb
+        .with_file_name("2026-08-09_00-00-02.png")
+        .exists());
+    assert_eq!(a.toast(), Some(omega_ui::Toast::StateDeleted));
+    assert!(matches!(a.phase(), Phase::Polaroids { .. }));
+    assert_eq!(a.polaroids().map(|p| p.dots()), Some((1, 0)));
+
+    // the last one gone, the game is back
+    a.apply(Action::GbaDown(Btn::X));
+    a.apply(Action::GbaDown(Btn::A));
+    assert!(ring.list().expect("list").is_empty());
+    assert!(
+        matches!(a.phase(), Phase::Playing { .. }),
+        "the switcher stayed open with nothing in it"
+    );
+}

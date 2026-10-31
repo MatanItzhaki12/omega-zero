@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## omega-zero 2.1.2: delete save states in a game
+
+- In a game's save states (MENU twice, or MENU > States), X asks whether to delete the save
+  shown: a DELETE STATE panel says how old it is, and the bar turns to B CANCEL and A DELETE.
+  A deletes it and its picture, and the next save shows, or the game once none are left; B, or
+  X again, keeps it. The bar shows X DELETE between RETURN and LOAD. An Undo Save of the save
+  deleted goes with it.
+
 ## omega-zero 2.1.1: Update installs on the card
 
 A bug fix for Settings > Update.

@@ -1,8 +1,8 @@
 //! The save-state switcher, MENU ×2 in a game: the screenshot of the save it shows, drawn through
 //! the game's pipeline where the game is, and over it, at the top in the middle under the top
 //! bar, the kit's SAVE STATES panel (kit/saves.rs) saying how old that save is and which of them
-//! it is. The top bar and the bottom bar, B RETURN and A LOAD with nothing between them, are the
-//! shelf's and the menus' own, which the app draws over it.
+//! it is. The top bar and the bottom bar, B RETURN and A LOAD with X DELETE between them, are
+//! the shelf's and the menus' own, which the app draws over it.
 
 use omega_gfx::{out_h, out_w, Draw, TexId};
 use omega_store::{parse_stamp, StateEntry};
@@ -105,6 +105,20 @@ impl Polaroids {
             .iter()
             .map(|e| Self::age_of(&e.stamp, now))
             .collect()
+    }
+
+    /// Takes the save shown out, its face with it, and shows the one after it, or the one
+    /// before when it was the last.
+    pub fn remove_selected(&mut self) -> Option<StateEntry> {
+        if self.index >= self.entries.len() {
+            return None;
+        }
+        let gone = self.entries.remove(self.index);
+        if self.index < self.faces.len() {
+            self.faces.remove(self.index);
+        }
+        self.index = self.index.min(self.entries.len().saturating_sub(1));
+        Some(gone)
     }
 
     pub fn left(&mut self) {

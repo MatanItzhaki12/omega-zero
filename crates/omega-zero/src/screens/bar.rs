@@ -3,9 +3,9 @@
 //! two actions shown as hints. The shelf's actions are SELECT CONTROLS and START SETTINGS, a
 //! menu's B RETURN and A CONFIRM. Setting the clock on first boot has nowhere to go back to, so
 //! its left action is the kit's empty one: the bar keeps its shape and offers only CONFIRM. The
-//! save-state switcher over a game has B RETURN and A LOAD with nothing between them: there the
-//! hints would sit on the game's screenshot, so its other keys stand on a line of their own above
-//! the bar (switcher.rs). The bar comes and goes with the switcher, at once.
+//! save-state switcher over a game has B RETURN and A LOAD with X DELETE between them, and while
+//! it asks whether to delete a save, B CANCEL and A DELETE (delete_state.rs). The bar comes and
+//! goes with the switcher, at once.
 //!
 //! The hints never move with the screens. When a slide's two ends have different actions, the
 //! old ones sink out of the screen over its first half and the new ones rise into place over
@@ -58,6 +58,12 @@ pub const SCAN: Hint<'static> = Hint {
     word: "SCAN",
 };
 
+/// X on the save-state switcher: it asks whether to delete the save shown.
+pub const DELETE: Hint<'static> = Hint {
+    key: "X",
+    word: "DELETE",
+};
+
 /// Y on Settings > Gameplay > Account, once signed in: it signs out of RetroAchievements.
 pub const SIGN_OUT: Hint<'static> = Hint {
     key: "Y",
@@ -76,14 +82,17 @@ pub enum Actions {
     Confirm,
     /// The save-state switcher's: B RETURN to the game, A LOAD the save shown.
     Switcher,
+    /// The switcher asking whether to delete the save shown: B CANCEL, A DELETE.
+    Delete,
 }
 
 impl Actions {
-    pub const ALL: [Actions; 4] = [
+    pub const ALL: [Actions; 5] = [
         Actions::Shelf,
         Actions::Menu,
         Actions::Confirm,
         Actions::Switcher,
+        Actions::Delete,
     ];
 
     pub fn index(self) -> usize {
@@ -99,6 +108,8 @@ impl Actions {
             (Actions::Menu | Actions::Confirm, Side::Right) => ("CONFIRM", "A"),
             (Actions::Confirm, Side::Left) => ("", ""),
             (Actions::Switcher, Side::Right) => ("LOAD", "A"),
+            (Actions::Delete, Side::Left) => ("CANCEL", "B"),
+            (Actions::Delete, Side::Right) => ("DELETE", "A"),
         }
     }
 }
@@ -205,6 +216,10 @@ impl App {
             )?,
             // the MENU panel over a game has a menu's B RETURN and A CONFIRM
             (None, _) if self.pause_menu_shown().is_some() => (Actions::Menu, 0),
+            // the switcher asking whether to delete a save: B CANCEL and A DELETE
+            (None, _) if self.delete_asked() && matches!(self.phase, Phase::Polaroids { .. }) => {
+                (Actions::Delete, 0)
+            }
             (None, _) => (actions_on(&self.phase)?, 0),
         };
         let drop = match self.phase {
@@ -262,7 +277,7 @@ impl App {
     /// picker over it shows RETURN and CONFIRM, ◀▶ SWAP. They are asked of `phase` rather than
     /// the screen on show so a slide can show the hints of the screen it leaves. A screen with
     /// more keys adds them here; Settings and SSH have none, the keyboard keeps its own line in
-    /// its modal, and the save states theirs over the game (`switcher_hints`).
+    /// its modal, and the save states have X DELETE while they are not asking about it.
     pub fn bar_hints(&self, phase: &Phase) -> Vec<Hint<'static>> {
         match phase {
             Phase::Shelf if self.picker_has_bar() => vec![SWAP],
@@ -278,6 +293,7 @@ impl App {
             Phase::Labels(screen) if screen.typing.is_none() => {
                 labels_hints(&screen.view(&self.labels, self.online()).legend)
             }
+            Phase::Polaroids { .. } if !self.delete_asked() => vec![DELETE],
             _ => Vec::new(),
         }
     }

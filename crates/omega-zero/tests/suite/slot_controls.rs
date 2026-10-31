@@ -237,6 +237,23 @@ fn a_second_tap_of_menu_opens_the_save_states_as_before() {
     );
 }
 
+/// A save deleted from the switcher is gone for Undo Save too: there is nothing to take back.
+#[test]
+fn deleting_the_save_just_made_takes_its_undo_with_it() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = app_playing_in(d.path(), "Emerald");
+    a.apply(Action::SaveState);
+    a.apply(Action::Polaroids);
+    a.apply(Action::GbaDown(Btn::X));
+    a.apply(Action::GbaDown(Btn::A));
+    assert!(matches!(a.phase(), Phase::Playing { .. }));
+    open_menu(&mut a);
+    assert!(
+        !rows(&a).contains(&PauseRow::UndoSave),
+        "Undo Save still offers to take back a save that is gone"
+    );
+}
+
 #[test]
 fn undo_save_takes_the_state_just_saved_back_for_thirty_seconds() {
     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
