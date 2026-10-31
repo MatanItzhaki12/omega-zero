@@ -365,19 +365,27 @@ fn shell_face(s: &Spec, shell: &Shell) -> CartFace {
     let edge = rim_colour(through(shell.colour, shell.colour));
     for (i, depth) in s.depth.iter().enumerate() {
         let (x, y) = (i as u32 % s.w, i as u32 / s.w);
-        let c = match shell.finish {
-            Finish::Solid => shell.colour,
+        let rim = (*depth as u32).min(s.rim);
+        let (c, a) = match shell.finish {
+            Finish::Solid => (shell.colour, 255),
             Finish::Translucent | Finish::Glitter => {
-                let body = through(shell.colour, inside(s, x, y).unwrap_or(HOLLOW));
-                let c = lerp(edge, body, (*depth as u32).min(s.rim), s.rim);
+                let behind = inside(s, x, y);
+                let body = through(shell.colour, behind.unwrap_or(HOLLOW));
+                let c = lerp(edge, body, rim, s.rim);
+                // where no board stands behind it, the light comes through the plastic: the
+                // shelf shows through it, less so towards the rim, where it is thickest
+                let a = match behind {
+                    Some(_) => 255,
+                    None => 255 - (255 - CLEAR_ALPHA) * rim / s.rim,
+                };
                 if shell.finish == Finish::Glitter && fleck(x, y) {
-                    lerp(c, [0xff; 3], 100, 255)
+                    (lerp(c, [0xff; 3], 100, 255), 255)
                 } else {
-                    c
+                    (c, a)
                 }
             }
         };
-        rgba.extend_from_slice(&[c[0], c[1], c[2], 255]);
+        rgba.extend_from_slice(&[c[0], c[1], c[2], a as u8]);
     }
     CartFace {
         rgba,
@@ -389,6 +397,10 @@ fn shell_face(s: &Spec, shell: &Shell) -> CartFace {
 /// How much of a clear shell's colour is its own surface, of 255; the rest is what shows through
 /// it, tinted: low, so the board and the hollow inside read through the plastic.
 const SURFACE: u32 = 40;
+
+/// How opaque a clear shell is, of 255, where no board stands behind it, inside its rim: the
+/// shelf shows through the rest.
+const CLEAR_ALPHA: u32 = 175;
 
 /// What a clear shell shows where no board stands behind it: the cart's hollow, a pale grey the
 /// plastic tints, so it reads as the plastic itself, lit, and its colour stays as rich as a

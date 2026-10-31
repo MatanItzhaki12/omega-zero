@@ -72,7 +72,8 @@ turned off.
 - Clear shells are clearer, the plastic pale where nothing stands behind it, and show the board
   Pokémon Emerald's pak is built on: the flash, the clock's chip and crystal, the ROM under a coin
   cell, small parts, the maker's lettering, traces and the contacts. A GBA cart's board spans its
-  hollow, wider than the label, so its edge no longer lines up with the label's well.
+  hollow, wider than the label, so its edge no longer lines up with the label's well. Where no
+  board stands behind the plastic, the shelf shows faintly through it.
 - RetroAchievements moved out of GAMEPLAY to CONFIGS, under Labels, a row with only its ›; Fast
   Forward's speed moved from CONFIGS into GAMEPLAY to make room.
 - GAMEPLAY › Emulators: each system's default core, kept in `Config/default_core.ini`, which every
@@ -89,7 +90,8 @@ turned off.
 - Settings › Update fetches the latest release from GitHub and puts its omega-zero in place,
   keeping the old one as `System/omega-zero.previous`, then restarts onto it. It always stands
   above About: on a 480-line screen Settings' modal reaches a pixel into the margin above it to
-  hold GENERAL's six rows.
+  hold GENERAL's six rows. A repository with no release yet says NO RELEASE YET, not NO
+  NETWORK.
 - GitHub Actions: the tests run on every push and pull request, and a push to main with a new
   version builds and publishes its release, with `omega-zero-aarch64` for Update.
 

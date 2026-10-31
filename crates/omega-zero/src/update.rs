@@ -115,7 +115,7 @@ impl Updater {
             .spawn(move || {
                 let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
                 let found = match fetch(&url) {
-                    Some(body) => match latest(&String::from_utf8_lossy(&body)) {
+                    Fetched::Body(body) => match latest(&String::from_utf8_lossy(&body)) {
                         Some((version, url, sum_url)) if newer(&version, VERSION) => {
                             Update::Available {
                                 version,
@@ -124,9 +124,9 @@ impl Updater {
                             }
                         }
                         Some(_) => Update::Latest,
-                        None => Update::Failed("NO RELEASE"),
+                        None => Update::Failed("NO RELEASE YET"),
                     },
-                    None => Update::Failed("NO NETWORK"),
+                    fetched => Update::Failed(fetched.why()),
                 };
                 me.set(found);
             });
@@ -213,9 +213,9 @@ pub fn sum_of(sum: &str) -> Option<String> {
 }
 
 fn install(exe: &Path, url: &str, sum_url: &str) -> Result<(), &'static str> {
-    let sum = fetch(sum_url).ok_or("NO NETWORK")?;
+    let sum = fetch(sum_url).body()?;
     let want = sum_of(&String::from_utf8_lossy(&sum)).ok_or("BAD RELEASE")?;
-    let bytes = fetch(url).ok_or("NO NETWORK")?;
+    let bytes = fetch(url).body()?;
     if sha256_hex(&bytes) != want {
         return Err("BAD DOWNLOAD");
     }
@@ -244,17 +244,83 @@ fn set_executable(path: &Path) {
 fn set_executable(_path: &Path) {}
 
 /// What `url` answers, following redirects, or none where it cannot be fetched.
-fn fetch(url: &str) -> Option<Vec<u8>> {
-    let mut child = Command::new("curl")
-        .args(["-sfL", "-m", "300", "-A", "omega-zero", url])
+/// What asking GitHub came to.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Fetched {
+    Body(Vec<u8>),
+    /// GitHub answered, with this status rather than the thing asked for: 404 for a repository
+    /// with no release yet.
+    Status(u16),
+    /// Nothing answered: no network, or none that reaches GitHub.
+    Unreachable,
+}
+
+impl Fetched {
+    /// What the row says for an answer that is not the thing asked for.
+    pub fn why(&self) -> &'static str {
+        match self {
+            Fetched::Body(_) => "FAILED",
+            Fetched::Status(404) => "NO RELEASE YET",
+            Fetched::Status(403 | 429) => "GITHUB BUSY",
+            Fetched::Status(_) => "GITHUB ERROR",
+            Fetched::Unreachable => "NO NETWORK",
+        }
+    }
+
+    fn body(self) -> Result<Vec<u8>, &'static str> {
+        match self {
+            Fetched::Body(body) => Ok(body),
+            other => Err(other.why()),
+        }
+    }
+}
+
+/// Splits what `curl -w '\n%{http_code}'` wrote into the body and the status after it.
+pub fn answered(out: &[u8]) -> Fetched {
+    let Some(split) = out.iter().rposition(|&b| b == b'\n') else {
+        return Fetched::Unreachable;
+    };
+    let status: u16 = std::str::from_utf8(&out[split + 1..])
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    match status {
+        0 => Fetched::Unreachable,
+        200..=299 => Fetched::Body(out[..split].to_vec()),
+        status => Fetched::Status(status),
+    }
+}
+
+/// What `url` answers, following redirects.
+fn fetch(url: &str) -> Fetched {
+    let child = Command::new("curl")
+        .args([
+            "-sL",
+            "-m",
+            "300",
+            "-A",
+            "omega-zero",
+            "-w",
+            "\n%{http_code}",
+            url,
+        ])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
-    let mut body = Vec::new();
-    child.stdout.take()?.read_to_end(&mut body).ok()?;
-    child.wait().ok()?.success().then_some(body)
+        .spawn();
+    let Ok(mut child) = child else {
+        return Fetched::Unreachable;
+    };
+    let mut out = Vec::new();
+    let read = child
+        .stdout
+        .take()
+        .is_some_and(|mut s| s.read_to_end(&mut out).is_ok());
+    let _ = child.wait();
+    match read {
+        true => answered(&out),
+        false => Fetched::Unreachable,
+    }
 }
 
 /// `bytes`' SHA-256, in lower-case hex.
@@ -387,6 +453,18 @@ mod tests {
         elf[18..20].copy_from_slice(&62u16.to_le_bytes());
         assert!(!is_aarch64_elf(&elf), "an x86-64 program");
         assert!(!is_aarch64_elf(b"<html>not found</html>"));
+    }
+
+    #[test]
+    fn github_with_no_release_is_not_a_missing_network() {
+        assert_eq!(answered(b"{}\n200"), Fetched::Body(b"{}".to_vec()));
+        assert_eq!(
+            answered(b"{\"message\":\"Not Found\"}\n404").why(),
+            "NO RELEASE YET"
+        );
+        assert_eq!(answered(b"\n403").why(), "GITHUB BUSY");
+        assert_eq!(answered(b"\n000").why(), "NO NETWORK");
+        assert_eq!(answered(b"").why(), "NO NETWORK");
     }
 
     #[test]
