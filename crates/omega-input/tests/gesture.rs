@@ -194,14 +194,68 @@ fn r2_hold_is_momentary() {
 }
 
 #[test]
-fn r2_double_tap_latches_and_single_press_clears() {
+fn l2_joining_r2_locks_fast_forward_and_r2_alone_lets_it_go() {
+    let mut g = Gestures::new();
+    assert_eq!(g.feed(Down(R2), 0), vec![FfStart]);
+    assert!(g.feed(Down(L2), 20).is_empty(), "L2 rewound under the lock");
+    assert!(g.ff_latched());
+    assert!(g.feed(Up(L2), 100).is_empty());
+    assert!(
+        g.feed(Up(R2), 120).is_empty(),
+        "letting go of R2 stopped it"
+    );
+    assert!(g.ff_latched());
+    assert!(g.feed(Down(R2), 5_000).is_empty());
+    assert_eq!(g.feed(Up(R2), 5_050), vec![FfStop]);
+    assert!(!g.ff_latched());
+}
+
+#[test]
+fn r2_joining_l2_locks_it_too_and_the_rewind_it_began_stops() {
+    let mut g = Gestures::new();
+    assert_eq!(g.feed(Down(L2), 0), vec![RewindStart]);
+    assert_eq!(g.feed(Down(R2), 30), vec![RewindStop, FfStart]);
+    assert!(g.ff_latched());
+    assert!(g.feed(Up(R2), 100).is_empty());
+    assert!(g.feed(Up(L2), 120).is_empty());
+    assert!(g.ff_latched(), "the lock did not outlast the chord");
+}
+
+#[test]
+fn l2_and_r2_together_again_let_the_lock_go() {
+    // R2 first
     let mut g = Gestures::new();
     g.feed(Down(R2), 0);
-    g.feed(Up(R2), 50);
-    g.feed(Down(R2), 100);
-    assert!(g.feed(Up(R2), 150).is_empty());
-    g.feed(Down(R2), 5000);
-    assert_eq!(g.feed(Up(R2), 5050), vec![FfStop]);
+    g.feed(Down(L2), 20);
+    g.feed(Up(L2), 60);
+    g.feed(Up(R2), 80);
+    assert!(g.feed(Down(R2), 1_000).is_empty());
+    assert_eq!(g.feed(Down(L2), 1_020), vec![FfStop]);
+    assert!(!g.ff_latched());
+    assert!(g.feed(Up(L2), 1_060).is_empty());
+    assert!(g.feed(Up(R2), 1_080).is_empty());
+
+    // L2 first: its rewind lets the lock go, and R2 joining it does not lock it again
+    let mut g = Gestures::new();
+    g.feed(Down(R2), 0);
+    g.feed(Down(L2), 20);
+    g.feed(Up(L2), 60);
+    g.feed(Up(R2), 80);
+    assert_eq!(g.feed(Down(L2), 1_000), vec![FfStop, RewindStart]);
+    assert_eq!(g.feed(Down(R2), 1_020), vec![RewindStop]);
+    assert!(!g.ff_latched());
+    assert!(g.feed(Up(R2), 1_060).is_empty());
+    assert!(g.feed(Up(L2), 1_080).is_empty());
+}
+
+#[test]
+fn r2_pressed_twice_quickly_no_longer_locks_it() {
+    let mut g = Gestures::new();
+    assert_eq!(g.feed(Down(R2), 0), vec![FfStart]);
+    assert_eq!(g.feed(Up(R2), 50), vec![FfStop]);
+    assert_eq!(g.feed(Down(R2), 100), vec![FfStart]);
+    assert_eq!(g.feed(Up(R2), 150), vec![FfStop]);
+    assert!(!g.ff_latched());
 }
 
 #[test]
@@ -230,30 +284,11 @@ fn a_press_just_short_of_the_threshold_is_a_lock() {
 }
 
 #[test]
-fn a_press_the_rewind_turned_away_is_not_half_of_a_latch() {
-    let mut g = Gestures::new();
-    assert_eq!(g.feed(Down(L2), 0), vec![RewindStart]);
-    assert!(
-        g.feed(Down(R2), 50).is_empty(),
-        "the rewind let a fast forward start under it"
-    );
-    assert!(g.feed(Up(R2), 100).is_empty());
-    assert_eq!(g.feed(Up(L2), 150), vec![RewindStop]);
-    assert_eq!(g.feed(Down(R2), 200), vec![FfStart]);
-    assert!(!g.ff_latched(), "a single press latched fast forward");
-    assert_eq!(
-        g.feed(Up(R2), 400),
-        vec![FfStop],
-        "the finger came off R2 and the speed stayed"
-    );
-}
-
-#[test]
 fn rewind_beats_latched_fast_forward() {
     let mut g = Gestures::new();
     g.feed(Down(R2), 0);
-    g.feed(Up(R2), 50);
-    g.feed(Down(R2), 100);
+    g.feed(Down(L2), 20);
+    g.feed(Up(L2), 100);
     g.feed(Up(R2), 150);
     assert_eq!(g.feed(Down(L2), 200), vec![FfStop, RewindStart]);
 }
@@ -625,16 +660,18 @@ fn select_and_r2_fast_forward_a_playstation_game_while_r2_is_held() {
 }
 
 #[test]
-fn select_and_r2_twice_keeps_a_playstation_game_fast_and_once_more_stops_it() {
+fn select_r2_and_l2_keep_a_playstation_game_fast_and_select_r2_stops_it() {
     let mut g = with_keys(PS1);
     g.feed(Down(Select), 0);
     assert_eq!(g.feed(Down(R2), 50), vec![FfStart]);
-    assert_eq!(g.feed(Up(R2), 100), vec![FfStop]);
-    assert_eq!(g.feed(Down(R2), 200), vec![FfStart]);
     assert!(
-        g.feed(Up(R2), 250).is_empty(),
-        "the second press did not latch"
+        g.feed(Down(L2), 80).is_empty(),
+        "L2 joining SELECT+R2 went to the game"
     );
+    assert!(g.ff_latched());
+    // R2 let go first: L2's release ends the chord, and reaches no game that never had it
+    assert!(g.feed(Up(R2), 120).is_empty());
+    assert!(g.feed(Up(L2), 140).is_empty());
     assert!(g.ff_latched());
     assert!(g.feed(Up(Select), 300).is_empty());
 
@@ -685,8 +722,8 @@ fn a_snes_game_rewinds_and_fast_forwards_as_a_handheld_game_does() {
     assert_eq!(g.feed(Down(L2), 0), vec![RewindStart]);
     assert_eq!(g.feed(Up(L2), 100), vec![RewindStop]);
     g.feed(Down(R2), 1_000);
-    g.feed(Up(R2), 1_050);
-    g.feed(Down(R2), 1_100);
+    g.feed(Down(L2), 1_020);
+    assert!(g.feed(Up(L2), 1_100).is_empty());
     assert!(g.feed(Up(R2), 1_150).is_empty());
     assert!(g.ff_latched());
     assert!(g.feed(Down(Select), 2_000).is_empty());

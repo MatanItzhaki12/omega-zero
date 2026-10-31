@@ -1,6 +1,6 @@
 # Changelog
 
-## omega-zero 1.3.0: Slot's buttons, favorites and the screen filter
+## omega-zero 1.4.0: Slot's buttons, favorites and the screen filter
 
 The buttons are Slot's again, a FAVORITES shelf stands first, and the LCD over a game can be
 turned off.
@@ -80,6 +80,8 @@ turned off.
   on it. In the core picker Y puts the game back on the default, and picking the default keeps no
   core of its own for it.
 - The boot animation is off unless SHELF › Boot Animation switches it on (`boot_animation`).
+- L2 and R2 pressed together lock fast forward on, and off again; pressing R2 twice no longer
+  does. Where a game has L2 and R2 of its own, it is SELECT+L2+R2.
 - Going deeper, a screen comes in from the right, as Settings does from the shelf; going back,
   from the left.
 - Brightness' three lowest steps dim the picture too, below where the backlight goes; from the

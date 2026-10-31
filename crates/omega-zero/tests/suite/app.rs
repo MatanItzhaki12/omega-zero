@@ -2252,8 +2252,8 @@ fn a_latched_fast_forward_does_not_outlive_the_cart() {
     let d = common::tmp_root_with_carts(&["Emerald", "Zzz"]);
     let mut s = session_playing(d.path());
     s.feed([RawEvent::Down(Btn::R2)], 1000);
-    s.feed([RawEvent::Up(Btn::R2)], 1050);
-    s.feed([RawEvent::Down(Btn::R2)], 1150);
+    s.feed([RawEvent::Down(Btn::L2)], 1050);
+    s.feed([RawEvent::Up(Btn::L2)], 1150);
     s.feed([RawEvent::Up(Btn::R2)], 1200);
     let mut now = run(&mut s, 1200, 2);
     assert!(

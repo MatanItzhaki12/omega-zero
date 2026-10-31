@@ -40,8 +40,8 @@ fn the_badge_follows_the_latch_rather_than_the_button() {
         step(&mut s, &mut now, None);
     }
     step(&mut s, &mut now, Some(RawEvent::Down(Btn::R2)));
-    step(&mut s, &mut now, Some(RawEvent::Up(Btn::R2)));
-    step(&mut s, &mut now, Some(RawEvent::Down(Btn::R2)));
+    step(&mut s, &mut now, Some(RawEvent::Down(Btn::L2)));
+    step(&mut s, &mut now, Some(RawEvent::Up(Btn::L2)));
     step(&mut s, &mut now, Some(RawEvent::Up(Btn::R2)));
     assert!(badge(&s).is_some(), "the latched badge left with R2");
 

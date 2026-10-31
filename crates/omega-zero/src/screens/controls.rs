@@ -56,13 +56,13 @@ impl ControlsView {
         if platform.game_owns_l2_r2() {
             game.extend([
                 ("SELECT+R2", "FAST FORWARD"),
-                ("SELECT+R2 ×2", "LATCH FAST FWD"),
+                ("SELECT+L2+R2", "LOCK FAST FWD"),
             ]);
         } else {
             if platform.rewinds() {
                 game.push(("L2", "REWIND"));
             }
-            game.extend([("R2", "FAST FORWARD"), ("R2 ×2", "LATCH FAST FWD")]);
+            game.extend([("R2", "FAST FORWARD"), ("L2+R2", "LOCK FAST FWD")]);
         }
         game.extend([
             ("MENU", "GAME MENU"),

@@ -6,7 +6,6 @@ pub const SELECT_TAP_MS: Millis = 50;
 pub const MENU_TAP_MS: Millis = 250;
 pub const MENU_DOUBLE_TAP_MS: Millis = 350;
 pub const MENU_HOLD_MS: Millis = 1000;
-pub const FF_DOUBLE_TAP_MS: Millis = 250;
 pub const MUTE_CHORD_MS: Millis = 200;
 pub const POWER_HOLD_MS: Millis = 1000;
 
@@ -54,10 +53,10 @@ pub enum Action {
 }
 
 /// What the buttons the systems disagree about do for the game being played. The handhelds'
-/// layout is the default: L2 rewinds, R2 fast-forwards (pressed twice quickly, it keeps going),
-/// and SELECT+Y toggles the colour correction. A game with L2 and R2 of its own, as the
-/// PlayStation's have, is handed them, and fast forward moves to SELECT+R2: the same hold, and
-/// the same double press, with SELECT held.
+/// layout is the default: L2 rewinds, R2 fast-forwards, L2 and R2 together lock fast forward
+/// on until they are pressed together again or R2 alone, and SELECT+Y toggles the colour
+/// correction. A game with L2 and R2 of its own, as the PlayStation's have, is handed them, and
+/// fast forward moves to SELECT+R2: the same hold, and the same lock with L2, SELECT held.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Keys {
     /// L2 and R2 are the game's, and fast forward is SELECT+R2.
@@ -114,7 +113,12 @@ pub struct Gestures {
     ff_latched: bool,
     ff_latching_press: bool,
     r2_refused: bool,
-    r2_last_release: Option<Millis>,
+    /// The shoulders held, as rewind and fast forward take them: L2 and R2 together lock fast
+    /// forward on, or off.
+    l2_held: bool,
+    r2_held: bool,
+    /// L2's press let go of a lock it found on: R2 joining it is the chord turning it off.
+    l2_unlatched: bool,
     rewinding: bool,
 }
 
@@ -148,7 +152,7 @@ impl Gestures {
         let mut out = self.rewind_stop();
         out.extend(self.ff_clear());
         self.r2_refused = false;
-        self.r2_last_release = None;
+        (self.l2_held, self.r2_held, self.l2_unlatched) = (false, false, false);
         self.chord_held &= !(L2_CHORD | R2_CHORD);
         out
     }
@@ -225,18 +229,15 @@ impl Gestures {
             }
             Btn::Lid => vec![Action::LidClose],
             Btn::VolUp | Btn::VolDown => self.volume_press(b, now),
-            Btn::L2 if !self.keys.game_l2_r2 => match self.keys.rewind {
-                true => self.rewind_start(),
-                false => Vec::new(),
-            },
-            Btn::R2 if !self.keys.game_l2_r2 => self.ff_down(now),
+            Btn::L2 if !self.keys.game_l2_r2 => self.l2_down(),
+            Btn::R2 if !self.keys.game_l2_r2 => self.r2_down(),
             _ => {
                 if let (true, Some((bit, action))) = (self.chording(now), self.chord(b)) {
                     self.mark_chorded();
                     self.chord_held |= bit;
                     return match action {
-                        Action::RewindStart => self.rewind_start(),
-                        Action::FfStart => self.ff_down(now),
+                        Action::RewindStart => self.l2_down(),
+                        Action::FfStart => self.r2_down(),
                         action => vec![action],
                     };
                 }
@@ -254,15 +255,15 @@ impl Gestures {
             Btn::Power => self.power_up(),
             Btn::Lid => vec![Action::LidOpen],
             Btn::VolUp | Btn::VolDown => self.volume_release(b),
-            Btn::L2 if !self.keys.game_l2_r2 => self.rewind_stop(),
-            Btn::R2 if !self.keys.game_l2_r2 => self.ff_up(now),
+            Btn::L2 if !self.keys.game_l2_r2 => self.l2_up(),
+            Btn::R2 if !self.keys.game_l2_r2 => self.r2_up(),
             _ => {
                 if let Some((bit, action)) = self.chord(b) {
                     if self.chord_held & bit != 0 {
                         self.chord_held &= !bit;
                         return match action {
-                            Action::RewindStart => self.rewind_stop(),
-                            Action::FfStart => self.ff_up(now),
+                            Action::RewindStart => self.l2_up(),
+                            Action::FfStart => self.r2_up(),
                             _ => Vec::new(),
                         };
                     }
@@ -274,7 +275,8 @@ impl Gestures {
 
     /// What `b` does under SELECT, and the bit its chord holds while it is down: most are a
     /// press, and L2 and R2, where they are the game's, a hold that rewinds or fast-forwards
-    /// until the shoulder is let go.
+    /// until the shoulder is let go. L2 joining R2 there locks fast forward even where nothing
+    /// rewinds.
     fn chord(&self, b: Btn) -> Option<(u16, Action)> {
         Some(match b {
             Btn::Up => (1, Action::BrightnessUp),
@@ -286,7 +288,13 @@ impl Gestures {
             Btn::Y if self.keys.colour => (64, Action::ColourCorrectionToggle),
             Btn::A => (512, Action::FilterNext),
             Btn::B => (1024, Action::FilterPrev),
-            Btn::L2 if self.keys.game_l2_r2 && self.keys.rewind => (L2_CHORD, Action::RewindStart),
+            // L2 joining R2 locks fast forward; its release ends the chord it began
+            Btn::L2
+                if self.keys.game_l2_r2
+                    && (self.keys.rewind || self.chord_held & (R2_CHORD | L2_CHORD) != 0) =>
+            {
+                (L2_CHORD, Action::RewindStart)
+            }
             Btn::R2 if self.keys.game_l2_r2 => (R2_CHORD, Action::FfStart),
             _ => return None,
         })
@@ -449,20 +457,68 @@ impl Gestures {
         vec![Action::RewindStop]
     }
 
-    fn ff_down(&mut self, now: Millis) -> Vec<Action> {
+    /// L2 pressed: a rewind, where rewinding is on; with R2 already held, the chord that locks
+    /// fast forward on or off.
+    fn l2_down(&mut self) -> Vec<Action> {
+        self.l2_held = true;
+        if self.r2_held {
+            return self.ff_toggle_lock();
+        }
+        self.l2_unlatched = self.ff_latched;
+        match self.keys.rewind {
+            true => self.rewind_start(),
+            false => Vec::new(),
+        }
+    }
+
+    fn l2_up(&mut self) -> Vec<Action> {
+        self.l2_held = false;
+        self.l2_unlatched = false;
+        self.rewind_stop()
+    }
+
+    /// R2 pressed: fast forward while it is held; with L2 already held, the chord that locks it
+    /// on or off.
+    fn r2_down(&mut self) -> Vec<Action> {
+        self.r2_held = true;
+        if self.l2_held {
+            return self.ff_toggle_lock();
+        }
+        self.ff_down()
+    }
+
+    fn r2_up(&mut self) -> Vec<Action> {
+        self.r2_held = false;
+        self.ff_up()
+    }
+
+    /// L2 and R2 together, either first: fast forward locked on, to run with neither held, or,
+    /// locked already, off. A rewind the first of them began stops.
+    fn ff_toggle_lock(&mut self) -> Vec<Action> {
+        let was_locked = self.ff_latched || std::mem::take(&mut self.l2_unlatched);
+        let mut out = self.rewind_stop();
+        self.r2_refused = false;
+        if was_locked {
+            out.extend(self.ff_clear());
+            return out;
+        }
+        self.ff_latched = true;
+        // R2's release, still to come, leaves it running
+        self.ff_latching_press = true;
+        if !self.ff_on {
+            self.ff_on = true;
+            out.push(Action::FfStart);
+        }
+        out
+    }
+
+    fn ff_down(&mut self) -> Vec<Action> {
         if self.rewinding {
             self.r2_refused = true;
             return Vec::new();
         }
-        if self.ff_latched {
-            self.ff_latching_press = false;
-        } else {
-            let double = self
-                .r2_last_release
-                .is_some_and(|rel| now.saturating_sub(rel) <= FF_DOUBLE_TAP_MS);
-            self.ff_latched = double;
-            self.ff_latching_press = double;
-        }
+        // locked, a press of R2 on its own is the one that lets it go, on its release
+        self.ff_latching_press = false;
         if self.ff_on {
             return Vec::new();
         }
@@ -470,11 +526,10 @@ impl Gestures {
         vec![Action::FfStart]
     }
 
-    fn ff_up(&mut self, now: Millis) -> Vec<Action> {
+    fn ff_up(&mut self) -> Vec<Action> {
         if std::mem::take(&mut self.r2_refused) {
             return Vec::new();
         }
-        self.r2_last_release = Some(now);
         if self.ff_latching_press {
             self.ff_latching_press = false;
             return Vec::new();

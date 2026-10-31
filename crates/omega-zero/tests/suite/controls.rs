@@ -126,7 +126,7 @@ fn controls_says_what_the_shelf_and_a_gba_game_do_with_each_button() {
         [
             ("L2", "REWIND"),
             ("R2", "FAST FORWARD"),
-            ("R2 ×2", "LATCH FAST FWD"),
+            ("L2+R2", "LOCK FAST FWD"),
             ("MENU", "GAME MENU"),
             ("MENU ×2", "SAVE STATES"),
             ("HOLD MENU", "EJECT"),
@@ -174,7 +174,7 @@ fn a_snes_game_rewinds_and_fast_forwards_but_neither_links_nor_corrects_colour()
         [
             ("L2", "REWIND"),
             ("R2", "FAST FORWARD"),
-            ("R2 ×2", "LATCH FAST FWD"),
+            ("L2+R2", "LOCK FAST FWD"),
             ("MENU", "GAME MENU"),
             ("MENU ×2", "SAVE STATES"),
             ("HOLD MENU", "EJECT"),
@@ -196,7 +196,7 @@ fn a_playstation_game_fast_forwards_on_select_r2_and_swaps_discs() {
         view.groups[1].lines,
         [
             ("SELECT+R2", "FAST FORWARD"),
-            ("SELECT+R2 ×2", "LATCH FAST FWD"),
+            ("SELECT+L2+R2", "LOCK FAST FWD"),
             ("MENU", "GAME MENU"),
             ("MENU ×2", "SAVE STATES"),
             ("HOLD MENU", "EJECT"),

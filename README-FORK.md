@@ -52,7 +52,8 @@ you are on.
 | SELECT + L1 / R1 | Load the newest state / save a state |
 | SELECT + ▲ ▼ / ◀ ▶ | Brightness / blue light |
 | L2 | Rewind |
-| R2 (twice to lock) | Fast forward |
+| R2 | Fast forward while held |
+| L2 + R2 | Lock fast forward on, or off again (R2 alone lets it go too) |
 | Hold X / Y | Turbo A / B |
 | L1 / R1 | Stretch or restore the picture, on the Game Boys |
 | Tap / hold POWER | Sleep / power off |
