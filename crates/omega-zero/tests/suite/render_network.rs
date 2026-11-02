@@ -370,7 +370,7 @@ fn network_before_a_scan_holds_the_network_joined_and_says_to_press_x() {
         let art = network_art(
             &settings,
             &[home_unscanned()],
-            &["Press X to look for networks."],
+            &["IP 192.168.1.20", "Press X to look for networks."],
             palette(colour),
         );
         let [x, y, _, _] = modal_rect();
@@ -450,7 +450,7 @@ fn network_joined_draws_flows_modal() {
             setting("NETWORK TIME", "ON", false),
             setting("SSH", "ON", false),
         ];
-        let art = network_art(&settings, &flows_networks(true), &[], pal);
+        let art = network_art(&settings, &flows_networks(true), &["IP 192.168.1.20"], pal);
         let [x, y, _, _] = modal_rect();
         shows(&px, &art, [x, y], &format!("network joined, {name}"));
     }
@@ -479,7 +479,7 @@ fn the_ssh_row_switches_off_and_on_with_its_carets() {
             setting("NETWORK TIME", "ON", false),
             setting("SSH", value, true),
         ];
-        let art = network_art(&settings, &flows_networks(true), &[], pal);
+        let art = network_art(&settings, &flows_networks(true), &["IP 192.168.1.20"], pal);
         shows(&px, &art, [x, y], &format!("SSH on {value}"));
     }
 }
@@ -755,7 +755,12 @@ fn a_new_backdrop_colour_re_tints_the_modal() {
         setting("NETWORK TIME", "ON", false),
         setting("SSH", "ON", false),
     ];
-    let art = network_art(&settings, &flows_networks(true), &[], palette(AMBER));
+    let art = network_art(
+        &settings,
+        &flows_networks(true),
+        &["IP 192.168.1.20"],
+        palette(AMBER),
+    );
     shows(&px, &art, [mx, my], "re-tinted to Amber");
 }
 
@@ -809,10 +814,10 @@ fn the_modal_before_during_and_after_a_scan_is_flows_screenshot_of_it() {
         (
             "none",
             &unscanned[..],
-            &["Press X to look for networks."][..],
+            &["IP 192.168.1.20", "Press X to look for networks."][..],
         ),
         ("running", &unscanned[..], &["Looking for networks…"][..]),
-        ("done", &flows_networks(true)[..], &[][..]),
+        ("done", &flows_networks(true)[..], &["IP 192.168.1.20"][..]),
     ] {
         let mut r = Rig::new(NIGHT, Online::Joined);
         if scan == "running" {
@@ -827,6 +832,11 @@ fn the_modal_before_during_and_after_a_scan_is_flows_screenshot_of_it() {
         let px = r.frame(&mut c, &name);
         let face = network_art(&settings, networks, notes, palette(NIGHT));
         let [x, y, _, _] = modal_rect();
-        shows(&px, &flow_shot(scan, &face), [x, y], &name);
+        // flow.html's Network says no address: where this one does, its own panel is held
+        let held = match scan {
+            "running" => flow_shot(scan, &face),
+            _ => face,
+        };
+        shows(&px, &held, [x, y], &name);
     }
 }
