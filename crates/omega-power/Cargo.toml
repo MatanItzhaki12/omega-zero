@@ -1,6 +1,6 @@
 [package]
 name = "omega-power"
-version = "2.1.7"
+version = "2.2.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

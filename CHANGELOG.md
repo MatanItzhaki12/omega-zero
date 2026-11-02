@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## omega-zero 2.2.0: lighter on the handheld
+
+- A cart's label, a menu's face or a toast drawn again at the size it was is written over its
+  texture where it is, rather than the texture being made again: scrolling to carts whose labels
+  are still arriving holds up fewer frames.
+- Rewind's snapshots are written into the buffers the last ones left, rather than into new ones
+  and then copied again, and the sound a frame makes trades buffers with the core rather than
+  taking a new one each frame: less work on the emulator's thread while a game plays.
+- omega-zero is built for the H700's Cortex-A53, as its cores already were.
+- `task deploy:wifi` and `task deploy:device` keep the build they replace as
+  `System/omega-zero.previous`, as Settings > Update does, and deploy:wifi no longer puts the
+  console's password on sshpass's command line.
+- Releases build faster: the cores are kept between releases that build them the same, and a
+  release's push no longer runs the tests twice. Task and the Rust cache action are pinned.
+
 ## omega-zero 2.1.7: a quieter holo sheen, on the cart picked
 
 - The holo sheen is subtler, its rainbow fainter and its band of light softer.

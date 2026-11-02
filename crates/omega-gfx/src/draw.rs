@@ -353,10 +353,27 @@ impl Sprites {
         if rgba.len() < (w * h * 4) as usize {
             return;
         }
+        // a face drawn again at the size it was is written over where it is, as the game's
+        // frame is; only a new size has the texture made again
+        let same = self.sizes[id.0] == (w, h);
         self.sizes[id.0] = (w, h);
         unsafe {
             gl::BindTexture(gl::TEXTURE_2D, *tex);
             gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
+            if same {
+                gl::TexSubImage2D(
+                    gl::TEXTURE_2D,
+                    0,
+                    0,
+                    0,
+                    w as i32,
+                    h as i32,
+                    gl::RGBA,
+                    gl::UNSIGNED_BYTE,
+                    rgba.as_ptr() as *const std::ffi::c_void,
+                );
+                return;
+            }
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0,

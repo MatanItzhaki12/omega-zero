@@ -582,6 +582,10 @@ tasks:
         for lib in {{.DEVICE_CORES}}; do
           file "vendor/${lib}_libretro.so" | grep -q aarch64
         done
+      # the build there now is kept as omega-zero.previous, as Settings > Update keeps it
+      - >-
+        adb shell '[ ! -f {{.SD}}/System/omega-zero ] ||
+        cp -f {{.SD}}/System/omega-zero {{.SD}}/System/omega-zero.previous'
       - adb push target-device/device/omega-zero '{{.SD}}/System/omega-zero'
       - for f in card/System/*; do adb push "$f" '{{.SD}}/System/'; done
       - |

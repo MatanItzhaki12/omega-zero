@@ -43,8 +43,12 @@ command -v sshpass > /dev/null || {
 	exit 1
 }
 
+# sshpass reads the password from its environment, not its command line, where any program on
+# this machine could see it while it runs
+export SSHPASS="$password"
+
 ssh_once() {
-	sshpass -p "$password" ssh -p "$port" -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
+	sshpass -e ssh -p "$port" -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
 		-o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
 		-o PreferredAuthentications=password -o PubkeyAuthentication=no "$host" "$@"
 }
@@ -125,6 +129,9 @@ deploy)
 	esac
 	log="$sd/omega-zero-session.log"
 	before="$(lines "$log")"
+	# the build running now is kept beside the new one, as Settings > Update keeps it, so a
+	# deploy that will not start can be undone: System/omega-zero.previous back over it
+	on "[ ! -f '$sd/System/omega-zero' ] || { cp -f '$sd/System/omega-zero' '$sd/System/omega-zero.previous.new' && mv -f '$sd/System/omega-zero.previous.new' '$sd/System/omega-zero.previous'; }"
 	put "$binary" "$sd/System/omega-zero"
 	on "chmod +x '$sd/System/omega-zero'"
 	for f in "$@"; do

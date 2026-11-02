@@ -113,7 +113,25 @@ jobs:
           sed -i '/bullseye-security/d' /etc/apt/sources.list
           apt-get -o Acquire::Check-Valid-Until=false update
           apt-get install -y --no-install-recommends zip cmake
-          curl -fsSL https://taskfile.dev/install.sh | sh -s -- -b /usr/local/bin
+          # Task at a version named here, checked against the sum its release gives, rather
+          # than whatever an install script fetches on the day
+          curl -fsSL -o /tmp/task.tar.gz \
+            "https://github.com/go-task/task/releases/download/$TASK_VERSION/task_linux_arm64.tar.gz"
+          echo "$TASK_SHA256  /tmp/task.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/task.tar.gz -C /usr/local/bin task
+          task --version
+        env:
+          TASK_VERSION: v3.54.0
+          TASK_SHA256: d7189d439d4a6058e39e1b2acd7c8b27acd4856691b408f23b242e4294e1df5b
+
+      # The five cores, their source archives and build stamps, as the last release that built
+      # them from the same cores/ and taskfile.yml left them: each core's task builds it again
+      # all the same when its stamp is not the one its build.sh gives now.
+      - name: Keep the cores built
+        uses: actions/cache@v6
+        with:
+          path: vendor
+          key: cores-${{ hashFiles('cores/**') }}-${{ hashFiles('taskfile.yml') }}
 
       - name: Name the tree
         # after the release's tag: an artifact's name takes no slashes

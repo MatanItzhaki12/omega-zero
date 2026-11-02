@@ -22,13 +22,18 @@ impl Rewind {
     }
 
     pub fn push(&mut self, state: &[u8]) {
-        let Some(prev) = self.cur.replace(state.to_vec()) else {
-            return;
-        };
+        self.push_owned(state.to_vec());
+    }
+
+    /// As [`Rewind::push`], keeping `state` itself rather than a copy of it, and handing back
+    /// the state it held before, done with, for the next snapshot to be written into.
+    pub fn push_owned(&mut self, state: Vec<u8>) -> Option<Vec<u8>> {
+        let prev = self.cur.replace(state)?;
+        let state = self.cur.as_deref().unwrap_or_default();
         if prev.len() != state.len() {
             self.deltas.clear();
             self.bytes = 0;
-            return;
+            return Some(prev);
         }
         self.scratch.clear();
         self.scratch
@@ -42,6 +47,7 @@ impl Rewind {
                 None => break,
             }
         }
+        Some(prev)
     }
 
     pub fn pop(&mut self) -> Option<Vec<u8>> {
@@ -86,6 +92,8 @@ impl Rewind {
 pub struct RewindThread {
     tx: std::sync::mpsc::SyncSender<Msg>,
     fill: std::sync::Arc<std::sync::atomic::AtomicU8>,
+    /// States the thread is done with, handed back for the next snapshots to be written into.
+    spare: std::sync::mpsc::Receiver<Vec<u8>>,
 }
 
 enum Msg {
@@ -98,6 +106,7 @@ impl RewindThread {
         let (tx, rx) = std::sync::mpsc::sync_channel::<Msg>(4);
         let fill = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
         let published = fill.clone();
+        let (give, spare) = std::sync::mpsc::sync_channel::<Vec<u8>>(2);
         std::thread::Builder::new()
             .name("omega-rewind".into())
             .spawn(move || {
@@ -105,7 +114,10 @@ impl RewindThread {
                 while let Ok(msg) = rx.recv() {
                     match msg {
                         Msg::Push(state) => {
-                            rewind.push(&state);
+                            if let Some(done) = rewind.push_owned(state) {
+                                // one the emulator has no room for is let go
+                                let _ = give.try_send(done);
+                            }
                             published.store(rewind.fill(), std::sync::atomic::Ordering::Relaxed);
                         }
                         Msg::Pop(reply) => {
@@ -117,7 +129,12 @@ impl RewindThread {
                 }
             })
             .expect("rewind thread");
-        RewindThread { tx, fill }
+        RewindThread { tx, fill, spare }
+    }
+
+    /// A buffer for the next snapshot: one the thread handed back, or a new one.
+    pub fn buffer(&self) -> Vec<u8> {
+        self.spare.try_recv().unwrap_or_default()
     }
 
     pub fn push(&self, state: Vec<u8>) {

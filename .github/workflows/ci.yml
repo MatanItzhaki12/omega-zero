@@ -16,8 +16,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A push to main that names a version with no release yet starts release.yml too, which runs
+  # these same checks before it releases anything: this run then leaves them to it, rather than
+  # run the macOS tests twice over. Run from release.yml, or on anything else, they all run.
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Leave a release's checks to release.yml
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          run=true
+          # called from release.yml, the workflow is release's: only ci's own run on a push
+          if [ "$GITHUB_WORKFLOW" = ci ] && [ "$GITHUB_EVENT_NAME" = push ] &&
+            [ "$GITHUB_REF" = refs/heads/main ]; then
+            version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/omega-zero/Cargo.toml | head -1)"
+            # as release.yml decides: a version with no release yet is released, checks first
+            if ! gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              run=false
+              echo "::notice::v$version is being released: release.yml runs the checks"
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   lint:
     name: fmt and device clippy
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -30,7 +62,8 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup toolchain install
 
-      - uses: Swatinem/rust-cache@v2
+      # pinned to the commit v2 named when it was pinned: a tag can be moved, a commit cannot
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Format
         run: cargo fmt --all -- --check
@@ -40,6 +73,8 @@ jobs:
 
   test:
     name: tests
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     # The render tests draw through a headless CGL context, so they only run on macOS.
     runs-on: macos-latest
     steps:
@@ -48,7 +83,8 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup toolchain install
 
-      - uses: Swatinem/rust-cache@v2
+      # pinned to the commit v2 named when it was pinned: a tag can be moved, a commit cannot
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       # On macOS, where the render tests and the screens example find their headless GL.
       - name: Clippy, host
@@ -84,6 +120,8 @@ jobs:
 
   card:
     name: card scripts
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     # Ubuntu's /bin/sh is dash, which keeps the scripts honest about POSIX.
     runs-on: ubuntu-24.04
     steps:

@@ -1,0 +1,5 @@
+# omega-zero's console build is scheduled for the H700's Cortex-A53, as the cores beside it are
+# (cores/*/build.sh, -mcpu=cortex-a53). Only the aarch64 Linux build reads it: the host builds
+# and the tests on a Mac or a PC are left as they were.
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=cortex-a53"]

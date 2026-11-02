@@ -866,18 +866,32 @@ impl RetroCore for LibretroCore {
         std::mem::take(&mut self.host.audio)
     }
 
+    fn take_audio_into(&mut self, out: &mut Vec<i16>) {
+        out.clear();
+        std::mem::swap(out, &mut self.host.audio);
+    }
+
     fn serialize(&mut self) -> Result<Vec<u8>, CoreError> {
+        let mut buf = Vec::new();
+        self.serialize_into(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialize_into(&mut self, buf: &mut Vec<u8>) -> Result<(), CoreError> {
         let size = unsafe { (self.api.serialize_size)() };
         if size == 0 {
             return Err(CoreError::State("core reports no state".into()));
         }
-        let mut buf = vec![0u8; size];
+        // a buffer handed back is zeroed and written over, as a new one would be, without
+        // asking the system for its memory again
+        buf.clear();
+        buf.resize(size, 0);
         let ok = {
             let _a = Active::bind(&mut self.host);
             unsafe { (self.api.serialize)(buf.as_mut_ptr() as *mut c_void, size) }
         };
         if ok {
-            Ok(buf)
+            Ok(())
         } else {
             Err(CoreError::State("serialize refused".into()))
         }

@@ -709,6 +709,8 @@ impl Worker {
         };
 
         let mut out = Vec::new();
+        // the sound a frame made, the core's buffer and this one traded back and forth
+        let mut audio = Vec::new();
         let mut gated = (false, false);
         // a system whose states are too big to keep many of, the PlayStation, keeps none
         let rewind = self
@@ -827,7 +829,7 @@ impl Worker {
                 self.shared
                     .rewind_fill
                     .store(rewind.fill(), Ordering::Relaxed);
-                let _ = core.take_audio();
+                core.take_audio_into(&mut audio);
             } else if ceiling > 0 {
                 let one = FAST_TARGET.saturating_sub(post_cost);
                 if speed == Speed::Fast {
@@ -953,7 +955,8 @@ impl Worker {
                 }
                 if let Some(rewind) = rewind.as_ref().filter(|_| since_snapshot >= SNAPSHOT_EVERY) {
                     since_snapshot = 0;
-                    if let Ok(state) = core.serialize() {
+                    let mut state = rewind.buffer();
+                    if core.serialize_into(&mut state).is_ok() {
                         rewind.push(state);
                         self.shared
                             .rewind_fill
@@ -961,7 +964,7 @@ impl Worker {
                     }
                 }
 
-                let audio = core.take_audio();
+                core.take_audio_into(&mut audio);
                 if speed == Speed::Normal || ff_sound {
                     let target = drc_target(ring.capacity_frames());
                     let queued = ring.queued_frames();

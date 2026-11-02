@@ -98,7 +98,18 @@ pub trait RetroCore: Send {
         (GBA_W, GBA_H)
     }
     fn take_audio(&mut self) -> Vec<i16>;
+    /// The sound since the last call, into `out` in place of what it held: a core that keeps its
+    /// own buffer hands it over and keeps `out`'s, so neither is made again every frame.
+    fn take_audio_into(&mut self, out: &mut Vec<i16>) {
+        *out = self.take_audio();
+    }
     fn serialize(&mut self) -> Result<Vec<u8>, CoreError>;
+    /// The state, as [`RetroCore::serialize`] gives it, written into `buf` in place of what it
+    /// held, so a buffer handed back can be written again rather than a new one made.
+    fn serialize_into(&mut self, buf: &mut Vec<u8>) -> Result<(), CoreError> {
+        *buf = self.serialize()?;
+        Ok(())
+    }
     fn unserialize(&mut self, data: &[u8]) -> Result<(), CoreError>;
     /// Starts the game over, as the console's reset does; the cart's save memory stays.
     fn reset(&mut self) {}
