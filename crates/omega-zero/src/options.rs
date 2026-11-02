@@ -185,7 +185,7 @@ impl OptionRow {
             OptionRow::SaveOnEject => "Ejecting saves where you were",
             OptionRow::Rewind => "Hold L2 to go back",
             OptionRow::Turbo => "Hold X and Y for turbo A and B",
-            OptionRow::RunAhead => "A frame sooner, for more battery",
+            OptionRow::RunAhead => "A frame sooner on gpSP",
             OptionRow::Blending => "Smooths flicker; ghosting is mGBA's",
             OptionRow::Palette => "Original Game Boy games only",
             OptionRow::Recents => "A shelf of your last 10 games",

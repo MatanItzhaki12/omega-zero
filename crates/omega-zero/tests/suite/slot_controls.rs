@@ -692,12 +692,14 @@ fn restart_starts_the_game_over() {
     );
 }
 
-/// GAMEPLAY in a game has Run-Ahead, as Settings > Gameplay does: switched there, it is on for
-/// the game at once, and kept.
+/// GAMEPLAY in a game on gpSP has Run-Ahead, as Settings > Gameplay does: switched there, it is
+/// on for the game at once, and kept.
 #[test]
 fn run_ahead_is_switched_from_the_game_menu() {
     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
     let mut a = app_playing_in(d.path(), "Emerald");
+    // as the session says once it has opened the game's core
+    a.set_core(omega_store::Core::Gpsp);
     open_menu(&mut a);
     down_to(&mut a, PauseRow::Settings);
     press(&mut a, Btn::A);
@@ -715,4 +717,23 @@ fn run_ahead_is_switched_from_the_game_menu() {
     assert!(a.run_ahead_on(), "the game was not switched to run ahead");
     assert!(read_app_state(d.path()).run_ahead, "it was not kept");
     assert!(a.pause_menu_open(), "changing a value closed the menu");
+}
+
+/// Run-Ahead is gpSP's alone: a game on mGBA has no Run-Ahead row under GAMEPLAY.
+#[test]
+fn a_game_on_mgba_has_no_run_ahead_row() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = app_playing_in(d.path(), "Emerald");
+    assert_eq!(a.core(), omega_store::Core::Mgba);
+    open_menu(&mut a);
+    down_to(&mut a, PauseRow::Settings);
+    press(&mut a, Btn::A);
+    down_to(&mut a, PauseRow::Gameplay);
+    press(&mut a, Btn::A);
+    assert_eq!(a.pause_view().unwrap().title, "GAMEPLAY");
+    assert!(
+        !rows(&a).contains(&PauseRow::RunAhead),
+        "mGBA has a Run-Ahead row: {:?}",
+        rows(&a)
+    );
 }

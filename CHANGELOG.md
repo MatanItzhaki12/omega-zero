@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## omega-zero 2.3.5: Run-Ahead is gpSP's
+
+- Run-Ahead runs on gpSP alone. mGBA answers as soon on its own, and had no time for a frame
+  played twice: before it gave up on a game, its first presses held up frames and the sound. The
+  game's menu shows Run-Ahead only for a game on gpSP, and Settings > Gameplay says it is for
+  gpSP; Run-Ahead still steps aside on a gpSP game whose frames played again stop fitting.
+
 ## omega-zero 2.3.4: Run-Ahead's budget is what the screen waits for
 
 - Run-Ahead's budget for a frame played again is 11 ms, not 14: the handheld waits 12 ms for a

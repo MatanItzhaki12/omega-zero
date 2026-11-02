@@ -444,8 +444,8 @@ impl App {
                 PauseRow::Palette => self.platform == Platform::Gb && self.core == Core::Mgba,
                 PauseRow::Rewind => self.platform.rewinds(),
                 PauseRow::Turbo => self.platform.turbo_xy(),
-                // the PlayStation's states are too big to keep one a frame
-                PauseRow::RunAhead => self.platform.rewinds(),
+                // gpSP's alone: run-ahead is for no other core
+                PauseRow::RunAhead => self.core == Core::Gpsp,
                 PauseRow::Restart => !self.link_active(),
                 PauseRow::Achievements => crate::achievements::console_of(self.platform).is_some(),
                 PauseRow::Progress | PauseRow::List => {
