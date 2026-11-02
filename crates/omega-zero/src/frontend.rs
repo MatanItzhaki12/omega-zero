@@ -71,10 +71,11 @@ use sync_switcher::{sync_switcher, Switcher};
 use sync_top_bar::{sync_top_bar, TopBarTexes};
 
 /// How many bytes of the faces the label workers hand back are uploaded in one frame, the rest
-/// left for the frames after, so a burst of them does not hold a frame up: four Game Boy Advance
-/// carts, or a stack of four discs. At sixty frames a second that is still 240 carts a second,
-/// well inside the opening a boot plays over the shelf.
-const FACE_BYTES_PER_FRAME: usize = 1 << 20;
+/// left for the frames after, so a burst of them does not hold a frame up: two Game Boy Advance
+/// carts, or a stack of two discs, as little as the H700's GPU takes in without a frame shown
+/// late. At sixty frames a second that is still 120 carts a second, inside the opening a boot
+/// plays over the shelf.
+const FACE_BYTES_PER_FRAME: usize = 1 << 19;
 
 pub struct Frontend {
     session: Session,

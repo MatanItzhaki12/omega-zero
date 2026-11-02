@@ -214,6 +214,8 @@ fn done_lines(t: &Tally) -> Vec<String> {
 pub enum Sel {
     Account,
     Sync,
+    /// The holo sheen over the cart picked, on or off.
+    Holo,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -260,6 +262,8 @@ pub enum Outcome {
     Close,
     /// Start a sync: the screen does not know the carts, its owner does.
     Sync,
+    /// Turn the holo sheen on or off: the setting is its owner's.
+    Holo,
 }
 
 /// What A on Fetch Labels and START do: stop the fetch going, or ask for one once signed in.
@@ -280,11 +284,23 @@ impl LabelsScreen {
         }
         match action {
             Action::GbaDown(Btn::B) | Action::QuickMenu => return Outcome::Close,
-            Action::GbaDown(Btn::Up | Btn::Down) => {
+            Action::GbaDown(Btn::Down) => {
                 self.sel = match self.sel {
                     Sel::Account => Sel::Sync,
-                    Sel::Sync => Sel::Account,
+                    Sel::Sync => Sel::Holo,
+                    Sel::Holo => Sel::Account,
                 }
+            }
+            Action::GbaDown(Btn::Up) => {
+                self.sel = match self.sel {
+                    Sel::Account => Sel::Holo,
+                    Sel::Sync => Sel::Account,
+                    Sel::Holo => Sel::Sync,
+                }
+            }
+            // A, left or right on Holo Sheen turns it on or off, as on Settings' own rows
+            Action::GbaDown(Btn::A | Btn::Left | Btn::Right) if self.sel == Sel::Holo => {
+                return Outcome::Holo
             }
             Action::GbaDown(Btn::A) if self.sel == Sel::Account && !labels.working() => {
                 let keys = Keyboard {
@@ -360,7 +376,8 @@ impl LabelsScreen {
         }
     }
 
-    pub fn view(&self, labels: &Labels, online: bool) -> ListView {
+    /// The screen's rows, Holo Sheen showing `holo`, and its notes and keys.
+    pub fn view(&self, labels: &Labels, online: bool, holo: bool) -> ListView {
         let account = labels.account().map(|a| a.user.clone());
         let progress = match labels.state() {
             SyncState::Working { done, total, .. } => {
@@ -382,6 +399,11 @@ impl LabelsScreen {
                 value: progress,
                 dim: false,
             },
+            ViewRow {
+                label: RowLabel::Setting("Holo Sheen"),
+                value: Some(RowValue::Setting(holo)),
+                dim: false,
+            },
         ];
         let mut legend = vec![LegendHint::Back];
         if self.sel == Sel::Account && !labels.working() {
@@ -401,6 +423,7 @@ impl LabelsScreen {
             lit: Some(match self.sel {
                 Sel::Account => 0,
                 Sel::Sync => 1,
+                Sel::Holo => 2,
             }),
             status: labels.status_lines(online),
             legend,

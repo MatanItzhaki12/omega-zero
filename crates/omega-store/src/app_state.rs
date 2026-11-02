@@ -84,6 +84,8 @@ pub struct AppState {
     pub cheevos_hardcore: bool,
     /// The opening's terminal plays at boot, before the shelf.
     pub boot_animation: bool,
+    /// The cart picked on the shelf has the holo sheen over its label.
+    pub holo: bool,
 }
 
 impl Default for AppState {
@@ -124,6 +126,7 @@ impl Default for AppState {
             cheevos: false,
             cheevos_hardcore: false,
             boot_animation: false,
+            holo: true,
         }
     }
 }
@@ -142,7 +145,7 @@ pub fn read_app_state(root: &Path) -> AppState {
 
 pub fn write_app_state(root: &Path, s: &AppState) -> std::io::Result<()> {
     let text = format!(
-        "cart={}\ncart_platform={}\nbrightness={}\nblue_light={}\nvolume={}\nvolume_hp={}\nmuted={}\nmuted_hp={}\nclock_set={}\nutc_offset_min={}\nrumble={}\nff_speed={}\nff_sound={}\ncolour_correction={}\nscreen_filter={}\nwifi={}\nssh={}\nbluetooth={}\nbackdrop={}\nbackdrop_moving={}\nbackdrop_colour={}\nfont={}\nauto_load={}\neject_save={}\nrewind={}\nturbo={}\nblending={}\ngb_palette={}\nshow_recents={}\nshow_titles={}\nclock_24h={}\nlid_off_min={}\ncheevos={}\ncheevos_hardcore={}\nboot_animation={}\n",
+        "cart={}\ncart_platform={}\nbrightness={}\nblue_light={}\nvolume={}\nvolume_hp={}\nmuted={}\nmuted_hp={}\nclock_set={}\nutc_offset_min={}\nrumble={}\nff_speed={}\nff_sound={}\ncolour_correction={}\nscreen_filter={}\nwifi={}\nssh={}\nbluetooth={}\nbackdrop={}\nbackdrop_moving={}\nbackdrop_colour={}\nfont={}\nauto_load={}\neject_save={}\nrewind={}\nturbo={}\nblending={}\ngb_palette={}\nshow_recents={}\nshow_titles={}\nclock_24h={}\nlid_off_min={}\ncheevos={}\ncheevos_hardcore={}\nboot_animation={}\nholo={}\n",
         s.cart.as_deref().unwrap_or(""),
         s.cart_platform.map_or(String::new(), platform_key),
         s.brightness,
@@ -178,6 +181,7 @@ pub fn write_app_state(root: &Path, s: &AppState) -> std::io::Result<()> {
         s.cheevos as u8,
         s.cheevos_hardcore as u8,
         s.boot_animation as u8,
+        s.holo as u8,
     );
     atomic_write(&state_path(root), text.as_bytes())
 }
@@ -218,6 +222,7 @@ fn parse(text: &str) -> Option<AppState> {
     let mut cheevos = None;
     let mut cheevos_hardcore = None;
     let mut boot_animation = None;
+    let mut holo = None;
     for line in text.lines().filter(|l| !l.is_empty()) {
         let Some((key, value)) = line.split_once('=') else {
             continue;
@@ -257,6 +262,7 @@ fn parse(text: &str) -> Option<AppState> {
             "cheevos" => cheevos = flag(value),
             "cheevos_hardcore" => cheevos_hardcore = flag(value),
             "boot_animation" => boot_animation = flag(value),
+            "holo" => holo = flag(value),
             "lid_off_min" => {
                 lid_off_min = value.parse().ok().filter(|m| LID_OFF_MINUTES.contains(m))
             }
@@ -301,6 +307,7 @@ fn parse(text: &str) -> Option<AppState> {
         cheevos: cheevos.unwrap_or(fallback.cheevos),
         cheevos_hardcore: cheevos_hardcore.unwrap_or(fallback.cheevos_hardcore),
         boot_animation: boot_animation.unwrap_or(fallback.boot_animation),
+        holo: holo.unwrap_or(fallback.holo),
     })
 }
 

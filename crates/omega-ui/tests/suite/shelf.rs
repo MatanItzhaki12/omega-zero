@@ -1002,3 +1002,33 @@ fn only_the_cart_picked_has_its_holo_sheen() {
         "the sheen is over a cart beside the one picked"
     );
 }
+
+/// With Labels > Holo Sheen off, not even the cart picked has the sheen.
+#[test]
+fn the_holo_sheen_turned_off_is_drawn_on_no_cart() {
+    let mut s = snes_shelf();
+    settle(&mut s);
+    s.set_faces((0..3).map(|i| TexId::from_raw(20 + i)).collect());
+    s.set_meshes(CartMeshes::build(|model| {
+        MeshId::from_raw(model.index() + 1)
+    }));
+    let frames: Vec<TexId> = (0..omega_ui::HOLO_FRAMES)
+        .map(|k| TexId::from_raw(900 + k))
+        .collect();
+    for model in omega_ui::CartModel::ALL {
+        s.set_model_holo(model, frames.clone());
+    }
+    s.set_holo_shown(false);
+    let mut out = Vec::new();
+    s.draw_row(None, 0.0, 0.0, 1.0, &mut out);
+    let sheens = out
+        .iter()
+        .filter(|d| match **d {
+            Draw::Tex { tex, .. } | Draw::Turned { tex, .. } | Draw::Spun { tex, .. } => {
+                frames.contains(&tex)
+            }
+            _ => false,
+        })
+        .count();
+    assert_eq!(sheens, 0, "the sheen was drawn while turned off");
+}

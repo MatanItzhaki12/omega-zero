@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## omega-zero 2.2.1: the holo sheen, on or off
+
+- Settings > Labels has a Holo Sheen row, under Fetch Labels: A, left or right turns the rainbow
+  on the cart picked off, and on again. It is on to begin with, and kept as it was set.
+- Labels arriving from the workers are uploaded half as much at a time, two Game Boy Advance
+  carts a frame rather than four, so a burst of them holds up a frame less.
+- mGBA is built for the H700's Cortex-A53, as the other cores are. It comes with the release's
+  zip: Settings > Update brings omega-zero alone.
+
 ## omega-zero 2.2.0: lighter on the handheld
 
 - A cart's label, a menu's face or a toast drawn again at the size it was is written over its

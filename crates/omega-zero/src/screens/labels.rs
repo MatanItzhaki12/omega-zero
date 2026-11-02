@@ -90,6 +90,11 @@ impl App {
                 let wants = self.label_wants();
                 self.labels.start(wants);
             }
+            LabelsOutcome::Holo => {
+                self.state.holo = !self.state.holo;
+                self.show_holo();
+                self.persist();
+            }
             LabelsOutcome::Sync | LabelsOutcome::Stay => {}
         }
     }
@@ -98,7 +103,7 @@ impl App {
     pub fn labels_view(&self) -> Option<ListView> {
         match &self.phase {
             Phase::Labels(screen) if screen.typing.is_none() => {
-                Some(screen.view(&self.labels, self.online()))
+                Some(screen.view(&self.labels, self.online(), self.state.holo))
             }
             _ => None,
         }

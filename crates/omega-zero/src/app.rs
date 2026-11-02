@@ -591,6 +591,7 @@ impl App {
         app.root = Some(root.to_path_buf());
         app.theme = Theme::read_override(root);
         app.state = read_app_state(root);
+        app.show_holo();
         app.wifi.start(app.state.wifi);
         app.ssh.start(app.state.ssh, Some(root));
         app.bluetooth.start(app.state.bluetooth);
@@ -769,6 +770,13 @@ impl App {
     pub fn set_model_holo(&mut self, model: CartModel, frames: Vec<TexId>) {
         for (_, shelf) in &mut self.shelves {
             shelf.set_model_holo(model, frames.clone());
+        }
+    }
+
+    /// Has every shelf show the holo sheen, or none, as Labels > Holo Sheen says.
+    pub(crate) fn show_holo(&mut self) {
+        for (_, shelf) in &mut self.shelves {
+            shelf.set_holo_shown(self.state.holo);
         }
     }
 

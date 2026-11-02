@@ -3,7 +3,7 @@ set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
 
-device_cflags="-flto=auto"
+device_cflags="-flto=auto -mcpu=cortex-a53"
 
 usage() {
 	echo "usage: $0 stamp COMMIT | build COMMIT WORKDIR OUT" >&2

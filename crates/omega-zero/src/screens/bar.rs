@@ -291,9 +291,11 @@ impl App {
             {
                 vec![SIGN_OUT]
             }
-            Phase::Labels(screen) if screen.typing.is_none() => {
-                labels_hints(&screen.view(&self.labels, self.online()).legend)
-            }
+            Phase::Labels(screen) if screen.typing.is_none() => labels_hints(
+                &screen
+                    .view(&self.labels, self.online(), self.state.holo)
+                    .legend,
+            ),
             _ => Vec::new(),
         }
     }

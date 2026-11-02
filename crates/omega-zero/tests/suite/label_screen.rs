@@ -453,3 +453,33 @@ fn a_playstation_game_is_looked_up_disc_by_disc() {
     r.tick(16);
     assert_eq!(label(&r), Some(labels.join("Parasite Eve (USA).png")));
 }
+
+/// Holo Sheen, under Fetch Labels, is on until A, left or right turns it off, and it stays as it
+/// was set: the next boot reads it back.
+#[test]
+fn holo_sheen_turns_off_and_on_and_is_kept() {
+    let mut r = Rig::with(None, &[]);
+    r.open_labels();
+    r.go(Sel::Sync);
+    r.go(Sel::Holo);
+    let shown = |r: &Rig| {
+        let view = r.a.labels_view().expect("the list is showing");
+        view.rows[2].value.clone()
+    };
+    assert_eq!(
+        shown(&r),
+        Some(RowValue::Setting(true)),
+        "the sheen is not on at first"
+    );
+    r.press(Btn::A);
+    assert_eq!(shown(&r), Some(RowValue::Setting(false)));
+    assert!(
+        !omega_store::read_app_state(r.d.path()).holo,
+        "it was not kept off"
+    );
+    r.press(Btn::Right);
+    assert_eq!(shown(&r), Some(RowValue::Setting(true)));
+    assert!(omega_store::read_app_state(r.d.path()).holo);
+    r.press(Btn::Down);
+    assert_eq!(r.sel(), Sel::Account, "the rows did not wrap");
+}

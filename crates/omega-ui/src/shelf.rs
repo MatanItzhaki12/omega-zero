@@ -118,6 +118,8 @@ pub struct Shelf {
     /// Each model's holo sheen, its frames with the light from one end of the label to the
     /// other (`cart::holo_frames`).
     holo: [Vec<TexId>; CartModel::ALL.len()],
+    /// Whether the cart picked has its holo sheen: Labels > Holo Sheen.
+    holo_shown: bool,
     models: Vec<CartModel>,
     /// How many discs each cart stands as: one, but for a game on several discs.
     discs: Vec<usize>,
@@ -147,6 +149,7 @@ impl Shelf {
             faces: Vec::new(),
             shadows: [None; CartModel::ALL.len()],
             holo: Default::default(),
+            holo_shown: true,
             meshes: None,
             ride: 0.0,
             vel: 0.0,
@@ -181,6 +184,11 @@ impl Shelf {
         self.holo[model.index()] = frames;
     }
 
+    /// Shows the holo sheen over the cart picked, or none.
+    pub fn set_holo_shown(&mut self, shown: bool) {
+        self.holo_shown = shown;
+    }
+
     /// The frame of `model`'s holo sheen a cart turned `yaw`, `offset` from the middle, shows,
     /// and how much of it: the light along its label as far as the cart is turned, end to end
     /// over the sway's reach, so it slides over the label as the cart turns one way and back.
@@ -188,7 +196,7 @@ impl Shelf {
     /// over one cart, not over every cart in sight, and none while the row scrolls past.
     fn holo_at(&self, model: CartModel, yaw: f32, offset: f32) -> Option<(TexId, f32)> {
         let fade = 1.0 - offset.abs() / HOLO_REACH;
-        if fade <= 0.0 {
+        if !self.holo_shown || fade <= 0.0 {
             return None;
         }
         let frames = &self.holo[model.index()];

@@ -231,7 +231,9 @@ fn labels(account: Option<Account>) -> Labels {
 #[test]
 fn labels_is_flows() {
     for (colour, name) in colours() {
-        let view = LabelsScreen::default().view(&labels(None), false);
+        let mut view = LabelsScreen::default().view(&labels(None), false, true);
+        // Holo Sheen, the last row, came after flow.html: the rest is flow's
+        view.rows.pop();
         let face = labels_face(&view, palette(colour));
         assert_eq!((face.w, face.h), (280, 75), "{name}");
         matches_flow(&face, &format!("labels-{name}"), face.h, 0..face.h);
@@ -308,9 +310,9 @@ fn the_controls_panel_fits_at_640() {
 fn the_labels_panel_holds_still_whatever_it_says() {
     let pal = palette(0);
     let screen = LabelsScreen::default();
-    let one = screen.view(&labels(Some(account())), false);
+    let one = screen.view(&labels(Some(account())), false, true);
     assert_eq!(one.status.len(), 1, "{:?}", one.status);
-    let two = screen.view(&labels(None), false);
+    let two = screen.view(&labels(None), false, true);
     assert_eq!(two.status.len(), NOTE_LINES);
     assert_eq!(labels_face(&one, pal).h, labels_face(&two, pal).h);
 }
@@ -399,7 +401,7 @@ fn stood(news: LabelNews) -> Labels {
 #[test]
 fn labels_hints_say_what_y_and_start_do() {
     let words = |l: &Labels, screen: &LabelsScreen, online| {
-        labels_hints(&screen.view(l, online).legend)
+        labels_hints(&screen.view(l, online, true).legend)
             .iter()
             .map(|h| format!("{} {}", h.key, h.word))
             .collect::<Vec<_>>()
