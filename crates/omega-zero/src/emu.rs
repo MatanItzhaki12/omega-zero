@@ -182,6 +182,9 @@ struct Shared {
     input: AtomicU16,
     /// Held X and Y are turbo A and B: the system's rule, switched live from MENU.
     turbo: AtomicBool,
+    /// Each present shows the frame after the one the game is at: Settings > Gameplay's
+    /// Run-Ahead.
+    run_ahead: AtomicBool,
     speed: AtomicU8,
     observed: AtomicU8,
     state: AtomicU8,
@@ -294,6 +297,7 @@ impl EmuHandle {
         let shared = Arc::new(Shared {
             input: AtomicU16::new(0),
             turbo: AtomicBool::new(rules.turbo),
+            run_ahead: AtomicBool::new(false),
             speed: AtomicU8::new(Speed::Paused as u8),
             observed: AtomicU8::new(Speed::Paused as u8),
             state: AtomicU8::new(CoreState::Loading as u8),
@@ -515,6 +519,12 @@ impl EmuHandle {
         self.shared.turbo.store(on, Ordering::Relaxed);
     }
 
+    /// Shows each present the frame after the one the game is at, from the next present on: a
+    /// press answered a frame sooner, for twice the core's work.
+    pub fn set_run_ahead(&self, on: bool) {
+        self.shared.run_ahead.store(on, Ordering::Relaxed);
+    }
+
     pub fn set_ff_sound(&self, on: bool) {
         self.shared.ff_sound.store(on, Ordering::Relaxed);
     }
@@ -711,6 +721,10 @@ impl Worker {
         let mut out = Vec::new();
         // the sound a frame made, the core's buffer and this one traded back and forth
         let mut audio = Vec::new();
+        // run-ahead's state of the frame the game is at, and the sound of the frame after it,
+        // which no one hears; and whether the core has refused it, which ends it for the game
+        let (mut ahead_state, mut ahead_sound) = (Vec::new(), Vec::new());
+        let mut ahead_refused = false;
         let mut gated = (false, false);
         // a system whose states are too big to keep many of, the PlayStation, keeps none
         let rewind = self
@@ -837,6 +851,16 @@ impl Worker {
                 }
                 let ceiling = ceiling * span;
                 let budget = one + PRESENT * (span - 1);
+                // run-ahead plays one frame a present at the game's own speed, on a core whose
+                // states are small enough to keep a rewind of: never linked, never fast
+                let ahead = self.shared.run_ahead.load(Ordering::Relaxed)
+                    && !ahead_refused
+                    && speed == Speed::Normal
+                    && ceiling == 1
+                    && self.rules.rewinds
+                    && transport.is_none()
+                    && cable.is_none();
+                let mut restore = false;
                 let began = Instant::now();
                 let mut ran = 0u32;
                 let (mut skipped, mut drawn) = (None::<Duration>, Duration::ZERO);
@@ -889,9 +913,35 @@ impl Worker {
                                 }
                             }
                         }
+                        None if ahead => {
+                            // the frame the game is at, its sound and its achievements kept,
+                            // its picture not drawn
+                            core.set_frame_skip(true);
+                            core.run_frame(input);
+                            if cheevos {
+                                omega_cheevos::frame();
+                            }
+                            core.take_audio_into(&mut audio);
+                            // and the one after it, with the same buttons held, drawn and shown,
+                            // then gone again once it is published
+                            match core.serialize_into(&mut ahead_state) {
+                                Ok(()) => {
+                                    core.set_frame_skip(false);
+                                    core.run_frame(input);
+                                    core.take_audio_into(&mut ahead_sound);
+                                    restore = true;
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "omega-zero: run-ahead: {e}, so it is off for this game"
+                                    );
+                                    ahead_refused = true;
+                                }
+                            }
+                        }
                         None => core.run_frame(input),
                     }
-                    if cheevos {
+                    if cheevos && !ahead {
                         omega_cheevos::frame();
                     }
                     let took = frame_began.elapsed();
@@ -949,6 +999,13 @@ impl Worker {
                 flush_outbound(&mut transport, &link);
                 self.publish(core.video_xrgb8888(), core.video_size());
                 self.frame_done(served);
+                // back to the frame the game is at, before a snapshot or a save is taken of it
+                if restore {
+                    if let Err(e) = core.unserialize(&ahead_state) {
+                        eprintln!("omega-zero: run-ahead: {e}, so it is off for this game");
+                        ahead_refused = true;
+                    }
+                }
 
                 since_snapshot += 1;
                 if cable.is_some() || speed == Speed::Fast {
@@ -965,7 +1022,10 @@ impl Worker {
                     }
                 }
 
-                core.take_audio_into(&mut audio);
+                // run-ahead has the frame's sound already, the one after it left unheard
+                if !ahead {
+                    core.take_audio_into(&mut audio);
+                }
                 if speed == Speed::Normal || ff_sound {
                     let target = drc_target(ring.capacity_frames());
                     let queued = ring.queued_frames();

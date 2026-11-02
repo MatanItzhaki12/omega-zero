@@ -1293,3 +1293,49 @@ fn a_press_set_before_a_tick_is_in_that_presents_frame() {
     }
     assert!(late.is_empty(), "presents shown a press late: {late:?}");
 }
+
+/// With run-ahead on, each present shows the frame after the one the game is at, and the game
+/// itself stays where it was: a state taken, or a rewind, is of the frame the game is at.
+#[test]
+#[ignore = "real time: needs a quiet machine; task test:timing runs it"]
+fn run_ahead_shows_the_next_frame_and_keeps_the_game_where_it_is() {
+    let _turn = turn();
+    let emu = spawn_with_core(Box::new(MockCore::new()));
+    emu.set_driven(true);
+    assert!(
+        wait_for(|| emu.locked()),
+        "the worker never locked to the display"
+    );
+    emu.set_run_ahead(true);
+    for _ in 0..30 {
+        emu.tick(PANEL);
+        assert!(
+            emu.wait_frame(Duration::from_millis(100)),
+            "a tick was never served"
+        );
+        let shown = emu.latest_frame().expect("nothing was published");
+        let at = frame_count(&emu);
+        let mut next = MockCore::new();
+        next.unserialize(&(at + 1).to_le_bytes())
+            .expect("the reference core refused the frame count");
+        assert_eq!(
+            &shown[..],
+            next.video_xrgb8888(),
+            "the game is at frame {at}, and frame {} was not what was shown",
+            at + 1
+        );
+        std::thread::sleep(Duration::from_millis(8));
+    }
+    // and off again, the picture is the frame the game is at
+    emu.set_run_ahead(false);
+    emu.tick(PANEL);
+    emu.wait_frame(Duration::from_millis(100));
+    emu.tick(PANEL);
+    assert!(emu.wait_frame(Duration::from_millis(100)));
+    let shown = emu.latest_frame().expect("nothing was published");
+    let at = frame_count(&emu);
+    let mut same = MockCore::new();
+    same.unserialize(&at.to_le_bytes())
+        .expect("the reference core refused the frame count");
+    assert_eq!(&shown[..], same.video_xrgb8888(), "run-ahead stayed on");
+}

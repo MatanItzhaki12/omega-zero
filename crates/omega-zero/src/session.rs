@@ -253,6 +253,7 @@ impl Session {
         }
         if let (Some(emu), Some((platform, _))) = (&self.emu, &self.running) {
             emu.set_turbo(platform.turbo_xy() && self.app.turbo_on());
+            emu.set_run_ahead(self.app.run_ahead_on());
         }
         if self.app.take_core_options() {
             if let Some(emu) = &self.emu {

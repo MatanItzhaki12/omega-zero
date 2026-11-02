@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## omega-zero 2.3.0: run-ahead
+
+- Settings > Gameplay has Run-Ahead, off to begin with. On, each present shows the frame after
+  the one the game is at, played with the same buttons, so a press is answered a frame sooner:
+  the game's own frame of lag is hidden. The game stays at its own frame, which its sound, its
+  achievements, rewind and the states saved all come from. It costs the core a second frame a
+  present, about 3 ms of a GBA game's 16.7 on the H700.
+- It runs at normal speed only, never in fast-forward, rewinding or over a link, and never on the
+  PlayStation, whose states are too big to keep one a frame. A core that will not save or load
+  its state for it has it switched off for that game.
+
 ## omega-zero 2.2.2: the latency trace says where a press waits
 
 - With `System/trace-latency.on` on the card, each press's line also says how long the core took

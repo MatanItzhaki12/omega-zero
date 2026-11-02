@@ -1042,6 +1042,11 @@ impl App {
         self.state.turbo
     }
 
+    /// Whether a game shows the frame after the one it is at, as Settings > Gameplay has it.
+    pub fn run_ahead_on(&self) -> bool {
+        self.state.run_ahead
+    }
+
     /// The options frame blending and the Game Boy's palette set on the game in play: blending
     /// on the GBA's and the Game Boys' cores, the palette on an original Game Boy game on mGBA.
     pub fn core_extras(&self) -> Vec<(&'static str, &'static str)> {

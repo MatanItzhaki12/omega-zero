@@ -63,6 +63,7 @@ impl OptionsPage {
                 OptionRow::SaveOnEject,
                 OptionRow::Rewind,
                 OptionRow::Turbo,
+                OptionRow::RunAhead,
                 OptionRow::Blending,
                 OptionRow::Palette,
                 OptionRow::Emulators,
@@ -115,6 +116,7 @@ pub enum OptionRow {
     SaveOnEject,
     Rewind,
     Turbo,
+    RunAhead,
     Blending,
     Palette,
     Recents,
@@ -154,6 +156,7 @@ impl OptionRow {
             OptionRow::SaveOnEject => "Save State on Eject",
             OptionRow::Rewind => "Rewind",
             OptionRow::Turbo => "Turbo Buttons",
+            OptionRow::RunAhead => "Run-Ahead",
             OptionRow::Blending => "Frame Blending",
             OptionRow::Palette => "Game Boy Palette",
             OptionRow::Recents => "Recents",
@@ -182,6 +185,7 @@ impl OptionRow {
             OptionRow::SaveOnEject => "Ejecting saves where you were",
             OptionRow::Rewind => "Hold L2 to go back",
             OptionRow::Turbo => "Hold X and Y for turbo A and B",
+            OptionRow::RunAhead => "A frame sooner, for more battery",
             OptionRow::Blending => "Smooths flicker; ghosting is mGBA's",
             OptionRow::Palette => "Original Game Boy games only",
             OptionRow::Recents => "A shelf of your last 10 games",
@@ -312,6 +316,7 @@ impl App {
             OptionRow::SaveOnEject => on_off(s.eject_save),
             OptionRow::Rewind => on_off(s.rewind),
             OptionRow::Turbo => on_off(s.turbo),
+            OptionRow::RunAhead => on_off(s.run_ahead),
             OptionRow::Blending => match s.blending {
                 Blending::Off => "OFF",
                 Blending::Mix => "MIX",
@@ -357,6 +362,7 @@ impl App {
             OptionRow::SaveOnEject => s.eject_save = !s.eject_save,
             OptionRow::Rewind => s.rewind = !s.rewind,
             OptionRow::Turbo => s.turbo = !s.turbo,
+            OptionRow::RunAhead => s.run_ahead = !s.run_ahead,
             OptionRow::Blending => {
                 s.blending = step(&Blending::ALL, s.blending, right);
                 self.queue_core_options();

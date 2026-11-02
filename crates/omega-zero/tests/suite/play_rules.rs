@@ -158,3 +158,31 @@ fn the_playstation_keeps_no_rewind_snapshots_and_the_snes_does() {
     assert_eq!(ps1.emu.rewind_fill(), 0);
     drop(ps1);
 }
+
+/// Run-ahead keeps a state of every frame, which the PlayStation's are too big for: there it is
+/// never taken, with the setting on or off. A handheld's game runs ahead, keeping one a frame.
+#[test]
+fn the_playstation_never_runs_ahead_and_a_handheld_does() {
+    let ps1 = play(Platform::Ps1, 0);
+    ps1.emu.set_run_ahead(true);
+    first_frames(&ps1, 20);
+    assert_eq!(
+        ps1.states.load(Ordering::Relaxed),
+        0,
+        "the PlayStation took states to run ahead"
+    );
+
+    // rewind keeps a state every other frame either way; running ahead keeps one every frame
+    // more, so over as many frames run, a game running ahead has taken a good few more
+    let states = |ahead: bool| {
+        let gba = play(Platform::Gba, 0);
+        gba.emu.set_run_ahead(ahead);
+        first_frames(&gba, 40);
+        gba.states.load(Ordering::Relaxed)
+    };
+    let (plain, ahead) = (states(false), states(true));
+    assert!(
+        ahead >= plain + 5,
+        "{ahead} states running ahead against {plain} without: the GBA did not run ahead"
+    );
+}
