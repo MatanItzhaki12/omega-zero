@@ -1300,6 +1300,8 @@ struct Held {
     video: Vec<u8>,
     count: u32,
     restored: Arc<AtomicUsize>,
+    /// How long a frame takes it.
+    cost: Duration,
 }
 
 impl RetroCore for Held {
@@ -1307,6 +1309,7 @@ impl RetroCore for Held {
         Ok(())
     }
     fn run_frame(&mut self, input: ButtonMask) {
+        std::thread::sleep(self.cost);
         if input.0 & ButtonMask::A != 0 {
             self.count += 1;
         }
@@ -1349,6 +1352,7 @@ fn run_ahead_answers_a_press_a_frame_sooner_and_restores_only_on_a_change() {
         video: vec![0; (240 * 160 * 4) as usize],
         count: 0,
         restored: restored.clone(),
+        cost: Duration::ZERO,
     }));
     emu.set_driven(true);
     assert!(
@@ -1394,4 +1398,54 @@ fn run_ahead_answers_a_press_a_frame_sooner_and_restores_only_on_a_change() {
     emu.set_run_ahead(false);
     present(0);
     assert_eq!(present(ButtonMask::A), 9, "run-ahead stayed on");
+}
+
+/// A core too slow to play a frame again within its budget, as mGBA is on the handheld, has
+/// run-ahead give up on it after a few presses, and plays on as it would without it: no state
+/// put back, and a press counted once.
+#[test]
+#[ignore = "real time: needs a quiet machine; task test:timing runs it"]
+fn run_ahead_gives_up_on_a_core_too_slow_for_it() {
+    let _turn = turn();
+    let restored = Arc::new(AtomicUsize::new(0));
+    // two frames of it are 18 ms, over the 14 a frame played again may take
+    let emu = spawn_with_core(Box::new(Held {
+        video: vec![0; (240 * 160 * 4) as usize],
+        count: 0,
+        restored: restored.clone(),
+        cost: Duration::from_millis(9),
+    }));
+    emu.set_driven(true);
+    assert!(
+        wait_for(|| emu.locked()),
+        "the worker never locked to the display"
+    );
+    emu.set_run_ahead(true);
+    let present = |input: u16| {
+        emu.set_input(ButtonMask(input));
+        emu.tick(PANEL);
+        assert!(
+            emu.wait_frame(Duration::from_millis(100)),
+            "a tick was never served"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    for _ in 0..12 {
+        present(ButtonMask::A);
+        present(0);
+    }
+    let given_up = restored.load(Ordering::Relaxed);
+    assert!(
+        (8..=12).contains(&given_up),
+        "{given_up} frames were played again before run-ahead gave up"
+    );
+    for _ in 0..6 {
+        present(ButtonMask::A);
+        present(0);
+    }
+    assert_eq!(
+        restored.load(Ordering::Relaxed),
+        given_up,
+        "run-ahead played frames again after it gave up"
+    );
 }

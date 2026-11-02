@@ -29,6 +29,15 @@ pub const FAST_STEPS_MAX: u32 = 6;
 
 const FAST_TARGET: Duration = Duration::from_micros(14_000);
 
+/// The most a present's frame may take with run-ahead's frame played again before it: what a
+/// fast-forwarding present's frames are given, the rest of the present left to show them.
+const AHEAD_BUDGET: Duration = FAST_TARGET;
+
+/// How many of the latest frames played again run-ahead weighs before it gives up on a game:
+/// when half of them, at least this many, ran over [`AHEAD_BUDGET`], the core is too slow on this
+/// handheld for it, as mGBA is, and every press would hold up a frame rather than come sooner.
+const AHEAD_TRIAL: u32 = 8;
+
 const COST_BLEND: u32 = 4;
 
 const SNAPSHOT_EVERY: u32 = 2;
@@ -727,6 +736,9 @@ impl Worker {
         let (mut ahead_state, mut ahead_sound) = (Vec::new(), Vec::new());
         let mut ahead_held: Option<ButtonMask> = None;
         let mut ahead_refused = false;
+        // the latest frames played again, a bit each, set for one that ran over its budget, and
+        // how many of them there are, up to sixteen
+        let (mut ahead_over, mut ahead_seen) = (0u16, 0u32);
         let mut gated = (false, false);
         // a system whose states are too big to keep many of, the PlayStation, keeps none
         let rewind = self
@@ -884,6 +896,7 @@ impl Worker {
                     turbo_frame = turbo_frame.wrapping_add(1);
                     core.set_frame_skip(!last);
                     let frame_began = Instant::now();
+                    let mut replayed = false;
                     match cable.as_mut() {
                         Some(c) => {
                             if let Some(t) = transport.as_deref_mut() {
@@ -933,6 +946,7 @@ impl Worker {
                                         core.set_frame_skip(true);
                                         core.run_frame(input);
                                         core.take_audio_into(&mut ahead_sound);
+                                        replayed = true;
                                     }
                                     Err(e) => {
                                         eprintln!(
@@ -963,6 +977,22 @@ impl Worker {
                     }
                     let took = frame_began.elapsed();
                     crate::latency::ran(took);
+                    // a core whose frames played again do not fit is left to play on as it
+                    // would without run-ahead, for the rest of the game
+                    if replayed {
+                        ahead_over = (ahead_over << 1) | u16::from(took > AHEAD_BUDGET);
+                        ahead_seen = (ahead_seen + 1).min(u16::BITS);
+                        let over = ahead_over.count_ones();
+                        if ahead_seen >= AHEAD_TRIAL && over * 2 >= ahead_seen {
+                            eprintln!(
+                                "omega-zero: run-ahead: {over} of the last {ahead_seen} frames played again ran over {} ms, the last {:.1} ms: off for this game",
+                                AHEAD_BUDGET.as_millis(),
+                                took.as_secs_f64() * 1e3
+                            );
+                            ahead_refused = true;
+                            ahead_held = None;
+                        }
+                    }
                     if last {
                         drawn = took;
                     } else {

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## omega-zero 2.3.3: Run-Ahead steps aside where it does not fit
+
+- Run-Ahead times every frame it plays again, and gives up on a game when half of the latest,
+  at least eight, ran over the 14 ms a frame is given: the game plays on as it would without it,
+  and the log says so. On the H700 mGBA's frames played again took 15 to 22 ms, so with Run-Ahead
+  on its games held up a frame at nearly every press rather than answering it sooner; gpSP's take
+  4 to 9 ms, and keep it.
+
 ## omega-zero 2.3.2: gpSP starts every time, and Run-Ahead in the game's menu
 
 - gpSP no longer crashes as a game starts. Its recompiler wants its code cache within the 128 MB
