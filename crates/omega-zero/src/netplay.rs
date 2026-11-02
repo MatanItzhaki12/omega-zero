@@ -19,7 +19,7 @@
 //! without one.
 
 use std::io::{Read, Write};
-use std::net::{Shutdown, TcpStream};
+use std::net::{Shutdown, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use std::sync::Arc;
@@ -268,6 +268,151 @@ fn mode(client: u32, nick: &str) -> Vec<u8> {
     out.extend([0u8; MAX_INPUT_DEVICES]);
     out.extend(field(nick, NICK_LEN));
     out
+}
+
+/// "RATS": a relay session, asked for with no id and answered with the session's.
+const RELAY_SESSION: u32 = 0x5241_5453;
+/// "RATL": a player come to the relay, the id of their link; and the host's claim on it.
+const RELAY_LINK: u32 = 0x5241_544c;
+/// "RATA": the host asking for a player's address by their link's id, and the relay's answer.
+const RELAY_ADDR: u32 = 0x5241_5441;
+/// "RATP": the relay's ping, answered as it came.
+const RELAY_PING: u32 = 0x5241_5450;
+
+fn relay_id(magic: u32, id: &[u8; 12]) -> [u8; 16] {
+    let mut out = [0u8; 16];
+    out[..4].copy_from_slice(&magic.to_be_bytes());
+    out[4..].copy_from_slice(id);
+    out
+}
+
+/// A connection to `addr`, given up after `bound`.
+fn connect(addr: &str, port: u16, bound: Duration) -> std::io::Result<TcpStream> {
+    let mut last = None;
+    for at in (addr, port).to_socket_addrs()? {
+        match TcpStream::connect_timeout(&at, bound) {
+            Ok(stream) => return Ok(stream),
+            Err(e) => last = Some(e),
+        }
+    }
+    Err(last.unwrap_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("no address for {addr}"),
+        )
+    }))
+}
+
+/// Joins the room reached through the relay at `addr` as its `session`, as [`join`] does a room
+/// reached directly: the relay is told the session first, and passes everything after it on.
+pub fn join_relay(
+    addr: &str,
+    port: u16,
+    session: [u8; 12],
+    nick: &str,
+    bound: Duration,
+) -> Result<Joined, NetplayFail> {
+    let mut stream = connect(addr, port, bound)?;
+    stream.write_all(&relay_id(RELAY_SESSION, &session))?;
+    join(stream, nick, bound)
+}
+
+/// A room hosted through a relay: the session the lobby is told of, and the players the relay
+/// brings, each on a connection of their own that then goes on as if they had reached this end
+/// directly. The session's connection is kept the while, its pings answered, until this is
+/// dropped.
+pub struct RelayHost {
+    pub session: [u8; 12],
+    players: Receiver<TcpStream>,
+    control: TcpStream,
+}
+
+impl RelayHost {
+    /// Asks the relay at `addr` for a session.
+    pub fn open(addr: &str, port: u16, bound: Duration) -> Result<RelayHost, NetplayFail> {
+        let mut control = connect(addr, port, bound)?;
+        control.set_nodelay(true)?;
+        control.set_read_timeout(Some(bound))?;
+        control.write_all(&relay_id(RELAY_SESSION, &[0; 12]))?;
+        let mut answer = [0u8; 16];
+        control.read_exact(&mut answer)?;
+        let mut session = [0u8; 12];
+        session.copy_from_slice(&answer[4..]);
+        if word(&answer, 0) != RELAY_SESSION || session == [0; 12] {
+            return Err(NetplayFail::Protocol("the relay gave no session".into()));
+        }
+        control.set_read_timeout(None)?;
+        let (tx, players) = channel();
+        let (mut reader, mut writer) = (control.try_clone()?, control.try_clone()?);
+        let (addr, relay) = (addr.to_string(), port);
+        std::thread::Builder::new()
+            .name("omega-relay".into())
+            .spawn(move || {
+                // the players come to the relay, waiting for its say-so to go on
+                let mut waiting: Vec<([u8; 12], TcpStream)> = Vec::new();
+                let mut magic = [0u8; 4];
+                while reader.read_exact(&mut magic).is_ok() {
+                    match u32::from_be_bytes(magic) {
+                        RELAY_PING => {
+                            if writer.write_all(&RELAY_PING.to_be_bytes()).is_err() {
+                                return;
+                            }
+                        }
+                        RELAY_LINK => {
+                            let mut id = [0u8; 12];
+                            if reader.read_exact(&mut id).is_err() {
+                                return;
+                            }
+                            // one connection a player, then their address asked for
+                            let Ok(stream) = connect(&addr, relay, bound) else {
+                                continue;
+                            };
+                            if writer.write_all(&relay_id(RELAY_ADDR, &id)).is_err() {
+                                return;
+                            }
+                            waiting.push((id, stream));
+                        }
+                        RELAY_ADDR => {
+                            let mut rest = [0u8; 28];
+                            if reader.read_exact(&mut rest).is_err() {
+                                return;
+                            }
+                            let Some(at) = waiting.iter().position(|(id, _)| id[..] == rest[..12])
+                            else {
+                                continue;
+                            };
+                            let (id, mut stream) = waiting.swap_remove(at);
+                            // the link claimed, the relay passes the player on as they are
+                            if stream.write_all(&relay_id(RELAY_LINK, &id)).is_ok()
+                                && tx.send(stream).is_err()
+                            {
+                                return;
+                            }
+                        }
+                        other => {
+                            eprintln!("omega-zero: netplay: the relay said {other:#010x}");
+                            return;
+                        }
+                    }
+                }
+            })?;
+        Ok(RelayHost {
+            session,
+            players,
+            control,
+        })
+    }
+
+    /// The next player the relay brings, waited for at most `wait`.
+    pub fn next_player(&self, wait: Duration) -> Option<TcpStream> {
+        self.players.recv_timeout(wait).ok()
+    }
+}
+
+impl Drop for RelayHost {
+    fn drop(&mut self) {
+        let _ = self.control.shutdown(Shutdown::Both);
+    }
 }
 
 /// The connection as a link, once both ends have said who they are.
@@ -797,6 +942,99 @@ mod tests {
         assert!(matches!(
             join(joiner, "Guest", Duration::from_millis(200)),
             Err(NetplayFail::TimedOut)
+        ));
+    }
+
+    /// A relay laid out by hand: a session asked for and given, its ping answered, and a player it
+    /// brings claimed and handed on, to say who they are as if they had come directly.
+    #[test]
+    fn a_relay_host_takes_its_session_and_the_player_the_relay_brings() {
+        let relay = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = relay.local_addr().unwrap().port();
+        let session = [7u8; 12];
+        let link_id = [9u8; 12];
+        let fake = std::thread::spawn(move || {
+            let (mut control, _) = relay.accept().unwrap();
+            let mut ask = [0u8; 16];
+            control.read_exact(&mut ask).unwrap();
+            assert_eq!(
+                ask,
+                relay_id(RELAY_SESSION, &[0; 12]),
+                "a session is asked for with no id"
+            );
+            control
+                .write_all(&relay_id(RELAY_SESSION, &session))
+                .unwrap();
+            control.write_all(&RELAY_PING.to_be_bytes()).unwrap();
+            let mut pong = [0u8; 4];
+            control.read_exact(&mut pong).unwrap();
+            assert_eq!(
+                u32::from_be_bytes(pong),
+                RELAY_PING,
+                "the ping was not answered"
+            );
+            // a player comes: the host opens a connection for them and asks their address
+            control.write_all(&relay_id(RELAY_LINK, &link_id)).unwrap();
+            let (mut theirs, _) = relay.accept().unwrap();
+            let mut addr = [0u8; 16];
+            control.read_exact(&mut addr).unwrap();
+            assert_eq!(addr, relay_id(RELAY_ADDR, &link_id));
+            let mut answer = relay_id(RELAY_ADDR, &link_id).to_vec();
+            answer.extend([0u8; 16]);
+            control.write_all(&answer).unwrap();
+            let mut claim = [0u8; 16];
+            theirs.read_exact(&mut claim).unwrap();
+            assert_eq!(
+                claim,
+                relay_id(RELAY_LINK, &link_id),
+                "the link was not claimed"
+            );
+            // the player, through the relay, joins as they would directly
+            let mut joined =
+                join(theirs, "Guest", BOUND).expect("the join through the relay failed");
+            joined.link.send(0, b"through the relay");
+            (control, joined)
+        });
+        let hosting = RelayHost::open("127.0.0.1", port, BOUND).expect("no session");
+        assert_eq!(hosting.session, session);
+        let player = hosting.next_player(BOUND).expect("no player came");
+        let mut hosted = host(player, "Host", 0, BOUND).expect("the host failed");
+        let (_control, _joined) = fake.join().unwrap();
+        assert_eq!(recv(&mut hosted.link), b"through the relay");
+    }
+
+    #[test]
+    fn a_joiner_gives_the_relay_its_session_before_its_header() {
+        let relay = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = relay.local_addr().unwrap().port();
+        let fake = std::thread::spawn(move || {
+            let (mut stream, _) = relay.accept().unwrap();
+            let mut first = [0u8; 16];
+            stream.read_exact(&mut first).unwrap();
+            assert_eq!(first, relay_id(RELAY_SESSION, &[3; 12]));
+            host(stream, "Host", 0, BOUND).map(|h| h.peer)
+        });
+        let joined = join_relay("127.0.0.1", port, [3; 12], "Guest", BOUND).expect("no join");
+        assert_eq!(joined.peer, "Host");
+        assert_eq!(fake.join().unwrap().expect("the host failed"), "Guest");
+    }
+
+    #[test]
+    fn a_relay_that_gives_no_session_is_refused() {
+        let relay = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = relay.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut control, _) = relay.accept().unwrap();
+            let mut ask = [0u8; 16];
+            control.read_exact(&mut ask).unwrap();
+            control
+                .write_all(&relay_id(RELAY_SESSION, &[0; 12]))
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(200));
+        });
+        assert!(matches!(
+            RelayHost::open("127.0.0.1", port, BOUND),
+            Err(NetplayFail::Protocol(_))
         ));
     }
 }
