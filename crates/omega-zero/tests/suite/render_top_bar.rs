@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 //! The top bar as the panel shows it: the clock, the battery and what the handheld is connected
 //! to printed in the palette's cream, what is off in its plate colour, as flow.html's shelf;
 //! a card's theme.txt keeping the white and grey it had; and a new colour in Settings >

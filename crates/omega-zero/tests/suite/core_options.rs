@@ -5,9 +5,10 @@ use omega_store::Core;
 use omega_zero::link_kind::{serial_option, LinkKind};
 
 fn dylib_for(core: Core) -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../vendor")
-        .join(omega_zero::core::dylib_name(core))
+    omega_retro::host_core(
+        &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../vendor"),
+        core.library(),
+    )
 }
 
 fn every_serial_mode() -> Vec<&'static str> {

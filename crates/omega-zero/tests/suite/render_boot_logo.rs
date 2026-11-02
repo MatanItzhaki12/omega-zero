@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 //! The boot logo as the frontend draws it: the first frame of a boot onto the shelf is the logo
 //! omega-zero ships for the canvas, pixel for pixel, and once it has faded the frame is the shelf
 //! a boot without the logo draws.

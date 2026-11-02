@@ -5,10 +5,7 @@ use std::path::{Path, PathBuf};
 use omega_retro::{ButtonMask, LibretroCore, RetroCore};
 
 fn vendored() -> Option<PathBuf> {
-    let p = common::repo_root().join(format!(
-        "vendor/mgba_libretro.{}",
-        std::env::consts::DLL_EXTENSION
-    ));
+    let p = omega_retro::host_core(&common::repo_root().join("vendor"), "mgba");
     p.exists().then_some(p)
 }
 

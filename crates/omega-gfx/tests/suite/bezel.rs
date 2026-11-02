@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 
 use omega_gfx::{out_h, out_w, Bezel, Compositor, Draw, HeadlessSurface, TexId};
 use std::sync::{Mutex, MutexGuard, PoisonError};

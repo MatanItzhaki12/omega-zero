@@ -15,12 +15,10 @@ fn lock() -> std::sync::MutexGuard<'static, ()> {
 }
 
 fn vendored(library: &str) -> Option<PathBuf> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../vendor")
-        .join(format!(
-            "{library}_libretro.{}",
-            std::env::consts::DLL_EXTENSION
-        ));
+    let path = omega_retro::host_core(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor"),
+        library,
+    );
     if path.exists() {
         Some(path)
     } else {

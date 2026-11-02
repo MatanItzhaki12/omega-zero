@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 
 //! A SNES and a PlayStation picture drawn as the game is: every frame size through the game
 //! pass into its system's rect on this canvas, with the console's body round it. With Snes9x or
@@ -179,10 +179,7 @@ fn a_ps1_picture_at_2x_lands_texel_for_texel() {
 }
 
 fn vendored(library: &str) -> Option<std::path::PathBuf> {
-    let p = repo_root().join("vendor").join(format!(
-        "{library}_libretro.{}",
-        std::env::consts::DLL_EXTENSION
-    ));
+    let p = omega_retro::host_core(&repo_root().join("vendor"), library);
     p.exists().then_some(p)
 }
 

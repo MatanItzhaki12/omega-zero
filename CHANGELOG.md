@@ -12,6 +12,13 @@
 - It runs at normal speed only, never in fast-forward, rewinding or over a link, and never on the
   PlayStation, whose states are too big to keep one a frame. A core that will not save or load
   its state for it has it switched off for that game.
+- The tests run on Linux, the render tests drawn by Mesa's surfaceless EGL on its software
+  renderer, so CI no longer waits on a Mac to be free before a release goes out. A Mac still runs
+  them as it did.
+- A computer's own builds of the cores live in `vendor/host/`, apart from the console's in
+  `vendor/`, which on Linux have the same names; `task core` fetches or builds them for a Linux PC
+  as well as a Mac, and a Mac's old ones in `vendor/` are still found. On a computer with no sound
+  device, omega-zero plays into a silent ring rather than none.
 
 ## omega-zero 2.2.2: the latency trace says where a press waits
 

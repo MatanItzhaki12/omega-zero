@@ -3,9 +3,10 @@ use crate::common;
 use omega_store::{Core, Platform};
 
 fn dylib_for(core: Core) -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../vendor")
-        .join(omega_zero::core::dylib_name(core))
+    omega_retro::host_core(
+        &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../vendor"),
+        core.library(),
+    )
 }
 
 #[test]

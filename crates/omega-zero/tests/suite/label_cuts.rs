@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 
 //! Label scans are cut to their faces once, and every face is drawn from its label off the main
 //! thread: a boot comes up with every cart in its generated face, decoding no label, and the

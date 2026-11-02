@@ -51,6 +51,15 @@ impl Session {
         let mut sink: Box<dyn AudioSink> = open_sink();
         if let Err(e) = sink.open(GBA_HZ) {
             eprintln!("omega-zero: audio: {e}");
+            // a computer with no sound device plays into a ring no one hears, as OMEGA_SILENT
+            // has it, rather than into none at all
+            #[cfg(feature = "host")]
+            {
+                let mut silent = crate::audio::StubSink::new();
+                if silent.open(GBA_HZ).is_ok() {
+                    sink = Box::new(silent);
+                }
+            }
         }
         Session {
             app: App::boot(&root),

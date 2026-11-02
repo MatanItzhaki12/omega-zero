@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 //! The opening as the frontend draws it: its lines in X5's mint on black, where the terminal
 //! stands, and the shelf once it is over.
 

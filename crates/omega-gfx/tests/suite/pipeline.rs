@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 
 use omega_gfx::{
     blue_light_gain, lcd3x_mask, out_h, out_w, spun_x, Compositor, Draw, Filter, GameView,

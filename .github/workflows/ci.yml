@@ -18,7 +18,7 @@ concurrency:
 jobs:
   # A push to main that names a version with no release yet starts release.yml too, which runs
   # these same checks before it releases anything: this run then leaves them to it, rather than
-  # run the macOS tests twice over. Run from release.yml, or on anything else, they all run.
+  # run the tests twice over. Run from release.yml, or on anything else, they all run.
   gate:
     name: gate
     runs-on: ubuntu-latest
@@ -75,10 +75,20 @@ jobs:
     name: tests
     needs: gate
     if: needs.gate.outputs.run == 'true'
-    # The render tests draw through a headless CGL context, so they only run on macOS.
-    runs-on: macos-latest
+    # The render tests draw through Mesa's surfaceless EGL, on its software renderer: no GPU, no
+    # display, and a runner that is always there to be had.
+    runs-on: ubuntu-24.04
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      GALLIUM_DRIVER: llvmpipe
     steps:
       - uses: actions/checkout@v7
+
+      - name: Install the host build's system libraries and Mesa
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev pkg-config \
+            libegl1 libegl-mesa0 libgl1-mesa-dri
 
       - name: Install the pinned toolchain
         run: rustup toolchain install
@@ -86,7 +96,7 @@ jobs:
       # pinned to the commit v2 named when it was pinned: a tag can be moved, a commit cannot
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
-      # On macOS, where the render tests and the screens example find their headless GL.
+      # Where the render tests and the screens example find their headless GL.
       - name: Clippy, host
         run: cargo clippy --workspace --all-targets -- -D warnings
 

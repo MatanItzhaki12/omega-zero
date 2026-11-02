@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 
 use crate::common;
 
@@ -121,12 +121,7 @@ fn run_for(f: &mut Frontend, input: &mut Script, secs: f32) {
 fn l_fills_the_panel_and_r_gives_back_the_centred_picture() {
     let _core = core_lock();
     let core = Core::default_for(Platform::Gb);
-    let file = format!(
-        "{}_libretro.{}",
-        core.as_str(),
-        std::env::consts::DLL_EXTENSION
-    );
-    let dylib = repo_root().join("vendor").join(&file);
+    let dylib = omega_retro::host_core(&repo_root().join("vendor"), core.library());
     if !dylib.exists() {
         eprintln!("no {} dylib, skipping", core.as_str());
         return;
@@ -143,7 +138,8 @@ fn l_fills_the_panel_and_r_gives_back_the_centred_picture() {
         eprintln!("no Game Boy cart on this machine's card, skipping");
         return;
     };
-    std::fs::copy(&dylib, d.path().join("System").join(&file)).expect("plant the core");
+    let file = dylib.file_name().expect("the core has a file name");
+    std::fs::copy(&dylib, d.path().join("System").join(file)).expect("plant the core");
     clocked(d.path());
 
     let mut f = Frontend::boot(Box::new(SimPlatform::at(d.path().to_path_buf())));

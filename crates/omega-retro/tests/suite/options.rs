@@ -8,13 +8,10 @@ fn lock() -> MutexGuard<'static, ()> {
 }
 
 fn dylib() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../vendor")
-        .join(if cfg!(target_os = "macos") {
-            "mgba_libretro.dylib"
-        } else {
-            "mgba_libretro.so"
-        })
+    omega_retro::host_core(
+        &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../vendor"),
+        "mgba",
+    )
 }
 
 #[test]

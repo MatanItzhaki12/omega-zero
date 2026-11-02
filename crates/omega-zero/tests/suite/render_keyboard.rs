@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 //! The keyboard as the whole frontend draws it: a modal on the backdrop in the kit palette, as
 //! assets/ui/flow.html's #screen=keyboard. With SCRATCH_PNG_DIR set, every frame is written
 //! there as keyboard-<name>-<canvas>.png.

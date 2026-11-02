@@ -1007,6 +1007,21 @@ impl RetroCore for LibretroCore {
     }
 }
 
+/// Where this computer keeps its own build of `library`'s core under `vendor`, the repo's
+/// vendor/: in vendor/host/, apart from the console's, which on Linux have the same names. A
+/// Mac's were kept in vendor/ itself, as .dylib files no console core is ever named, and are
+/// still found there. The path is where it would be when there is none, for the caller to
+/// find nothing at.
+pub fn host_core(vendor: &Path, library: &str) -> std::path::PathBuf {
+    let name = format!("{library}_libretro.{}", std::env::consts::DLL_EXTENSION);
+    let own = vendor.join("host").join(&name);
+    let mac = vendor.join(&name);
+    if !own.exists() && cfg!(target_os = "macos") && mac.exists() {
+        return mac;
+    }
+    own
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

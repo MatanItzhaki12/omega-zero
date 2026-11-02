@@ -39,7 +39,7 @@ else
 fi
 
 command -v sshpass > /dev/null || {
-	echo "console.sh: needs sshpass (brew install sshpass)" >&2
+	echo "console.sh: needs sshpass (apt install sshpass, or brew install sshpass on a Mac)" >&2
 	exit 1
 }
 
@@ -89,7 +89,7 @@ on() {
 # into place, so a shell running the old copy of a script keeps reading that one.
 put() {
 	on -i "$1" "cat > '$2.new'"
-	want="$(shasum -a 256 "$1" | cut -d' ' -f1)"
+	want="$(if command -v sha256sum > /dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1)"
 	got="$(on "sha256sum '$2.new'" | cut -d' ' -f1)"
 	if [ "$want" != "$got" ]; then
 		echo "console.sh: $2 arrived damaged ($got, sent $want)" >&2

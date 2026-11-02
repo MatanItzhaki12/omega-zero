@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 
 //! The Bluetooth modal as the frontend draws it, held pixel for pixel to the kit's faces put
 //! where flow.html puts them, over a plain backdrop, and to flow.html's own screenshots of it

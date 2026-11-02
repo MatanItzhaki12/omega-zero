@@ -64,6 +64,12 @@ build() {
 		cflags="$device_cflags"
 		ldflags="$device_ldflags"
 		;;
+	Linux-x86_64)
+		platform=unix
+		lib=mednafen_supafaust_libretro.so
+		cflags=""
+		ldflags=""
+		;;
 	Darwin-*)
 		platform=osx
 		lib=mednafen_supafaust_libretro.dylib
@@ -71,7 +77,7 @@ build() {
 		ldflags=""
 		;;
 	*)
-		echo "build Supafaust on an aarch64 linux box or a Mac, not $(uname -s)-$(uname -m)" >&2
+		echo "build Supafaust on linux or a Mac, not $(uname -s)-$(uname -m)" >&2
 		exit 1
 		;;
 	esac

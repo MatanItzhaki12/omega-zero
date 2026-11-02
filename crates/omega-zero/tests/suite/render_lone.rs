@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 //! The lone panels as the frontend draws them: each is its face (held to flow.html in lone.rs)
 //! at two screen pixels to an art pixel, where flow.html centres it on this canvas, over the
 //! backdrop, and the screen holding POWER slides in as it powers off; and a new colour on the

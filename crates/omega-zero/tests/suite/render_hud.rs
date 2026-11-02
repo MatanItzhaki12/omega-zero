@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 //! The HUD as the frontend draws it: the gauge and the toast are their kit faces, in the
 //! palette's colours, at two screen pixels to an art pixel, centred on the art grid just under
 //! the shelf's top bar, and a gauge's face is drawn again as its cells light.

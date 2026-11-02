@@ -1,11 +1,16 @@
 version: '3'
 
 vars:
-  CORE: vendor/mgba_libretro.dylib
-  GPSP_HOST: vendor/gpsp_libretro.dylib
-  SNES9X_HOST: vendor/snes9x_libretro.dylib
-  SUPAFAUST_HOST: vendor/mednafen_supafaust_libretro.dylib
-  PCSX_HOST: vendor/pcsx_rearmed_libretro.dylib
+  # This computer's own builds of the cores, for task run and the tests, in vendor/host/: apart
+  # from the console's in vendor/, which on Linux have the same names
+  HOST_EXT: '{{if eq OS "darwin"}}dylib{{else}}so{{end}}'
+  CORE: vendor/host/mgba_libretro.{{.HOST_EXT}}
+  GPSP_HOST: vendor/host/gpsp_libretro.{{.HOST_EXT}}
+  SNES9X_HOST: vendor/host/snes9x_libretro.{{.HOST_EXT}}
+  SUPAFAUST_HOST: vendor/host/mednafen_supafaust_libretro.{{.HOST_EXT}}
+  PCSX_HOST: vendor/host/pcsx_rearmed_libretro.{{.HOST_EXT}}
+  # what file says of a library built for this computer
+  HOST_LIB: '{{if eq OS "darwin"}}Mach-O{{else}}ELF{{end}}'
   MGBA_COMMIT: e31759b24e7a4e3899285ff720d7b573ac328ae7
   GPSP_COMMIT: 7b2dd37394e2822110cacef321e9bb291a305b77
   SNES9X_COMMIT: fae2fea08f74180759ef540ee94259213f503480
@@ -146,7 +151,7 @@ tasks:
       - test "$(cat {{.CORE}}.meta 2>/dev/null)" = "$(sh cores/mgba/build.sh stamp {{.MGBA_COMMIT}})"
     cmds:
       - sh cores/mgba/build.sh build {{.MGBA_COMMIT}} target/mgba {{.CORE}}
-      - file {{.CORE}} | grep -q Mach-O
+      - file {{.CORE}} | grep -q {{.HOST_LIB}}
       - 'echo "built {{.CORE}}"'
 
   core:gpsp:host:
@@ -181,31 +186,33 @@ tasks:
       - >-
         sh cores/supafaust/build.sh build {{.SUPAFAUST_COMMIT}} vendor/supafaust-src.tar.gz
         target/supafaust {{.SUPAFAUST_HOST}}
-      - file {{.SUPAFAUST_HOST}} | grep -q Mach-O
+      - file {{.SUPAFAUST_HOST}} | grep -q {{.HOST_LIB}}
       - 'echo "built {{.SUPAFAUST_HOST}}"'
 
   core:buildbot:
-    desc: Fetch LIB's core for this Mac from the libretro buildbot's nightlies
+    desc: Fetch LIB's core for this computer, a Linux PC or a Mac, from the libretro buildbot's nightlies
     internal: true
     requires:
       vars: [LIB]
     status:
-      - test -f vendor/{{.LIB}}_libretro.dylib
+      - test -f vendor/host/{{.LIB}}_libretro.{{.HOST_EXT}}
     cmds:
       - |
         set -euo pipefail
-        case "$(uname -m)" in
-          arm64)  arch=arm64 ;;
-          x86_64) arch=x86_64 ;;
-          *) echo "unsupported arch $(uname -m)" >&2; exit 1 ;;
+        case "$(uname -s)-$(uname -m)" in
+          Linux-x86_64)  dir=linux/x86_64 ;;
+          Darwin-arm64)  dir=apple/osx/arm64 ;;
+          Darwin-x86_64) dir=apple/osx/x86_64 ;;
+          *) echo "the buildbot has no {{.LIB}} core for $(uname -s)-$(uname -m)" >&2; exit 1 ;;
         esac
-        mkdir -p vendor
-        curl -fsSL -o vendor/{{.LIB}}-host.zip \
-          "https://buildbot.libretro.com/nightly/apple/osx/${arch}/latest/{{.LIB}}_libretro.dylib.zip"
-        unzip -o -q vendor/{{.LIB}}-host.zip -d vendor
-        rm -f vendor/{{.LIB}}-host.zip
-        file vendor/{{.LIB}}_libretro.dylib | grep -q Mach-O
-        echo "fetched vendor/{{.LIB}}_libretro.dylib"
+        lib={{.LIB}}_libretro.{{.HOST_EXT}}
+        mkdir -p vendor/host
+        curl -fsSL -o vendor/host/{{.LIB}}.zip \
+          "https://buildbot.libretro.com/nightly/${dir}/latest/${lib}.zip"
+        unzip -o -q vendor/host/{{.LIB}}.zip -d vendor/host
+        rm -f vendor/host/{{.LIB}}.zip
+        file vendor/host/$lib | grep -q {{.HOST_LIB}}
+        echo "fetched vendor/host/$lib"
 
   core:src:
     desc: >-

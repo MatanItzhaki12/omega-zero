@@ -26,9 +26,10 @@ fn candidates(root: &Path, core: Core) -> Vec<PathBuf> {
         .and_then(|exe| exe.parent().map(Path::to_path_buf))
     {
         paths.push(dir.join(&name));
-        paths.push(dir.join("vendor").join(&name));
+        paths.push(omega_retro::host_core(&dir.join("vendor"), core.library()));
     }
-    paths.push(Path::new("vendor").join(&name));
+    // a computer's own cores, from the repo, never the console's beside them in vendor/
+    paths.push(omega_retro::host_core(Path::new("vendor"), core.library()));
     paths
 }
 

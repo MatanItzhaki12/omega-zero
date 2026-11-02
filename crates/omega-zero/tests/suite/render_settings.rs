@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 
 //! Settings drawn by the whole frontend on a headless GL canvas: the modal and its rows where
 //! the kit puts them, at 2x on the art grid, in the palette of the backdrop showing round it.

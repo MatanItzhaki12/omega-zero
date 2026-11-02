@@ -6,7 +6,10 @@ const STRONG: u32 = 0;
 const WEAK: u32 = 1;
 
 fn test_core() -> Option<LibretroCore> {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/mgba_libretro.dylib");
+    let p = omega_retro::host_core(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor"),
+        "mgba",
+    );
     if !p.exists() {
         return None;
     }

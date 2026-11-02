@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 
 //! About drawn by the whole frontend on a headless GL canvas: its modal (held to flow.html in
 //! about.rs) at two screen pixels to an art pixel where every modal goes, over the backdrop, in

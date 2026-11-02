@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 //! The bar along the bottom as the panel shows it: every pixel of its actions, notches and
 //! all, and of the hints between them is the kit's face drawn at twice its size on whole
 //! pixels, on the shelf, in Settings and under the core picker with ◀▶ SWAP between RETURN and

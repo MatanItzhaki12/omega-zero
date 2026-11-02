@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "linux"))]
 
 //! Pixel art is uploaded once with nearest filtering and its pixels replaced in place after:
 //! what it is drawn with has to stay sharp through both.

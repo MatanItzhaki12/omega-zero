@@ -13,7 +13,7 @@ pub use ffi::{
     NETPACKET_BROADCAST, NETPACKET_FLUSH_HINT, NETPACKET_RELIABLE, NETPACKET_UNRELIABLE,
     NETPACKET_UNSEQUENCED,
 };
-pub use libretro::LibretroCore;
+pub use libretro::{host_core, LibretroCore};
 pub use link::{Link, LinkChannel, LoopbackLink};
 pub use mock::MockCore;
 pub use rumble::Rumble;

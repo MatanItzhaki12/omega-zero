@@ -8,7 +8,10 @@ fn lock() -> std::sync::MutexGuard<'static, ()> {
 }
 
 fn dylib() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/mgba_libretro.dylib")
+    omega_retro::host_core(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor"),
+        "mgba",
+    )
 }
 
 fn test_core() -> Option<LibretroCore> {
