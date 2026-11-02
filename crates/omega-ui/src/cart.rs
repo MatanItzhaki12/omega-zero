@@ -251,16 +251,22 @@ pub fn face_labels(platform: Platform) -> Vec<(u32, u32)> {
 /// `cart`'s face, its label drawn from the cut kept for its scan, or from the scan itself when
 /// there is no cut of it yet.
 pub fn cart_face(cart: &Cart) -> CartFace {
-    face_of(cart, true)
+    face_of(cart, true, true)
+}
+
+/// `cart`'s face with its label as the art puts it down, before the foil plays over it: for
+/// checking what the label shows, pixel for pixel.
+pub fn cart_face_unfoiled(cart: &Cart) -> CartFace {
+    face_of(cart, true, false)
 }
 
 /// `cart`'s face in a generated label whatever scan it has: what a boot draws until the scan
 /// is cut.
 pub fn generated_face(cart: &Cart) -> CartFace {
-    face_of(cart, false)
+    face_of(cart, false, true)
 }
 
-fn face_of(cart: &Cart, scans: bool) -> CartFace {
+fn face_of(cart: &Cart, scans: bool, foiled: bool) -> CartFace {
     let model = model_of(cart);
     if model == CartModel::Disc {
         if let Some(face) = disc::face(cart, scans) {
@@ -279,6 +285,9 @@ fn face_of(cart: &Cart, scans: bool) -> CartFace {
     mould_detail(&s, &mut face);
     recess_label(&s, &mut face, &shell);
     paste_label(&s, &mut face, &label);
+    if foiled {
+        foil(&s, &mut face);
+    }
     clip_to_silhouette(&s, &mut face);
     face
 }
@@ -452,22 +461,22 @@ const CHIPS: [Chip; 3] = [
     },
     // the real-time clock
     Chip {
-        at: (0.46, 0.56, 0.02, 0.14),
+        at: (0.46, 0.56, 0.075, 0.19),
         legs_on_sides: false,
     },
     // the ROM, mostly under the cell
     Chip {
-        at: (0.60, 0.88, 0.03, 0.52),
+        at: (0.60, 0.88, 0.08, 0.52),
         legs_on_sides: true,
     },
 ];
 
 /// The clock's crystal, a silver can: its corners as fractions of the board.
-const CRYSTAL: (f32, f32, f32, f32) = (0.16, 0.28, 0.03, 0.10);
+const CRYSTAL: (f32, f32, f32, f32) = (0.16, 0.28, 0.08, 0.15);
 
 /// The coin cell: its centre as fractions of the board, and its radius as a fraction of its
 /// width.
-const CELL: (f32, f32, f32) = (0.74, 0.22, 0.15);
+const CELL: (f32, f32, f32) = (0.74, 0.33, 0.15);
 
 /// The small parts, resistors and capacitors: each one's top left as fractions of the board.
 const PARTS: [(f32, f32); 7] = [
@@ -745,6 +754,72 @@ fn paste_label(s: &Spec, face: &mut CartFace, label: &[u8]) {
             }
         }
     }
+}
+
+/// How a label's foil plays over it, as the holographic labels of Nintendo's own paks do: the
+/// light breaks on it in small facets, like shattered glass, each a little lighter or darker and
+/// faintly coloured; a soft band of sheen crosses it on the diagonal; here and there a facet
+/// catches the light whole, a glint. All of it slight, so the label's art reads through.
+const FOIL_FACET: i32 = 8;
+const FOIL_TINT: u32 = 12;
+const FOIL_SHEEN: f32 = 22.0;
+const FOIL_GLINT: u32 = 150;
+
+/// How far apart the facets' centres are, in art pixels.
+const FACET: u32 = 4;
+
+/// Lays the foil over the label in `face`, on the art's two-pixel grid.
+fn foil(s: &Spec, face: &mut CartFace) {
+    let (lx, ly, lw, lh) = s.label;
+    let span = (lw + lh) as f32 * 0.5;
+    for y in ly..ly + lh {
+        for x in lx..lx + lw {
+            if s.label_round > 0 && !in_round_rect(x, y, s.label, s.label_round) {
+                continue;
+            }
+            let (ax, ay) = (x / 2, y / 2);
+            let facet = shard(ax, ay);
+            let d = ((y * s.w + x) * 4) as usize;
+            let under = [face.rgba[d], face.rgba[d + 1], face.rgba[d + 2]];
+            let rainbow = hsv_to_rgb((facet % 360) as f32, 0.55, 1.0);
+            let tinted = lerp(under, rainbow, FOIL_TINT, 255);
+            // the sheen: one soft band across the label, a third of the way along
+            let along = ((x - lx) as f32 + (y - ly) as f32 * 0.5) / span;
+            let band = (-((along - 0.35) / 0.12).powi(2)).exp();
+            let lift = (facet as i32 % 256 - 128) * FOIL_FACET / 128 + (band * FOIL_SHEEN) as i32;
+            let mut c = tinted.map(|v| (v as i32 + lift).clamp(0, 255) as u8);
+            if scatter(ax, ay ^ 0x5bd1).is_multiple_of(260) {
+                c = lerp(c, [0xff; 3], FOIL_GLINT, 255);
+            }
+            face.rgba[d..d + 3].copy_from_slice(&c);
+        }
+    }
+}
+
+/// A steady scatter for the foil's facets and glints, the same each time a face is made.
+fn scatter(x: u32, y: u32) -> u32 {
+    let mut h = x.wrapping_mul(0x27d4_eb2d) ^ y.wrapping_mul(0x1656_67b1);
+    h ^= h >> 13;
+    h = h.wrapping_mul(0x85eb_ca6b);
+    h ^ (h >> 16)
+}
+
+/// The facet the art pixel `ax, ay` stands in, as a number to light and colour it by: the cell
+/// of the nearest of a scatter of centres, about `FACET` apart, so the facets are irregular.
+fn shard(ax: u32, ay: u32) -> u32 {
+    let (cx, cy) = (ax / FACET, ay / FACET);
+    let mut best = (u32::MAX, 0);
+    for gy in cy.saturating_sub(1)..=cy + 1 {
+        for gx in cx.saturating_sub(1)..=cx + 1 {
+            let h = scatter(gx, gy);
+            let (px, py) = (gx * FACET + h % FACET, gy * FACET + (h >> 8) % FACET);
+            let dist = ax.abs_diff(px).pow(2) + ay.abs_diff(py).pow(2);
+            if dist < best.0 {
+                best = (dist, h >> 16);
+            }
+        }
+    }
+    best.1
 }
 
 fn generated_label(s: &Spec, title: &str) -> Vec<u8> {

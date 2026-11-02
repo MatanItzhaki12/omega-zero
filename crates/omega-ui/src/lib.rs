@@ -53,10 +53,10 @@ pub use board::{
     SLIDE_UP, SNES_SOCKETS, SOCKET_H, SOCKET_U, SOCKET_V, SOCKET_W, TURN_PAD,
 };
 pub use cart::{
-    cart_box, cart_face, cart_shadow, clean_label, face_labels, gb_cart_shadow, gb_label_panel,
-    gb_shell_of, generated_face, label_colour, label_panel, label_tags, label_text, model_box,
-    model_of, model_shadow, seated_box, CartFace, CART_H, CART_W, GB_CART_H, GB_CART_W, GB_LABEL_H,
-    GB_LABEL_W, GB_LABEL_X, GB_LABEL_Y, LABEL_H, LABEL_W, LABEL_X, LABEL_Y,
+    cart_box, cart_face, cart_face_unfoiled, cart_shadow, clean_label, face_labels, gb_cart_shadow,
+    gb_label_panel, gb_shell_of, generated_face, label_colour, label_panel, label_tags, label_text,
+    model_box, model_of, model_shadow, seated_box, CartFace, CART_H, CART_W, GB_CART_H, GB_CART_W,
+    GB_LABEL_H, GB_LABEL_W, GB_LABEL_X, GB_LABEL_Y, LABEL_H, LABEL_W, LABEL_X, LABEL_Y,
 };
 pub use chrome::{edge, housing, set_theme, ChromeColours, BAR_H};
 pub use clock::{

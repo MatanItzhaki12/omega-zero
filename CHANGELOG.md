@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## omega-zero 2.1.4: foil on the labels, parts that peek
+
+- Every cart's label has a foil over it, as the holographic labels of Nintendo's own Pokémon
+  paks do: the light breaks on it in small facets like shattered glass, each a little lighter
+  or darker and faintly coloured, a soft band of sheen crosses it on the diagonal, and here and
+  there a glint. It is slight, so the label's art reads through it.
+- A clear cart's clock chip, crystal, ROM and coin cell stand lower on the board, so only their
+  tops and pins peek over a GBA cart's label.
+
 ## omega-zero 2.1.3: X DELETE fits the bar, toasts over it
 
 - The save states' X DELETE stands on the kit's hint line, a SAVE tab and the key in its dark

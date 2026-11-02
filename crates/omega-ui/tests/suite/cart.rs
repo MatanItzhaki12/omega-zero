@@ -2,14 +2,15 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use omega_store::{scan, Platform};
+// the label as its art puts it down: the foil over it is foil_glints_over_the_label_only's
+use omega_ui::cart_face_unfoiled as cart_face;
 use omega_ui::{
-    cart_face, clean_label, cut_label, cut_path, foot_y, gb_label_panel, gb_silhouette,
-    generated_face, label_colour, label_panel, label_text, label_uncut, model_box, model_of,
-    model_scale, model_shadow, model_shelf_box, out_w, rest_y, seated_box, shelf_box, shell_for,
-    silhouette, snes_silhouette, stage_y, sway_reach, wears_label, CartModel, Finish, GbShell,
-    SnesShell, BAR_H, CART_H, CART_W, GB_CART_H, GB_CART_W, GB_LABEL_H, GB_LABEL_W, GB_LABEL_X,
-    GB_LABEL_Y, GB_SHELF_SCALE, LABEL_H, LABEL_W, LABEL_X, LABEL_Y, MOCKUP_H, SFC_SHELL,
-    SNES_SHELL, TOP_BAR_H,
+    clean_label, cut_label, cut_path, foot_y, gb_label_panel, gb_silhouette, generated_face,
+    label_colour, label_panel, label_text, label_uncut, model_box, model_of, model_scale,
+    model_shadow, model_shelf_box, out_w, rest_y, seated_box, shelf_box, shell_for, silhouette,
+    snes_silhouette, stage_y, sway_reach, wears_label, CartModel, Finish, GbShell, SnesShell,
+    BAR_H, CART_H, CART_W, GB_CART_H, GB_CART_W, GB_LABEL_H, GB_LABEL_W, GB_LABEL_X, GB_LABEL_Y,
+    GB_SHELF_SCALE, LABEL_H, LABEL_W, LABEL_X, LABEL_Y, MOCKUP_H, SFC_SHELL, SNES_SHELL, TOP_BAR_H,
 };
 use tempfile::TempDir;
 
@@ -228,11 +229,11 @@ fn only_a_cart_with_a_label_scan_wears_one() {
     let cart = |stem: &str| carts.iter().find(|c| c.stem == stem).unwrap();
     assert!(!wears_label(cart("Bare")));
     assert!(
-        cart_face(cart("Bare")).rgba == generated_face(cart("Bare")).rgba,
+        omega_ui::cart_face(cart("Bare")).rgba == generated_face(cart("Bare")).rgba,
         "a cart that wears no scan is not drawn in its generated face"
     );
     assert!(wears_label(cart("Labelled")));
-    assert!(cart_face(cart("Labelled")).rgba != generated_face(cart("Labelled")).rgba);
+    assert!(omega_ui::cart_face(cart("Labelled")).rgba != generated_face(cart("Labelled")).rgba);
 }
 
 #[test]
@@ -1431,4 +1432,45 @@ fn a_clear_cart_lights_its_label_recess_no_brighter_than_its_plastic() {
         luma(lit) <= luma(plastic) * 13 / 10 + 4,
         "the recess edge {lit:?} glares against the plastic {plastic:?}"
     );
+}
+
+/// The foil plays over the label alone, as the holographic labels of Nintendo's paks do: the
+/// plastic round it is as it was, and the label changes a little, on average, with here and
+/// there a glint far lighter than what is under it.
+#[test]
+fn foil_glints_over_the_label_only() {
+    let d = tmp_root();
+    write_rom(&d, "Advance.gba", "ADVANCE");
+    let carts = scan(d.path()).unwrap();
+    let cart = carts.iter().find(|c| c.stem == "Advance").expect("scanned");
+    let (foiled, plain) = (omega_ui::cart_face(cart), cart_face(cart));
+    let inside = |x: u32, y: u32| {
+        (LABEL_X..LABEL_X + LABEL_W).contains(&x) && (LABEL_Y..LABEL_Y + LABEL_H).contains(&y)
+    };
+    let (mut moved, mut total, mut glints) = (0u64, 0u64, 0);
+    for y in 0..CART_H {
+        for x in 0..CART_W {
+            let (a, b) = (pixel(&foiled, x, y), pixel(&plain, x, y));
+            if !inside(x, y) {
+                assert_eq!(a, b, "the foil reached the plastic at {x},{y}");
+                continue;
+            }
+            let diff: u32 = (0..3).map(|c| u32::from(a[c].abs_diff(b[c]))).sum();
+            moved += u64::from(diff);
+            total += 1;
+            if a.iter()
+                .zip(b)
+                .all(|(f, p)| *f >= p.saturating_add(40).min(250))
+            {
+                glints += 1;
+            }
+        }
+    }
+    let mean = moved as f32 / total as f32 / 3.0;
+    assert!(mean > 1.0, "the label has no foil: {mean:.1} a channel");
+    assert!(
+        mean < 16.0,
+        "the foil drowns the label: {mean:.1} a channel"
+    );
+    assert!(glints > 0, "the foil has no glints");
 }
