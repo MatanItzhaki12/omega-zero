@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## omega-zero 2.4.2
+
 - The LINK panel's values end in one line: NAME's and PASSWORD's, which have no arrows, stood
   further right than PLAY's, ROLE's and SERVER's.
 

@@ -1036,6 +1036,12 @@ fn a_row_with_caret_room_lines_up_with_one_with_carets() {
     let carets = row_face(150, &with(true, false), &RAMP);
     let room = row_face(150, &with(false, true), &RAMP);
     let neither = row_face(150, &with(false, false), &RAMP);
-    assert_eq!(room.rgba, carets.rgba, "the value moved off the carets' line");
-    assert_ne!(neither.rgba, carets.rgba, "a row with no room already lined up");
+    assert_eq!(
+        room.rgba, carets.rgba,
+        "the value moved off the carets' line"
+    );
+    assert_ne!(
+        neither.rgba, carets.rgba,
+        "a row with no room already lined up"
+    );
 }
