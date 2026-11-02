@@ -18,10 +18,10 @@ use omega_zero::emu::{CoreState, EmuHandle, Speed};
 use omega_zero::link_kind::LinkKind;
 use omega_zero::link_net::{Cancel, TcpLink};
 use omega_zero::link_radio::{LinkRole, RadioJob, RadioJobs};
-use omega_zero::link_screen::{LinkActions, LinkView, MODE, VIA};
+use omega_zero::link_screen::{LinkActions, LinkField, LinkView, CHANGE};
 use omega_zero::link_start::{LinkFail, LinkStarter, LinkStep};
+use omega_zero::list_view::RowValue;
 use omega_zero::persist::{self, Snapshot};
-use omega_zero::screens::bar::SWAP;
 use omega_zero::screens::lone::Lone;
 use omega_zero::session::Session;
 use tempfile::TempDir;
@@ -490,10 +490,17 @@ fn the_link_screen_draws_its_panel_over_the_backdrop_in_place_of_the_game() {
             kind: LinkKind::Cable,
             picking: true,
             status: None,
-            // a GBA game on gpSP over the cable can link online: nearby until Y says otherwise
+            // a GBA game on gpSP over the cable can link online: PLAY on top, Local to begin
             online: Some(false),
             detail: None,
             rooms: None,
+            fields: vec![
+                (LinkField::Play, RowValue::Choice("Local")),
+                (LinkField::Role, RowValue::Choice("Host")),
+                (LinkField::Mode, RowValue::Choice("Cable")),
+            ],
+            // the cursor starts on ROLE, the row most often changed
+            lit: Some(1),
         })
     );
     let mut out = Vec::new();
@@ -1250,9 +1257,8 @@ fn pick_offers_return_and_link_with_mode_and_swap_between_them() {
     assert_eq!(app.link_bar_shown(), Some((LinkActions::Pick, 0)));
     assert_eq!(LinkActions::Pick.action(Side::Left), ("RETURN", "B"));
     assert_eq!(LinkActions::Pick.action(Side::Right), ("LINK", "A"));
-    // a GBA game on gpSP can link online too: Y switches it, and ROLE's carets say it swaps,
-    // three hints being too many for the narrowest bar
-    assert_eq!(app.link_hints(), vec![VIA, MODE]);
+    // the rows change as a settings list's do
+    assert_eq!(app.link_hints(), vec![CHANGE]);
 }
 
 #[test]
@@ -1607,9 +1613,17 @@ fn a_game_boy_cart_links_on_mgba_and_is_refused_on_gpsp() {
 fn the_pick_bar_names_mode_only_where_the_hardware_can_be_switched() {
     let (mut app, _d) = playing_on(Core::Gpsp);
     app.apply(Action::GameMenu);
-    assert!(
-        app.link_hints().contains(&MODE),
-        "a cart whose hardware can be switched did not offer SELECT"
+    let mode = |app: &App| {
+        let view = app.link_view().unwrap();
+        view.fields
+            .into_iter()
+            .find(|(f, _)| *f == LinkField::Mode)
+            .map(|(_, v)| v)
+    };
+    assert_eq!(
+        mode(&app),
+        Some(RowValue::Choice("Cable")),
+        "a cart whose hardware can be switched did not offer to change MODE"
     );
 
     let d = common::tmp_root_with_carts(&["Zzz"]);
@@ -1617,9 +1631,15 @@ fn the_pick_bar_names_mode_only_where_the_hardware_can_be_switched() {
     let mut app = seated_on_gpsp(&d);
     app.apply(Action::GameMenu);
     assert_eq!(
-        app.link_hints(),
-        vec![SWAP],
-        "the screen offered SELECT over a game gpSP links the same either way"
+        mode(&app),
+        Some(RowValue::Said("Wireless")),
+        "the screen offered MODE over a game gpSP links the same either way"
+    );
+    app.apply(Action::GbaDown(Btn::Down));
+    assert_eq!(
+        app.link_view().unwrap().lit,
+        Some(0),
+        "the cursor stopped on a MODE that cannot change"
     );
     assert_eq!(app.link_bar_shown(), Some((LinkActions::Pick, 0)));
 }
@@ -1714,7 +1734,96 @@ fn y_takes_a_gpsp_game_online_and_mgba_has_no_via() {
         None,
         "mGBA was offered online play"
     );
-    assert!(!app.link_hints().contains(&VIA));
+    assert!(
+        app.link_view()
+            .unwrap()
+            .fields
+            .iter()
+            .all(|(f, _)| *f != LinkField::Play),
+        "mGBA has a PLAY row"
+    );
+}
+
+/// The LINK panel's rows are a settings list: up to PLAY and over to Online brings NAME,
+/// PASSWORD and SERVER; A on NAME or PASSWORD types it, START keeps it; SERVER steps the relays.
+#[test]
+fn the_link_rows_move_and_change_as_settings_do() {
+    let (mut app, _d) = playing_on(Core::Gpsp);
+    app.apply(Action::GameMenu);
+    app.apply(Action::GbaDown(Btn::Up));
+    app.apply(Action::GbaDown(Btn::Right));
+    let view = app.link_view().unwrap();
+    assert_eq!(view.online, Some(true), "PLAY did not go online");
+    let rows: Vec<LinkField> = view.fields.iter().map(|(f, _)| *f).collect();
+    assert_eq!(
+        rows,
+        [
+            LinkField::Play,
+            LinkField::Role,
+            LinkField::Name,
+            LinkField::Password,
+            LinkField::Server
+        ]
+    );
+    assert_eq!(view.lit, Some(0));
+
+    // down to PASSWORD: A edits rather than links
+    app.apply(Action::GbaDown(Btn::Down));
+    app.apply(Action::GbaDown(Btn::Down));
+    app.apply(Action::GbaDown(Btn::Down));
+    assert_eq!(app.link_view().unwrap().lit, Some(3));
+    assert_eq!(app.link_bar_shown(), Some((LinkActions::Edit, 0)));
+    assert!(app.link_hints().is_empty(), "◀▶ offered on a typed row");
+    app.apply(Action::GbaDown(Btn::A));
+    assert!(
+        app.typing().is_some(),
+        "A on PASSWORD did not raise the keyboard"
+    );
+    app.apply(Action::GbaDown(Btn::A));
+    app.apply(Action::GbaDown(Btn::Start));
+    assert!(
+        app.typing().is_none(),
+        "START did not put the keyboard away"
+    );
+    let password = app.link_view().unwrap().fields[3].1.clone();
+    assert!(
+        matches!(password, RowValue::Name(ref p) if p.len() == 1),
+        "the typed password was not kept: {password:?}"
+    );
+    assert_eq!(app.game_menu(), Some(GameMenu::Pick(LinkRow::Host)));
+
+    // B on an emptied keyboard leaves it, keeping what was there
+    app.apply(Action::GbaDown(Btn::A));
+    app.apply(Action::GbaDown(Btn::B));
+    app.apply(Action::GbaDown(Btn::B));
+    assert!(
+        app.typing().is_none(),
+        "B on an empty keyboard did not leave it"
+    );
+    assert_eq!(app.link_view().unwrap().fields[3].1, password);
+
+    // SERVER steps through the relays
+    app.apply(Action::GbaDown(Btn::Down));
+    let server = |app: &App| app.link_view().unwrap().fields[4].1.clone();
+    let before = server(&app);
+    app.apply(Action::GbaDown(Btn::Right));
+    assert_ne!(server(&app), before, "◀▶ on SERVER changed nothing");
+    app.apply(Action::GbaDown(Btn::Left));
+    assert_eq!(server(&app), before);
+
+    // back to Local: MODE again in place of the online rows
+    for _ in 0..4 {
+        app.apply(Action::GbaDown(Btn::Up));
+    }
+    app.apply(Action::GbaDown(Btn::Left));
+    let rows: Vec<LinkField> = app
+        .link_view()
+        .unwrap()
+        .fields
+        .iter()
+        .map(|(f, _)| *f)
+        .collect();
+    assert_eq!(rows, [LinkField::Play, LinkField::Role, LinkField::Mode]);
 }
 
 /// Online with no Wi-Fi joined, A says so rather than reaching for the lobby.

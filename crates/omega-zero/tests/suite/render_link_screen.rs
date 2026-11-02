@@ -639,6 +639,8 @@ fn the_status_is_a_line_in_the_panels_well_that_grows_it() {
         online: None,
         detail: None,
         rooms: None,
+        fields: Vec::new(),
+        lit: None,
     };
     let bare = link_panel_face(&view(None), pal);
     let told = link_panel_face(&view(Some(LinkStep::Waiting.line())), pal);
@@ -675,6 +677,8 @@ fn the_rooms_panel_grows_with_its_rooms_up_to_five() {
                 online: Some(true),
                 detail: None,
                 rooms: Some(rooms),
+                fields: Vec::new(),
+                lit: None,
             },
             pal,
         )

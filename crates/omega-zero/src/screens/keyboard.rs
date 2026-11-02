@@ -11,7 +11,7 @@ use crate::wifi::shown;
 impl App {
     /// The keyboard in use, and what it is asking for.
     pub fn typing(&self) -> Option<TypingView<'_>> {
-        typing_of(&self.phase)
+        typing_of(&self.phase).or_else(|| self.link_typing_view())
     }
 
     /// The keyboard's faces as the sync last baked them. They stay once the keyboard is put

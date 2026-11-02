@@ -424,6 +424,7 @@ fn a_room_opened_online_is_put_up_and_takes_the_player_its_relay_brings() {
             game: "Pokemon - Emerald Version (USA, Europe)".into(),
             crc: 0x1F1C_08FB,
             rom: None,
+            password: String::new(),
         },
         &lobby,
     );
@@ -460,6 +461,7 @@ fn a_room_joined_at_an_address_plays_as_the_client_the_host_numbers_it() {
             nick: "RG SP".into(),
             addr: "127.0.0.1".into(),
             port,
+            password: String::new(),
         },
         "http://127.0.0.1:9/",
     );
@@ -487,6 +489,7 @@ fn a_lobby_that_cannot_be_reached_fails_the_room_as_the_lobby() {
             game: "Emerald".into(),
             crc: 0,
             rom: None,
+            password: String::new(),
         },
         &format!("http://127.0.0.1:{port}/"),
     );

@@ -15,8 +15,9 @@
 //!
 //! The core is named as RetroArch names gpSP to the other end, "gpSP", and its version as gpSP
 //! gives it for its link packets, "gpSP v1.0", so RetroArch and the GB-Link bridge take us for
-//! one of their own. A room with a password is refused: the rooms offered to join are those
-//! without one.
+//! one of their own. A room with a password takes it as RetroArch does: the host's header carries
+//! a salt, and the one who joins answers with the SHA-256 of the salt, in eight capital hex
+//! digits, and the password after it; a wrong one is dropped without a word.
 
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream, ToSocketAddrs};
@@ -56,6 +57,7 @@ pub const CORE_VERSION: &str = "gpSP v1.0";
 const CMD_NAK: u32 = 0x0001;
 const CMD_DISCONNECT: u32 = 0x0002;
 const CMD_NICK: u32 = 0x0020;
+const CMD_PASSWORD: u32 = 0x0021;
 const CMD_INFO: u32 = 0x0022;
 const CMD_SYNC: u32 = 0x0023;
 const CMD_PLAY: u32 = 0x0025;
@@ -74,6 +76,7 @@ const BROADCAST: u32 = 0xffff;
 pub const JOINER: u16 = 1;
 
 const NICK_LEN: usize = 32;
+const PASSWORD_LEN: usize = 64;
 const INFO_LEN: usize = 4 + 2 * NICK_LEN;
 const MAX_INPUT_DEVICES: usize = 16;
 const SYNC_LEN: usize =
@@ -98,8 +101,10 @@ pub enum NetplayFail {
     Full,
     /// The host has banned this address.
     Banned,
-    /// The room has a password.
+    /// The room has a password, and none was given.
     Password,
+    /// The room's password is not the one given.
+    WrongPassword,
     /// The other end speaks no protocol in common, or something that is not netplay.
     Protocol(String),
     /// The other end runs another core: its name.
@@ -120,6 +125,7 @@ impl std::fmt::Display for NetplayFail {
             NetplayFail::Full => write!(f, "the room is full"),
             NetplayFail::Banned => write!(f, "the host turned this handheld away"),
             NetplayFail::Password => write!(f, "the room has a password"),
+            NetplayFail::WrongPassword => write!(f, "the room's password is another"),
             NetplayFail::Protocol(why) => write!(f, "not a netplay we speak: {why}"),
             NetplayFail::Core(core) => write!(f, "the other player runs {core}, not gpSP"),
             NetplayFail::Refused => write!(f, "the host would not let this handheld play"),
@@ -149,6 +155,24 @@ pub fn impl_magic(version: &str, protocol: u32) -> u32 {
         i += 1;
     }
     magic ^ (protocol << (i & 0xf))
+}
+
+/// The answer to a room's `salt` for `password`, as RetroArch checks it: the SHA-256 of the salt
+/// in eight capital hex digits and the password after it, in lower-case hex.
+pub fn password_hash(salt: u32, password: &str) -> String {
+    crate::update::sha256_hex(format!("{salt:08X}{password}").as_bytes())
+}
+
+/// A salt for a room with a password: never 0, which says a room has none.
+fn salt() -> u32 {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u128(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos()),
+    );
+    (h.finish() as u32).max(1)
 }
 
 /// A header: the magic, the platform, the compression, then the joiner's highest protocol or the
@@ -310,11 +334,12 @@ pub fn join_relay(
     port: u16,
     session: [u8; 12],
     nick: &str,
+    password: &str,
     bound: Duration,
 ) -> Result<Joined, NetplayFail> {
     let mut stream = connect(addr, port, bound)?;
     stream.write_all(&relay_id(RELAY_SESSION, &session))?;
-    join(stream, nick, bound)
+    join_with(stream, nick, password, bound)
 }
 
 /// A room hosted through a relay: the session the lobby is told of, and the players the relay
@@ -427,7 +452,17 @@ pub struct Joined {
 /// Joins the room at the other end of `stream` as `nick`, the stream's first bytes already
 /// given to a relay when the room is reached through one. Waits `bound` for the host to let
 /// this end play.
-pub fn join(mut stream: TcpStream, nick: &str, bound: Duration) -> Result<Joined, NetplayFail> {
+pub fn join(stream: TcpStream, nick: &str, bound: Duration) -> Result<Joined, NetplayFail> {
+    join_with(stream, nick, "", bound)
+}
+
+/// As [`join`], with `password` for a room that has one.
+pub fn join_with(
+    mut stream: TcpStream,
+    nick: &str,
+    password: &str,
+    bound: Duration,
+) -> Result<Joined, NetplayFail> {
     stream.set_nodelay(true)?;
     stream.set_read_timeout(Some(bound))?;
     let deadline = Instant::now() + bound;
@@ -444,17 +479,35 @@ pub fn join(mut stream: TcpStream, nick: &str, bound: Duration) -> Result<Joined
     if !(LOW_PROTOCOL..=HIGH_PROTOCOL).contains(&protocol) {
         return Err(NetplayFail::Protocol(format!("protocol {protocol}")));
     }
-    if word(&head, 12) != 0 {
+    let salt = word(&head, 12);
+    if salt != 0 && password.is_empty() {
         return Err(NetplayFail::Password);
     }
     stream.write_all(&frame(CMD_NICK, &field(nick, NICK_LEN)))?;
+    if salt != 0 {
+        stream.write_all(&frame(
+            CMD_PASSWORD,
+            password_hash(salt, password).as_bytes(),
+        ))?;
+    }
     let mut peer = String::new();
     let mut client = None;
+    let mut let_in = salt == 0;
     loop {
         if Instant::now() >= deadline {
             return Err(NetplayFail::TimedOut);
         }
-        let f = read_frame(&mut stream)?;
+        let f = match read_frame(&mut stream) {
+            Ok(f) => f,
+            // RetroArch hangs up on a wrong password without a word
+            Err(e) if !let_in && e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                return Err(NetplayFail::WrongPassword)
+            }
+            Err(e) => return Err(e.into()),
+        };
+        if f.cmd == CMD_INFO {
+            let_in = true;
+        }
         match f.cmd {
             CMD_NICK => peer = read_field(&f.payload, 0, NICK_LEN),
             // the host has no game in yet: say who we are and wait for its next
@@ -495,8 +548,19 @@ pub fn join(mut stream: TcpStream, nick: &str, bound: Duration) -> Result<Joined
 /// Takes the player at the other end of `stream` into this end's room as `nick`, hosting the game
 /// whose checksum is `crc`. Waits `bound` for them to say who they are and ask to play.
 pub fn host(
+    stream: TcpStream,
+    nick: &str,
+    crc: u32,
+    bound: Duration,
+) -> Result<Joined, NetplayFail> {
+    host_with(stream, nick, "", crc, bound)
+}
+
+/// As [`host`], the room kept for those who give `password`, when there is one.
+pub fn host_with(
     mut stream: TcpStream,
     nick: &str,
+    password: &str,
     crc: u32,
     bound: Duration,
 ) -> Result<Joined, NetplayFail> {
@@ -527,7 +591,8 @@ pub fn host(
         let _ = stream.write_all(&header(0, 0));
         return Err(NetplayFail::Protocol(format!("protocol {protocol}")));
     }
-    stream.write_all(&header(0, protocol))?;
+    let salt = if password.is_empty() { 0 } else { salt() };
+    stream.write_all(&header(salt, protocol))?;
     let f = read_frame(&mut stream)?;
     if f.cmd != CMD_NICK {
         return Err(NetplayFail::Protocol(format!("{:#06x} for a name", f.cmd)));
@@ -541,6 +606,17 @@ pub fn host(
         );
     }
     stream.write_all(&frame(CMD_NICK, &field(nick, NICK_LEN)))?;
+    if salt != 0 {
+        let f = read_frame(&mut stream)?;
+        let given = String::from_utf8_lossy(&f.payload).into_owned();
+        // a wrong one is dropped without a word, as RetroArch drops it
+        if f.cmd != CMD_PASSWORD
+            || f.payload.len() != PASSWORD_LEN
+            || given != password_hash(salt, password)
+        {
+            return Err(NetplayFail::WrongPassword);
+        }
+    }
     stream.write_all(&frame(CMD_INFO, &info(crc)))?;
     loop {
         if Instant::now() >= deadline {
@@ -1014,7 +1090,7 @@ mod tests {
             assert_eq!(first, relay_id(RELAY_SESSION, &[3; 12]));
             host(stream, "Host", 0, BOUND).map(|h| h.peer)
         });
-        let joined = join_relay("127.0.0.1", port, [3; 12], "Guest", BOUND).expect("no join");
+        let joined = join_relay("127.0.0.1", port, [3; 12], "Guest", "", BOUND).expect("no join");
         assert_eq!(joined.peer, "Host");
         assert_eq!(fake.join().unwrap().expect("the host failed"), "Guest");
     }
@@ -1036,5 +1112,36 @@ mod tests {
             RelayHost::open("127.0.0.1", port, BOUND),
             Err(NetplayFail::Protocol(_))
         ));
+    }
+
+    #[test]
+    fn a_rooms_password_is_answered_as_retroarch_hashes_it() {
+        // sha256("1234ABCD" + "pikachu"), worked out apart
+        assert_eq!(
+            password_hash(0x1234_abcd, "pikachu"),
+            "390671ab18dab021229bd9c97907b14cce238dcf81cbbbbab1c7bc4a3e202521"
+        );
+    }
+
+    /// A room with a password lets in the one who gives it, turns away the one who gives another,
+    /// and one who gives none is told it has one.
+    #[test]
+    fn a_room_with_a_password_lets_in_only_who_gives_it() {
+        for (given, ok) in [("pikachu", true), ("eevee", false), ("", false)] {
+            let (hosted, joiner) = pair();
+            let hosting =
+                std::thread::spawn(move || host_with(hosted, "Host", "pikachu", 0, BOUND));
+            let joined = join_with(joiner, "Guest", given, BOUND);
+            let hosted = hosting.join().unwrap();
+            match (ok, joined) {
+                (true, Ok(j)) => {
+                    assert_eq!(j.peer, "Host");
+                    assert!(hosted.is_ok(), "the host turned the right password away");
+                }
+                (false, Err(NetplayFail::WrongPassword)) => assert!(!given.is_empty()),
+                (false, Err(NetplayFail::Password)) => assert!(given.is_empty()),
+                (_, other) => panic!("{given:?}: {:?}", other.err()),
+            }
+        }
     }
 }

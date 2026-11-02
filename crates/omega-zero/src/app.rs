@@ -346,6 +346,9 @@ pub struct App {
     pub(crate) rooms_failed: bool,
     /// The room picked to join.
     pub(crate) online_room: Option<crate::netplay_lobby::Room>,
+    /// The LINK panel's row under the cursor, and the keyboard up over it for NAME or PASSWORD.
+    pub(crate) link_field: crate::link_screen::LinkField,
+    pub(crate) link_typing: Option<(crate::link_screen::LinkField, omega_ui::Keyboard)>,
     pub(crate) restarting: bool,
     pub(crate) act_at: Millis,
     pub(crate) root: Option<PathBuf>,
@@ -557,6 +560,8 @@ impl App {
             rooms_fetch: None,
             rooms_failed: false,
             online_room: None,
+            link_field: crate::link_screen::LinkField::Role,
+            link_typing: None,
             restarting: false,
             act_at: 0,
             root: None,
@@ -2892,23 +2897,44 @@ impl App {
             return;
         };
         match menu {
-            GameMenu::Pick(role) => match action {
-                Action::GbaDown(Btn::Left) | Action::GbaDown(Btn::Right) => {
-                    self.last_role = role.other();
-                    self.game_menu = Some(GameMenu::Pick(role.other()));
+            GameMenu::Pick(_) if self.link_typing.is_some() => self.link_typing_input(action),
+            GameMenu::Pick(role) => {
+                use crate::link_screen::LinkField;
+                let field = self.lit_field();
+                match action {
+                    Action::GbaDown(Btn::Up) => self.move_link_field(false),
+                    Action::GbaDown(Btn::Down) => self.move_link_field(true),
+                    Action::GbaDown(b @ (Btn::Left | Btn::Right)) => match field {
+                        LinkField::Play => self.set_link_online(!self.going_online()),
+                        LinkField::Role => {
+                            self.last_role = role.other();
+                            self.game_menu = Some(GameMenu::Pick(role.other()));
+                        }
+                        LinkField::Mode => self.switch_hardware(),
+                        LinkField::Server => {
+                            let n = crate::netplay_lobby::RELAYS.len() as u8;
+                            let r = self.state.relay;
+                            self.state.relay = match b == Btn::Right {
+                                true => (r + 1) % n,
+                                false => (r + n - 1) % n,
+                            };
+                            self.persist();
+                        }
+                        LinkField::Name | LinkField::Password => {}
+                    },
+                    Action::GbaDown(Btn::A) if field.typed() => self.open_link_typing(field),
+                    // the rows' own keys before they were rows: SELECT for MODE, Y for online
+                    Action::GbaDown(Btn::Select) => self.switch_hardware(),
+                    Action::GbaDown(Btn::Y) if self.online_possible() => {
+                        self.set_link_online(!self.going_online())
+                    }
+                    Action::GbaDown(Btn::Y) => self.refuse(),
+                    Action::GbaDown(Btn::A) if self.going_online() => self.pick_online(role),
+                    Action::GbaDown(Btn::A) => self.pick_link(role),
+                    Action::GbaDown(Btn::B) | Action::GameMenu => self.close_game_menu(),
+                    _ => {}
                 }
-                Action::GbaDown(Btn::Select) => self.switch_hardware(),
-                Action::GbaDown(Btn::Y) if self.online_available() => {
-                    self.link_online = !self.link_online
-                }
-                Action::GbaDown(Btn::Y) => self.refuse(),
-                Action::GbaDown(Btn::A) if self.online_available() && self.link_online => {
-                    self.pick_online(role)
-                }
-                Action::GbaDown(Btn::A) => self.pick_link(role),
-                Action::GbaDown(Btn::B) | Action::GameMenu => self.close_game_menu(),
-                _ => {}
-            },
+            }
             GameMenu::Rooms { lit } => match action {
                 Action::GbaDown(Btn::Up) => {
                     self.game_menu = Some(GameMenu::Rooms {
@@ -2985,6 +3011,96 @@ impl App {
             && self.link_hardware == LinkKind::Cable
     }
 
+    /// Whether the seated game could link online, were it on the cable: the PLAY row is shown.
+    pub(crate) fn online_possible(&self) -> bool {
+        self.platform == Platform::Gba
+            && self.core == Core::Gpsp
+            && (self.link_hardware == LinkKind::Cable
+                || self.seated().is_some_and(|stem| self.link_switchable(stem)))
+    }
+
+    /// The link screen is set to go online.
+    pub(crate) fn going_online(&self) -> bool {
+        self.online_available() && self.link_online
+    }
+
+    /// PLAY set to Online or Local. Online is the cable's: the adapter's games go back to it.
+    fn set_link_online(&mut self, online: bool) {
+        if online && self.link_hardware != LinkKind::Cable {
+            self.switch_hardware();
+        }
+        self.link_online = online && self.online_available();
+    }
+
+    /// Up or down the LINK panel's rows, stopping at either end as a settings list does.
+    fn move_link_field(&mut self, down: bool) {
+        let fields = self.link_fields();
+        let at = fields
+            .iter()
+            .position(|f| *f == self.lit_field())
+            .unwrap_or(0);
+        let to = match down {
+            true => (at + 1).min(fields.len().saturating_sub(1)),
+            false => at.saturating_sub(1),
+        };
+        if let Some(f) = fields.get(to) {
+            self.link_field = *f;
+        }
+    }
+
+    /// The keyboard up for NAME or PASSWORD, holding what is there now.
+    fn open_link_typing(&mut self, field: crate::link_screen::LinkField) {
+        let text = match field {
+            crate::link_screen::LinkField::Name => self.online_name(),
+            _ => self.state.online_password.clone(),
+        };
+        self.link_typing = Some((
+            field,
+            omega_ui::Keyboard {
+                text,
+                ..omega_ui::Keyboard::default()
+            },
+        ));
+    }
+
+    /// The keys while the link screen's keyboard is up. What is typed is kept on START or the
+    /// keyboard's enter, even nothing: no name is the default one, and no password is none.
+    fn link_typing_input(&mut self, action: Action) {
+        let Some((field, keys)) = &mut self.link_typing else {
+            return;
+        };
+        let field = *field;
+        let mut submit = false;
+        match action {
+            Action::GbaDown(Btn::Up) => keys.up(),
+            Action::GbaDown(Btn::Down) => keys.down(),
+            Action::GbaDown(Btn::Left) => keys.left(),
+            Action::GbaDown(Btn::Right) => keys.right(),
+            Action::GbaDown(Btn::A) => submit = keys.press(),
+            Action::GbaDown(Btn::B) if keys.text.is_empty() => self.link_typing = None,
+            Action::GbaDown(Btn::B) => keys.delete(),
+            Action::GbaDown(Btn::X) => keys.shift(),
+            Action::GbaDown(Btn::Y) => keys.type_char(' '),
+            Action::GbaDown(Btn::L1 | Btn::R1) => keys.symbols(),
+            Action::GbaDown(Btn::Start) => submit = true,
+            Action::GameMenu | Action::QuickMenu => self.link_typing = None,
+            _ => {}
+        }
+        if !submit {
+            return;
+        }
+        let Some((_, keys)) = self.link_typing.take() else {
+            return;
+        };
+        match field {
+            crate::link_screen::LinkField::Name => {
+                self.state.online_name = omega_store::online_name(&keys.text)
+            }
+            _ => self.state.online_password = omega_store::online_password(&keys.text),
+        }
+        self.persist();
+    }
+
     /// A online: hosting opens a room straight away; joining lists the rooms open first.
     fn pick_online(&mut self, role: LinkRow) {
         if !self.online() {
@@ -3043,12 +3159,17 @@ impl App {
     /// What starts a link as `role`: online, through RetroArch's lobby, when the link screen
     /// says so; else nearby, over the handhelds' own radio.
     fn link_starter(&self, role: LinkRow) -> LinkStarter {
-        if !(self.online_available() && self.link_online) {
+        if !self.going_online() {
             return LinkStarter::spawn(role.role(), link_port());
         }
         let nick = self.online_name();
+        let password = self.state.online_password.clone();
         let job = match (role, self.online_room.clone()) {
-            (LinkRow::Join, Some(room)) => crate::link_start::OnlineJob::Join { nick, room },
+            (LinkRow::Join, Some(room)) => crate::link_start::OnlineJob::Join {
+                nick,
+                room,
+                password,
+            },
             _ => {
                 let cart = self.seated_cart();
                 crate::link_start::OnlineJob::Host {
@@ -3063,6 +3184,7 @@ impl App {
                         .unwrap_or_default(),
                     crc: 0,
                     rom: cart.map(|c| c.rom.clone()),
+                    password,
                 }
             }
         };
@@ -3162,6 +3284,8 @@ impl App {
 
     fn close_game_menu(&mut self) {
         self.game_menu = None;
+        self.link_typing = None;
+        self.link_field = crate::link_screen::LinkField::Role;
         self.disc_screen = None;
         if let Some(mut starting) = self.starting.take() {
             starting.starter.cancel();

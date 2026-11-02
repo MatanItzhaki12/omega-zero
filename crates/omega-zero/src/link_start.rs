@@ -61,6 +61,8 @@ pub enum LinkFail {
     OtherCore,
     /// Online: the handheld has joined no Wi-Fi network.
     NoWifi,
+    /// Online: the room has a password, and the one given is not it.
+    Password,
 }
 
 impl LinkStep {
@@ -93,7 +95,7 @@ impl LinkStep {
 }
 
 impl LinkFail {
-    pub const SHOWN: [LinkFail; 7] = [
+    pub const SHOWN: [LinkFail; 8] = [
         LinkFail::Radio,
         LinkFail::NobodyCame,
         LinkFail::PeerVanished,
@@ -101,6 +103,7 @@ impl LinkFail {
         LinkFail::Refused,
         LinkFail::OtherCore,
         LinkFail::NoWifi,
+        LinkFail::Password,
     ];
 
     pub fn shown(self) -> Option<usize> {
@@ -117,6 +120,7 @@ impl LinkFail {
             LinkFail::Refused => "The room would not let us in",
             LinkFail::OtherCore => "The room runs another emulator",
             LinkFail::NoWifi => "Join a Wi-Fi network first",
+            LinkFail::Password => "Wrong or missing password",
         }
     }
 }
@@ -269,14 +273,21 @@ pub enum OnlineJob {
         /// The ROM the room's checksum is read off, on the link's thread: `crc` when there is
         /// none.
         rom: Option<std::path::PathBuf>,
+        /// The room's password: none when empty.
+        password: String,
     },
-    /// Join a room from the lobby.
-    Join { nick: String, room: Room },
+    /// Join a room from the lobby, with `password` when it has one.
+    Join {
+        nick: String,
+        room: Room,
+        password: String,
+    },
     /// Join the room at an address, as RetroArch on the same network hosts one.
     JoinAt {
         nick: String,
         addr: String,
         port: u16,
+        password: String,
     },
 }
 
@@ -312,9 +323,8 @@ impl LinkChannel for OnlineLink {
 
 fn online_fail(e: &NetplayFail) -> LinkFail {
     match e {
-        NetplayFail::Full | NetplayFail::Banned | NetplayFail::Password | NetplayFail::Refused => {
-            LinkFail::Refused
-        }
+        NetplayFail::Full | NetplayFail::Banned | NetplayFail::Refused => LinkFail::Refused,
+        NetplayFail::Password | NetplayFail::WrongPassword => LinkFail::Password,
         NetplayFail::Core(_) => LinkFail::OtherCore,
         NetplayFail::TimedOut => LinkFail::NobodyCame,
         NetplayFail::Probe | NetplayFail::Protocol(_) | NetplayFail::Io(_) => {
@@ -340,30 +350,54 @@ impl LinkStarter {
                         game,
                         crc,
                         rom,
+                        password,
                     } => {
                         let crc = rom
                             .and_then(|rom| std::fs::read(rom).ok())
                             .map_or(crc, |bytes| crate::label_sync::crc32(&bytes));
-                        host_online(&tx, &flag, &lobby, &nick, &relay, game, crc)
+                        let room = Room {
+                            username: nick,
+                            game_name: game,
+                            game_crc: crc,
+                            core_name: relay,
+                            ip: String::new(),
+                            port: 0,
+                            has_password: !password.is_empty(),
+                            mitm_ip: String::new(),
+                            mitm_port: 0,
+                            mitm_session: password,
+                            connectable: true,
+                            country: String::new(),
+                        };
+                        host_online(&tx, &flag, &lobby, room)
                     }
-                    OnlineJob::Join { nick, room } => {
+                    OnlineJob::Join {
+                        nick,
+                        room,
+                        password,
+                    } => {
                         let _ = tx.send(LinkProgress::At(LinkStep::Reaching));
                         let joined = match room.relay() {
                             Some((addr, port, session)) => {
-                                netplay::join_relay(&addr, port, session, &nick, ANSWER)
+                                netplay::join_relay(&addr, port, session, &nick, &password, ANSWER)
                             }
                             None => direct(&room.ip, room.port)
-                                .and_then(|s| netplay::join(s, &nick, ANSWER)),
+                                .and_then(|s| netplay::join_with(s, &nick, &password, ANSWER)),
                         };
                         joined.map(|j| ready(j, None, None)).map_err(|e| {
                             eprintln!("omega-zero: netplay: the room: {e}");
                             online_fail(&e)
                         })
                     }
-                    OnlineJob::JoinAt { nick, addr, port } => {
+                    OnlineJob::JoinAt {
+                        nick,
+                        addr,
+                        port,
+                        password,
+                    } => {
                         let _ = tx.send(LinkProgress::At(LinkStep::Reaching));
                         direct(&addr, port)
-                            .and_then(|s| netplay::join(s, &nick, ANSWER))
+                            .and_then(|s| netplay::join_with(s, &nick, &password, ANSWER))
                             .map(|j| ready(j, None, None))
                             .map_err(|e| {
                                 eprintln!("omega-zero: netplay: {addr}:{port}: {e}");
@@ -416,17 +450,22 @@ fn direct(addr: &str, port: u16) -> Result<std::net::TcpStream, NetplayFail> {
     })))
 }
 
-/// Opens a room through the relay called `relay`, puts it up in the lobby, and waits for a
-/// player until [`ROOM_OPEN`] has passed or the link is cancelled.
+/// Opens `room` through its relay, puts it up in the lobby, and waits for a player until
+/// [`ROOM_OPEN`] has passed or the link is cancelled. The room is ours as the lobby would list
+/// it: its host's name, its game and checksum, its relay's name where the lobby has a core's,
+/// and its password where it has a relay session's, which are not known yet.
 fn host_online(
     tx: &Sender<LinkProgress>,
     cancel: &Cancel,
     lobby: &str,
-    nick: &str,
-    relay: &str,
-    game: String,
-    crc: u32,
+    room: Room,
 ) -> Result<Connected, LinkFail> {
+    let (nick, relay, crc, password) = (
+        room.username.as_str(),
+        room.core_name.as_str(),
+        room.game_crc,
+        room.mitm_session.as_str(),
+    );
     let _ = tx.send(LinkProgress::At(LinkStep::Room));
     let (addr, port) = netplay_lobby::tunnel(lobby, relay).map_err(|e| {
         eprintln!("omega-zero: netplay: the relay {relay}: {e}");
@@ -436,14 +475,15 @@ fn host_online(
         eprintln!("omega-zero: netplay: the relay at {addr}:{port}: {e}");
         LinkFail::Lobby
     })?;
-    let room = Announcer::start(
+    let announced = Announcer::start(
         lobby,
         Announce {
             username: nick.to_string(),
-            game_name: game,
+            game_name: room.game_name.clone(),
             game_crc: crc,
             relay: relay.to_string(),
             session: hosting.session,
+            password: !password.is_empty(),
         },
     );
     let _ = tx.send(LinkProgress::At(LinkStep::Waiting));
@@ -455,11 +495,11 @@ fn host_online(
         let Some(player) = hosting.next_player(Duration::from_millis(250)) else {
             continue;
         };
-        match netplay::host(player, nick, crc, ANSWER) {
+        match netplay::host_with(player, nick, password, crc, ANSWER) {
             Ok(joined) => {
                 eprintln!("omega-zero: netplay: {} joined the room", joined.peer);
-                room.set_players(2);
-                return Ok(ready(joined, Some(hosting), Some(room)));
+                announced.set_players(2);
+                return Ok(ready(joined, Some(hosting), Some(announced)));
             }
             // the lobby looking in, or a player who did not finish: the room stays open
             Err(NetplayFail::Probe) => {}

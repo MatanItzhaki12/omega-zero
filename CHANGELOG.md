@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- The LINK screen's rows are a settings list: up and down move between them, left and right
+  change the one lit. PLAY, Local or Online, is on top for a GBA game on gpSP; Online is the
+  cable's, so a game on the wireless adapter goes back to the cable for it.
+- Online, the LINK screen has NAME, PASSWORD and SERVER under ROLE. A on NAME or PASSWORD types
+  it on the keyboard, holding what is there now; SERVER picks the relay. They are the same as
+  Settings > Gameplay > Online Play's.
+- Online rooms can have a password, as RetroArch's do: a room hosted with one lets in only who
+  gives it, and the rooms with one are listed to join, taking the password typed. A wrong or
+  missing one says so.
+
 ## omega-zero 2.4.0: online play for gpSP
 
 - GBA games on gpSP link online, with RetroArch running gpSP, with a GBA on a GB-Link adapter

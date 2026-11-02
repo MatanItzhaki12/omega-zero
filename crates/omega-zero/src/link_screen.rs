@@ -26,9 +26,9 @@ use omega_ui::{ease, stage_y, Draw, Millis, TexId, UndoFace, SPRITE_PX};
 
 use crate::app::{App, GameMenu, LinkRow};
 use crate::link_kind::LinkKind;
-use crate::list_view::{RowLabel, RowValue, ViewRow};
+use crate::list_view::{RowLabel, RowValue, TypingView, ViewRow};
 use crate::nav::progress;
-use crate::screens::bar::{BarSet, SWAP};
+use crate::screens::bar::BarSet;
 use crate::screens::lone::{hold, notes, notes_height, rows_height, Lone, NOTE_GAP};
 
 /// One of the art's faces uploaded: its texture and its size in art pixels.
@@ -310,6 +310,40 @@ pub fn panel_at(panel: &Lone) -> [i32; 2] {
     ]
 }
 
+/// A row of the LINK panel, which the cursor moves between as it does a list of settings.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum LinkField {
+    /// Local or online, for a game that can link online.
+    Play,
+    Role,
+    /// The cable or the wireless adapter, for a game that has both.
+    Mode,
+    /// Online: the name the room shows, typed on the keyboard.
+    Name,
+    /// Online: the room's password, typed on the keyboard.
+    Password,
+    /// Online: the relay a room is opened through.
+    Server,
+}
+
+impl LinkField {
+    pub fn label(self) -> &'static str {
+        match self {
+            LinkField::Play => "PLAY",
+            LinkField::Role => "ROLE",
+            LinkField::Mode => "MODE",
+            LinkField::Name => "NAME",
+            LinkField::Password => "PASSWORD",
+            LinkField::Server => "SERVER",
+        }
+    }
+
+    /// A opens the keyboard on the row rather than linking.
+    pub fn typed(self) -> bool {
+        matches!(self, LinkField::Name | LinkField::Password)
+    }
+}
+
 /// What the LINK panel shows: the role and the link's kind, the role lit with its carets while
 /// the player picks, and under them what is happening, if anything.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -324,6 +358,10 @@ pub struct LinkView {
     pub detail: Option<String>,
     /// The rooms open online, while one is being picked.
     pub rooms: Option<RoomsView>,
+    /// The panel's rows, top to bottom, and the one under the cursor while the player picks:
+    /// none to show ROLE and MODE alone.
+    pub fields: Vec<(LinkField, RowValue)>,
+    pub lit: Option<usize>,
 }
 
 /// The rooms open online, as the ROOMS panel lists them: each host's name and their game, the
@@ -375,25 +413,29 @@ pub fn link_panel_face(view: &LinkView, pal: &Palette) -> UndoFace {
     if let Some(rooms) = &view.rooms {
         return rooms_panel_face(rooms, view.status, pal);
     }
-    let mut rows = vec![
-        ViewRow {
-            label: RowLabel::Setting("ROLE"),
-            value: Some(RowValue::Choice(view.role.text())),
-            dim: false,
-        },
-        ViewRow {
-            label: RowLabel::Setting("MODE"),
-            value: Some(RowValue::Said(kind_word(view.kind))),
-            dim: false,
-        },
-    ];
-    if let Some(online) = view.online {
-        rows.push(ViewRow {
-            label: RowLabel::Setting("VIA"),
-            value: Some(RowValue::Said(if online { "Online" } else { "Nearby" })),
-            dim: false,
-        });
-    }
+    let rows: Vec<ViewRow> = match view.fields.is_empty() {
+        true => vec![
+            ViewRow {
+                label: RowLabel::Setting("ROLE"),
+                value: Some(RowValue::Choice(view.role.text())),
+                dim: false,
+            },
+            ViewRow {
+                label: RowLabel::Setting("MODE"),
+                value: Some(RowValue::Said(kind_word(view.kind))),
+                dim: false,
+            },
+        ],
+        false => view
+            .fields
+            .iter()
+            .map(|(field, value)| ViewRow {
+                label: RowLabel::Setting(field.label()),
+                value: Some(value.clone()),
+                dim: false,
+            })
+            .collect(),
+    };
     let held = rows_height(rows.len());
     let lines: Vec<String> = view
         .status
@@ -406,7 +448,11 @@ pub fn link_panel_face(view: &LinkView, pal: &Palette) -> UndoFace {
         n => held + notes_height(n),
     };
     let mut panel = panel_face(PANEL_W, panel_height(content), "LINK", true, pal);
-    hold(&mut panel, &rows, view.picking.then_some(0), pal);
+    let lit = match view.fields.is_empty() {
+        true => view.picking.then_some(0),
+        false => view.lit,
+    };
+    hold(&mut panel, &rows, lit, pal);
     notes(&mut panel, &lines, held + NOTE_GAP, pal);
     panel.face
 }
@@ -453,17 +499,20 @@ pub enum LinkActions {
     Linked,
     /// Failed: A OK alone.
     Failed,
+    /// Picking, on a row A types on: B RETURN, A EDIT.
+    Edit,
     /// Linked a moment ago, or unplugging: nothing to press, both actions empty.
     Idle,
 }
 
 impl LinkActions {
-    pub const ALL: [LinkActions; 5] = [
+    pub const ALL: [LinkActions; 6] = [
         LinkActions::Pick,
         LinkActions::Working,
         LinkActions::Linked,
         LinkActions::Failed,
         LinkActions::Idle,
+        LinkActions::Edit,
     ];
 
     pub fn index(self) -> usize {
@@ -473,7 +522,10 @@ impl LinkActions {
     /// The big word and the button in its pill of the action at `side`.
     pub fn action(self, side: Side) -> (&'static str, &'static str) {
         match (self, side) {
-            (LinkActions::Pick | LinkActions::Linked, Side::Left) => ("RETURN", "B"),
+            (LinkActions::Pick | LinkActions::Linked | LinkActions::Edit, Side::Left) => {
+                ("RETURN", "B")
+            }
+            (LinkActions::Edit, Side::Right) => ("EDIT", "A"),
             (LinkActions::Working, Side::Left) => ("CANCEL", "B"),
             (LinkActions::Pick, Side::Right) => ("LINK", "A"),
             (LinkActions::Linked, Side::Right) => ("END LINK", "A"),
@@ -527,7 +579,7 @@ pub fn link_bar_place(menu: GameMenu, now: Millis) -> (LinkActions, u32) {
 /// The link screen's bar: each pair of actions uploaded, and the hints between picking's.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LinkBar {
-    pub sets: [BarSet; 5],
+    pub sets: [BarSet; 6],
     pub hints: Option<TexId>,
 }
 
@@ -535,6 +587,12 @@ pub struct LinkBar {
 pub const VIA: Hint<'static> = Hint {
     key: "Y",
     word: "VIA",
+};
+
+/// ◀▶ on the link screen: the lit row's value changes.
+pub const CHANGE: Hint<'static> = Hint {
+    key: "◀▶",
+    word: "CHANGE",
 };
 
 /// Y on the ROOMS panel: the lobby asked for its rooms again.
@@ -575,6 +633,11 @@ impl App {
             }),
             _ => None,
         };
+        let fields = self.link_field_values();
+        let lit = match menu {
+            GameMenu::Pick(_) => fields.iter().position(|(f, _)| *f == self.lit_field()),
+            _ => None,
+        };
         let rooms = match menu {
             GameMenu::Rooms { lit } => Some(RoomsView {
                 lines: self
@@ -595,33 +658,119 @@ impl App {
             online,
             detail,
             rooms,
+            fields,
+            lit,
         })
     }
 
-    /// The keys between picking's actions: SELECT MODE where the seated game can switch between
-    /// the cable and the adapter, and ◀▶ SWAP, which swaps HOST and JOIN.
-    pub fn link_hints(&self) -> Vec<Hint<'static>> {
-        if matches!(self.game_menu, Some(GameMenu::Rooms { .. })) {
-            return vec![REFRESH];
+    /// The LINK panel's rows: PLAY on top where the game can go online, then ROLE; nearby,
+    /// MODE; online, NAME, PASSWORD and SERVER.
+    pub(crate) fn link_shown_fields(&self) -> Vec<LinkField> {
+        let mut fields = Vec::new();
+        if self.online_possible() {
+            fields.push(LinkField::Play);
         }
+        fields.push(LinkField::Role);
+        match self.going_online() {
+            true => fields.extend([LinkField::Name, LinkField::Password, LinkField::Server]),
+            false => fields.push(LinkField::Mode),
+        }
+        fields
+    }
+
+    /// The rows the cursor stops on: all but a MODE that cannot change.
+    pub(crate) fn link_fields(&self) -> Vec<LinkField> {
         let switchable = self.seated().is_some_and(|stem| self.link_switchable(stem));
-        let mut hints = match switchable {
-            true => vec![MODE, SWAP],
-            false => vec![SWAP],
-        };
-        if self.online_available() {
-            hints.insert(0, VIA);
-            // three are too many for the narrowest bar: ROLE's carets show it swaps
-            if switchable {
-                hints.retain(|h| *h != SWAP);
-            }
+        self.link_shown_fields()
+            .into_iter()
+            .filter(|f| *f != LinkField::Mode || switchable)
+            .collect()
+    }
+
+    /// The row under the cursor: the one last on, while it is shown, else the top one.
+    pub(crate) fn lit_field(&self) -> LinkField {
+        let fields = self.link_fields();
+        match fields.contains(&self.link_field) {
+            true => self.link_field,
+            false => fields.first().copied().unwrap_or(LinkField::Role),
         }
-        hints
+    }
+
+    /// Each row shown, and its value.
+    pub(crate) fn link_field_values(&self) -> Vec<(LinkField, RowValue)> {
+        let switchable = self.seated().is_some_and(|stem| self.link_switchable(stem));
+        let role = match self.game_menu {
+            Some(menu) => role_of(menu),
+            None => self.last_role,
+        };
+        self.link_shown_fields()
+            .into_iter()
+            .map(|f| {
+                let value = match f {
+                    LinkField::Play => RowValue::Choice(if self.going_online() {
+                        "Online"
+                    } else {
+                        "Local"
+                    }),
+                    LinkField::Role => RowValue::Choice(role.text()),
+                    LinkField::Mode if switchable => {
+                        RowValue::Choice(kind_word(self.link_hardware))
+                    }
+                    LinkField::Mode => RowValue::Said(kind_word(self.link_hardware)),
+                    LinkField::Name => RowValue::Name(self.online_name()),
+                    LinkField::Password if self.state.online_password.is_empty() => {
+                        RowValue::Said("None")
+                    }
+                    LinkField::Password => RowValue::Name(self.state.online_password.clone()),
+                    LinkField::Server => {
+                        RowValue::Choice(crate::options::relay_word(self.state.relay))
+                    }
+                };
+                (f, value)
+            })
+            .collect()
+    }
+
+    /// The link screen's keyboard, while NAME or PASSWORD is being typed.
+    pub(crate) fn link_typing_view(&self) -> Option<TypingView<'_>> {
+        let (field, keys) = self.link_typing.as_ref()?;
+        Some(TypingView {
+            prompt: match field {
+                LinkField::Name => "Your name in online rooms".to_string(),
+                _ => "The room's password, or none".to_string(),
+            },
+            keys,
+            refused: false,
+        })
+    }
+
+    /// The keys between picking's actions: ◀▶ CHANGE on a row with a choice, and Y REFRESH over
+    /// the rooms.
+    pub fn link_hints(&self) -> Vec<Hint<'static>> {
+        match self.game_menu {
+            Some(GameMenu::Rooms { .. }) => vec![REFRESH],
+            // the rows move and change as a settings list's do: ◀▶ on one with a choice
+            _ if self.lit_field().typed() => Vec::new(),
+            _ => vec![CHANGE],
+        }
+    }
+
+    /// The actions shown over `menu`: EDIT in place of LINK while the cursor is on a row A
+    /// types on.
+    fn shown_actions(&self, actions: LinkActions) -> LinkActions {
+        let picking = matches!(self.game_menu, Some(GameMenu::Pick(_)));
+        match actions {
+            LinkActions::Pick if picking && self.lit_field().typed() => LinkActions::Edit,
+            actions => actions,
+        }
     }
 
     /// The link screen's actions shown now, and how far they are sunk.
     pub fn link_bar_shown(&self) -> Option<(LinkActions, u32)> {
-        self.game_menu.map(|menu| link_bar_place(menu, self.now()))
+        self.game_menu.map(|menu| {
+            let (actions, sink) = link_bar_place(menu, self.now());
+            (self.shown_actions(actions), sink)
+        })
     }
 
     pub fn set_link_sprites(&mut self, sprites: LinkSprites) {
@@ -644,6 +793,10 @@ impl App {
     /// of the cable, and the bar.
     pub(crate) fn draw_game_menu(&self, menu: GameMenu, out: &mut Vec<Draw>) {
         self.draw_background(out);
+        // the keyboard's modal stands on the backdrop, as it does in Settings
+        if let Some(t) = self.link_typing_view() {
+            return self.draw_keyboard(&t, out);
+        }
         let panel = self.link_panel.map(|p| (p, panel_at(&p)));
         if let Some(sprites) = &self.link_sprites {
             let cable_top = panel.map_or(0, |(_, [_, y])| y);
@@ -667,6 +820,7 @@ impl App {
             return;
         };
         let (actions, sink) = link_bar_place(menu, self.now());
+        let actions = self.shown_actions(actions);
         let set = &bar.sets[actions.index()];
         let h = out_h();
         if actions == LinkActions::Pick {

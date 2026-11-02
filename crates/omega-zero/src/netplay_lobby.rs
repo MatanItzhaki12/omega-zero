@@ -55,9 +55,9 @@ pub struct Room {
 }
 
 impl Room {
-    /// A room a handheld can join: gpSP's, open to anyone, and reachable.
+    /// A room a handheld can join: gpSP's, and reachable. One with a password takes it.
     pub fn joinable(&self) -> bool {
-        self.core_name.eq_ignore_ascii_case(CORE_NAME) && !self.has_password && self.connectable
+        self.core_name.eq_ignore_ascii_case(CORE_NAME) && self.connectable
     }
 
     /// The relay session to give before joining, when the room is reached through one.
@@ -275,6 +275,8 @@ pub struct Announce {
     /// The relay it plays through, by name, and its session there.
     pub relay: String,
     pub session: [u8; 12],
+    /// The room has a password.
+    pub password: bool,
 }
 
 impl Announce {
@@ -287,7 +289,7 @@ impl Announce {
             ("game_crc", format!("{:08X}", self.game_crc)),
             ("port", NETPLAY_PORT.to_string()),
             ("mitm_server", self.relay.clone()),
-            ("has_password", "0".into()),
+            ("has_password", if self.password { "1" } else { "0" }.into()),
             ("has_spectate_password", "0".into()),
             ("force_mitm", "1".into()),
             ("retroarch_version", RETROARCH_VERSION.into()),
@@ -390,8 +392,8 @@ mod tests {
             .collect();
         assert_eq!(
             joinable,
-            ["Ash"],
-            "mGBA's, one with a password, and one unreachable"
+            ["Ash", "Brock"],
+            "mGBA's and one unreachable: one with a password takes it"
         );
     }
 
@@ -439,6 +441,7 @@ mod tests {
             game_crc: 0x1F1C_08FB,
             relay: "madrid".into(),
             session: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            password: false,
         };
         let sent = room.form(1);
         for field in [
