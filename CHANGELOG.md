@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## omega-zero 2.4.1
+
 - The LINK screen's rows are a settings list: up and down move between them, left and right
   change the one lit. PLAY, Local or Online, is on top for a GBA game on gpSP; Online is the
   cable's, so a game on the wireless adapter goes back to the cable for it.
