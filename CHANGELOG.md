@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## omega-zero 2.4.0: online play for gpSP
+
+- GBA games on gpSP link online, with RetroArch running gpSP, with a GBA on a GB-Link adapter
+  through its netplay bridge, and with another handheld on omega-zero: Pokémon trades and
+  battles, Advance Wars. RetroArch's netplay is spoken as RetroArch 1.22 speaks it, in the mode
+  it plays gpSP's link packets in, the core named gpSP and its version gpSP v1.0 as RetroArch
+  names them.
+- The LINK screen has VIA, Nearby or Online, on Y, for a GBA game on gpSP over the cable; the
+  wireless adapter's games stay nearby, as GB-Link leaves them, a relay's delay being more than
+  they take. Online, HOST opens a room through one of RetroArch's relays and puts it up in its
+  lobby, saying who you are and through which relay while it waits; JOIN lists the rooms open on
+  gpSP with no password, each host's name and their game, to pick one. Linked, it says with whom.
+- Settings > Gameplay > Online Play: the Name the rooms show, typed on the keyboard (your
+  RetroAchievements name, or RG SP, until one is typed), and the Relay a room is opened through:
+  New York, Madrid, Sao Paulo or Singapore, Madrid to begin with.
+- The in-game Run-Ahead row's hint says it is for gpSP, as Settings' does.
+
 ## omega-zero 2.3.5: Run-Ahead is gpSP's
 
 - Run-Ahead runs on gpSP alone. mGBA answers as soon on its own, and had no time for a frame
