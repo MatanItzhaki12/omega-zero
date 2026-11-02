@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## omega-zero 2.3.2: gpSP starts every time, and Run-Ahead in the game's menu
+
+- gpSP no longer crashes as a game starts. Its recompiler wants its code cache within the 128 MB
+  an arm64 branch reaches, and it looked for a free block that close in a process that may have
+  none: when it found none it went on with no cache at all, and the first block it translated
+  was written through a null pointer. Now the cache is part of gpSP's own library, a block of
+  its zeroed data made executable, always beside its code; and should it ever be missing, gpSP
+  refuses the game rather than crash (`cores/gpsp/static-jit-cache.patch`). The core comes with
+  the release's zip: Settings > Update brings omega-zero alone.
+- The game's menu has Run-Ahead under GAMEPLAY, as Settings > Gameplay does, switched on or off
+  without leaving the game. The PlayStation has none.
+
 ## omega-zero 2.3.1: run-ahead without the crackle, and START restarts
 
 - Run-Ahead no longer crackles. It put the game back a frame after every frame it showed, and a

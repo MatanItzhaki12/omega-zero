@@ -691,3 +691,28 @@ fn restart_starts_the_game_over() {
         a.phase()
     );
 }
+
+/// GAMEPLAY in a game has Run-Ahead, as Settings > Gameplay does: switched there, it is on for
+/// the game at once, and kept.
+#[test]
+fn run_ahead_is_switched_from_the_game_menu() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let mut a = app_playing_in(d.path(), "Emerald");
+    open_menu(&mut a);
+    down_to(&mut a, PauseRow::Settings);
+    press(&mut a, Btn::A);
+    down_to(&mut a, PauseRow::Gameplay);
+    press(&mut a, Btn::A);
+    assert_eq!(a.pause_view().unwrap().title, "GAMEPLAY");
+    down_to(&mut a, PauseRow::RunAhead);
+    let shown = |a: &App| {
+        let view = a.pause_view().unwrap();
+        view.lines[view.lit].value.clone()
+    };
+    assert_eq!(shown(&a).as_deref(), Some("OFF"));
+    press(&mut a, Btn::Right);
+    assert_eq!(shown(&a).as_deref(), Some("ON"));
+    assert!(a.run_ahead_on(), "the game was not switched to run ahead");
+    assert!(read_app_state(d.path()).run_ahead, "it was not kept");
+    assert!(a.pause_menu_open(), "changing a value closed the menu");
+}

@@ -11,8 +11,8 @@
 //! - SCREEN, for the system being played: Screen Filter, the Game Boy's Palette, Colour
 //!   Correction, Frame Blending, Brightness and Blue Light. The game is not dimmed behind it and
 //!   the panel stands at the bottom, so every change shows on the game as it is made.
-//! - GAMEPLAY: Fast Forward, Fast Forward Sound, Rewind, Turbo Buttons, Rumble, Load State on
-//!   Insert and Save State on Eject.
+//! - GAMEPLAY: Fast Forward, Fast Forward Sound, Rewind, Turbo Buttons, Run-Ahead, Rumble, Load
+//!   State on Insert and Save State on Eject.
 //! - ACHIEVEMENTS: whether RetroAchievements found the game, and the title it took it for; how
 //!   many of its achievements are unlocked; every one of them, in a list of its own; and
 //!   RetroAchievements and Hardcore switched on or off.
@@ -112,6 +112,7 @@ impl PausePage {
                 PauseRow::FastForwardSound,
                 PauseRow::Rewind,
                 PauseRow::Turbo,
+                PauseRow::RunAhead,
                 PauseRow::Rumble,
                 PauseRow::LoadOnInsert,
                 PauseRow::SaveOnEject,
@@ -164,6 +165,7 @@ pub enum PauseRow {
     FastForwardSound,
     Rewind,
     Turbo,
+    RunAhead,
     Rumble,
     LoadOnInsert,
     SaveOnEject,
@@ -202,6 +204,7 @@ impl PauseRow {
             PauseRow::FastForwardSound => "Fast Forward Sound",
             PauseRow::Rewind => "Rewind",
             PauseRow::Turbo => "Turbo Buttons",
+            PauseRow::RunAhead => "Run-Ahead",
             PauseRow::Rumble => "Rumble",
             PauseRow::LoadOnInsert => "Load State on Insert",
             PauseRow::SaveOnEject => "Save State on Eject",
@@ -239,6 +242,7 @@ impl PauseRow {
             PauseRow::FastForwardSound => "Sound while fast-forwarding",
             PauseRow::Rewind => "Hold L2 to go back",
             PauseRow::Turbo => "Hold X and Y for turbo A and B",
+            PauseRow::RunAhead => "A frame sooner, for more battery",
             PauseRow::Rumble => "For games with a rumble pak",
             PauseRow::LoadOnInsert => "A picks up where you left off",
             PauseRow::SaveOnEject => "Ejecting saves where you were",
@@ -440,6 +444,8 @@ impl App {
                 PauseRow::Palette => self.platform == Platform::Gb && self.core == Core::Mgba,
                 PauseRow::Rewind => self.platform.rewinds(),
                 PauseRow::Turbo => self.platform.turbo_xy(),
+                // the PlayStation's states are too big to keep one a frame
+                PauseRow::RunAhead => self.platform.rewinds(),
                 PauseRow::Restart => !self.link_active(),
                 PauseRow::Achievements => crate::achievements::console_of(self.platform).is_some(),
                 PauseRow::Progress | PauseRow::List => {
@@ -504,6 +510,7 @@ impl App {
             PauseRow::FastForwardSound => self.option_text(OptionRow::FastForwardSound),
             PauseRow::Rewind => self.option_text(OptionRow::Rewind),
             PauseRow::Turbo => self.option_text(OptionRow::Turbo),
+            PauseRow::RunAhead => self.option_text(OptionRow::RunAhead),
             PauseRow::Rumble => self.option_text(OptionRow::Rumble),
             PauseRow::LoadOnInsert => self.option_text(OptionRow::LoadOnInsert),
             PauseRow::SaveOnEject => self.option_text(OptionRow::SaveOnEject),
@@ -663,6 +670,7 @@ impl App {
                     PauseRow::FastForwardSound => OptionRow::FastForwardSound,
                     PauseRow::Rewind => OptionRow::Rewind,
                     PauseRow::Turbo => OptionRow::Turbo,
+                    PauseRow::RunAhead => OptionRow::RunAhead,
                     PauseRow::Rumble => OptionRow::Rumble,
                     PauseRow::LoadOnInsert => OptionRow::LoadOnInsert,
                     PauseRow::SaveOnEject => OptionRow::SaveOnEject,
