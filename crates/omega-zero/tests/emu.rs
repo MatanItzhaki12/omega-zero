@@ -1408,7 +1408,7 @@ fn run_ahead_answers_a_press_a_frame_sooner_and_restores_only_on_a_change() {
 fn run_ahead_gives_up_on_a_core_too_slow_for_it() {
     let _turn = turn();
     let restored = Arc::new(AtomicUsize::new(0));
-    // two frames of it are 18 ms, over the 14 a frame played again may take
+    // two frames of it are 18 ms, over the 11 a frame played again may take
     let emu = spawn_with_core(Box::new(Held {
         video: vec![0; (240 * 160 * 4) as usize],
         count: 0,

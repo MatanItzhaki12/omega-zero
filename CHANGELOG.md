@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## omega-zero 2.3.4: Run-Ahead's budget is what the screen waits for
+
+- Run-Ahead's budget for a frame played again is 11 ms, not 14: the handheld waits 12 ms for a
+  present's frame before it shows the one before again. mGBA's took 12 to 17 ms with its state
+  kept every frame, late but mostly under 14, so it never gave up and still held up frames; now
+  it does, after a few presses. gpSP's take 4 to 9 ms and keep Run-Ahead.
+
 ## omega-zero 2.3.3: Run-Ahead steps aside where it does not fit
 
 - Run-Ahead times every frame it plays again, and gives up on a game when half of the latest,

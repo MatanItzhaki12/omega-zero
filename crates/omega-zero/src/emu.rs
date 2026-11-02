@@ -29,9 +29,10 @@ pub const FAST_STEPS_MAX: u32 = 6;
 
 const FAST_TARGET: Duration = Duration::from_micros(14_000);
 
-/// The most a present's frame may take with run-ahead's frame played again before it: what a
-/// fast-forwarding present's frames are given, the rest of the present left to show them.
-const AHEAD_BUDGET: Duration = FAST_TARGET;
+/// The most a present's frame may take with run-ahead's frame played again before it: the
+/// handheld waits 12 ms for a present's frame (device_app's STEP_TIMEOUT) before it shows the one
+/// before again, less a millisecond to hand it over. mGBA's took 12 to 17 ms there, gpSP's 4 to 9.
+const AHEAD_BUDGET: Duration = Duration::from_millis(11);
 
 /// How many of the latest frames played again run-ahead weighs before it gives up on a game:
 /// when half of them, at least this many, ran over [`AHEAD_BUDGET`], the core is too slow on this
