@@ -11,6 +11,13 @@ static EMU: AtomicU64 = AtomicU64::new(0);
 static PUBLISHED: AtomicU64 = AtomicU64::new(0);
 static TAKEN: AtomicU64 = AtomicU64::new(0);
 static BITS: AtomicU16 = AtomicU16::new(0);
+/// How long the core took over the frame that first had the press, in nanoseconds.
+static CORE: AtomicU64 = AtomicU64::new(0);
+/// Over the window the pace line covers: the longest frame the core took, and the time the
+/// emulator thread spent waiting for room in the sound ring, all of it and its longest wait.
+static FRAME_MAX: AtomicU64 = AtomicU64::new(0);
+static SOUND_WAIT: AtomicU64 = AtomicU64::new(0);
+static SOUND_WAIT_MAX: AtomicU64 = AtomicU64::new(0);
 
 fn on() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
@@ -60,6 +67,35 @@ pub fn published() {
     }
 }
 
+/// The core ran a frame in `took`: the press's own, when it is the one under way.
+pub fn ran(took: std::time::Duration) {
+    if !on() {
+        return;
+    }
+    let ns = took.as_nanos() as u64;
+    FRAME_MAX.fetch_max(ns, Ordering::Relaxed);
+    if EMU.load(Ordering::Acquire) != 0 && PUBLISHED.load(Ordering::Acquire) == 0 {
+        CORE.store(ns, Ordering::Release);
+    }
+}
+
+/// The emulator thread waited `waited` for room in the sound ring.
+pub fn sound_waited(waited: std::time::Duration) {
+    if !on() {
+        return;
+    }
+    let ns = waited.as_nanos() as u64;
+    SOUND_WAIT.fetch_add(ns, Ordering::Relaxed);
+    SOUND_WAIT_MAX.fetch_max(ns, Ordering::Relaxed);
+}
+
+/// The longest core frame, the sound waits and the longest of them since the last call, in
+/// milliseconds, for the pace line.
+pub fn window() -> (f64, f64, f64) {
+    let ms = |s: &AtomicU64| s.swap(0, Ordering::AcqRel) as f64 / 1e6;
+    (ms(&FRAME_MAX), ms(&SOUND_WAIT), ms(&SOUND_WAIT_MAX))
+}
+
 pub fn taken() {
     if on() {
         stamp(&TAKEN, &PUBLISHED);
@@ -74,12 +110,14 @@ pub fn swapped(swap_ms: f64) {
     let [r, a, e, p, t] =
         [&READ, &APPLIED, &EMU, &PUBLISHED, &TAKEN].map(|s| s.swap(0, Ordering::AcqRel));
     BITS.store(0, Ordering::Release);
+    let core = CORE.swap(0, Ordering::AcqRel) as f64 / 1e6;
     let ms = |from: u64, to: u64| to.saturating_sub(from) as f64 / 1e6;
     eprintln!(
-        "omega-zero: latency: read>pad {:.1} pad>emu {:.1} emu>pub {:.1} pub>take {:.1} take>swapped {:.1} (swap {:.1}) total {:.1} ms",
+        "omega-zero: latency: read>pad {:.1} pad>emu {:.1} emu>pub {:.1} (core {:.1}) pub>take {:.1} take>swapped {:.1} (swap {:.1}) total {:.1} ms",
         ms(r, a),
         ms(a, e),
         ms(e, p),
+        core,
         ms(p, t),
         ms(t, end),
         swap_ms,

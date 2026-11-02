@@ -582,6 +582,11 @@ impl Frontend {
         self.session.step_emulator(present, timeout)
     }
 
+    /// Whether a game's emulator runs a frame to each present, waited for as it is drawn.
+    pub fn emulator_locked(&self) -> bool {
+        self.session.emulator_locked()
+    }
+
     pub fn advance(&mut self, input: &mut dyn InputSource) {
         let now = self.now();
         let events = input.poll(now);

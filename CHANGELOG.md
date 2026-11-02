@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## omega-zero 2.2.2: the latency trace says where a press waits
+
+- With `System/trace-latency.on` on the card, each press's line also says how long the core took
+  over the frame that answered it, and the pace line every ten seconds how many ticks the
+  emulator left unanswered, the longest frame the core took, and how long it waited for room in
+  the sound ring. Without the file nothing is measured or written.
+- A test drives the emulator as the handheld does and checks that a press set before a present's
+  tick is in that present's frame.
+
 ## omega-zero 2.2.1: the holo sheen, on or off
 
 - Settings > Labels has a Holo Sheen row, under Fetch Labels: A, left or right turns the rainbow

@@ -895,6 +895,7 @@ impl Worker {
                         omega_cheevos::frame();
                     }
                     let took = frame_began.elapsed();
+                    crate::latency::ran(took);
                     if last {
                         drawn = took;
                     } else {
@@ -987,7 +988,9 @@ impl Worker {
                         &mut out,
                         self.shared.volume.load(Ordering::Relaxed),
                     );
+                    let pushing = Instant::now();
                     ring.push_blocking(&out);
+                    crate::latency::sound_waited(pushing.elapsed());
                     paced += 1;
                     if crate::session::trace() && paced.is_multiple_of(TRACE_EVERY) {
                         let (dropped, starved) = (ring.overruns(), ring.underruns());

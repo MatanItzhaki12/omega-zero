@@ -140,6 +140,10 @@ impl Session {
         self.emu.is_some()
     }
 
+    pub fn emulator_locked(&self) -> bool {
+        self.emu.as_ref().is_some_and(EmuHandle::locked)
+    }
+
     pub fn frame_ready(&self) -> bool {
         self.emu.as_ref().is_some_and(EmuHandle::frame_ready)
     }

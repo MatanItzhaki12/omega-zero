@@ -158,7 +158,7 @@ pub fn run() {
     let mut drawn = false;
     frontend.drive_emulator();
     let mut pacer = Pacer::new();
-    let (mut frames, mut missed, mut early) = (0u32, 0u32, 0u32);
+    let (mut frames, mut missed, mut early, mut unanswered) = (0u32, 0u32, 0u32, 0u32);
     loop {
         pacer.wait();
         let began = Instant::now();
@@ -170,7 +170,10 @@ pub fn run() {
             frontend.poweroff();
             return;
         }
-        frontend.step_emulator(pacer.period, STEP_TIMEOUT);
+        let locked = frontend.emulator_locked();
+        // a tick the emulator did not answer in time is drawn with the frame before it
+        let answered = frontend.step_emulator(pacer.period, STEP_TIMEOUT);
+        unanswered = unanswered.saturating_add(u32::from(locked && !answered));
         frontend.render(&mut compositor, surface.window_size());
         let swap = Instant::now();
         let work = swap - began;
@@ -186,12 +189,13 @@ pub fn run() {
             missed += u32::from(dropped);
             early += u32::from(swap_took > pacer.period / 2);
             if frames == 600 {
+                let (longest, sound, sound_max) = omega_zero::latency::window();
                 eprintln!(
-                    "omega-zero: pace: 600 frames, {missed} missed a latch, {early} drawn early, work {:.1} ms, period {:.2} ms",
+                    "omega-zero: pace: 600 frames, {missed} missed a latch, {early} drawn early, {unanswered} ticks unanswered, work {:.1} ms, period {:.2} ms, core frame up to {longest:.1} ms, sound waits {sound:.0} ms (up to {sound_max:.1})",
                     pacer.work.as_secs_f64() * 1e3,
                     pacer.period.as_secs_f64() * 1e3
                 );
-                (frames, missed, early) = (0, 0, 0);
+                (frames, missed, early, unanswered) = (0, 0, 0, 0);
             }
         }
         if !drawn {

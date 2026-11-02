@@ -1440,7 +1440,7 @@ dependencies = [
 
 [[package]]
 name = "omega-cheevos"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "cc",
  "omega-retro",
@@ -1449,7 +1449,7 @@ dependencies = [
 
 [[package]]
 name = "omega-gfx"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "gl",
  "glutin",
@@ -1461,29 +1461,29 @@ dependencies = [
 
 [[package]]
 name = "omega-input"
-version = "2.2.1"
+version = "2.2.2"
 
 [[package]]
 name = "omega-power"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "tempfile",
 ]
 
 [[package]]
 name = "omega-retro"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "libloading",
 ]
 
 [[package]]
 name = "omega-sfxcut"
-version = "2.2.1"
+version = "2.2.2"
 
 [[package]]
 name = "omega-store"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "tempfile",
  "unicode-normalization",
@@ -1491,7 +1491,7 @@ dependencies = [
 
 [[package]]
 name = "omega-ui"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "fontdue",
  "omega-gfx",
@@ -1505,7 +1505,7 @@ dependencies = [
 
 [[package]]
 name = "omega-zero"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "cpal",
  "gilrs",

@@ -1214,3 +1214,82 @@ fn a_driven_pal_core_runs_five_frames_in_six_ticks() {
     let ran = frame_count(&emu) - before;
     assert!((49..=51).contains(&ran), "{ran} frames in 60 ticks, not 50");
 }
+
+/// A core whose picture is the buttons it was last run with, in its first pixel: what a frame
+/// shows is which press it answers.
+struct Echo {
+    video: Vec<u8>,
+}
+
+impl RetroCore for Echo {
+    fn load(&mut self, _rom: &Path) -> Result<(), CoreError> {
+        Ok(())
+    }
+    fn run_frame(&mut self, input: ButtonMask) {
+        self.video[..2].copy_from_slice(&input.0.to_le_bytes());
+    }
+    fn video_xrgb8888(&self) -> &[u8] {
+        &self.video
+    }
+    fn take_audio(&mut self) -> Vec<i16> {
+        vec![0; 1092]
+    }
+    fn serialize(&mut self) -> Result<Vec<u8>, CoreError> {
+        Ok(self.video[..2].to_vec())
+    }
+    fn unserialize(&mut self, data: &[u8]) -> Result<(), CoreError> {
+        self.video[..2].copy_from_slice(&data[..2]);
+        Ok(())
+    }
+    fn save_ram(&self) -> Option<Vec<u8>> {
+        None
+    }
+    fn load_save_ram(&mut self, _data: &[u8]) -> Result<(), CoreError> {
+        Ok(())
+    }
+    fn av_info(&self) -> AvInfo {
+        MockCore::new().av_info()
+    }
+}
+
+/// Driven as the handheld drives it, a press set before a present's tick is in the frame that
+/// tick has the worker run: the picture the present shows answers it, not one a present later.
+#[test]
+#[ignore = "real time: needs a quiet machine; task test:timing runs it"]
+fn a_press_set_before_a_tick_is_in_that_presents_frame() {
+    let _turn = turn();
+    let emu = spawn_with_core(Box::new(Echo {
+        video: vec![0; (240 * 160 * 4) as usize],
+    }));
+    emu.set_driven(true);
+    assert!(
+        wait_for(|| emu.locked()),
+        "the worker never locked to the display"
+    );
+    emu.tick(PANEL);
+    emu.wait_frame(Duration::from_millis(100));
+    let mut late = Vec::new();
+    // the d-pad only: held X and Y are turbo on the handhelds, on in one frame and off the next
+    for i in 1..=60u16 {
+        let i = [
+            ButtonMask::UP,
+            ButtonMask::DOWN,
+            ButtonMask::LEFT,
+            ButtonMask::RIGHT,
+        ][i as usize % 4]
+            | if i % 3 == 0 { ButtonMask::UP } else { 0 };
+        emu.set_input(ButtonMask(i));
+        emu.tick(PANEL);
+        assert!(
+            emu.wait_frame(Duration::from_millis(100)),
+            "a tick was never served"
+        );
+        let shown = emu.latest_frame().expect("nothing was published");
+        let answered = u16::from_le_bytes([shown[0], shown[1]]);
+        if answered != i {
+            late.push((i, answered));
+        }
+        std::thread::sleep(Duration::from_millis(12));
+    }
+    assert!(late.is_empty(), "presents shown a press late: {late:?}");
+}
