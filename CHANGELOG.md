@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## omega-zero 2.1.6: the holo sheen on the handheld, the IP on Network
+
+- The holo sheen was drawn only over a cart drawn flat, never over one drawn as its model, as
+  every cart on the handheld is: it is now drawn over the model's face too, and a little
+  brighter where the light catches it, so it shows on a label's own art.
+- Settings > Network says the handheld's address under the networks once it has one, IP
+  192.168.1.20, over what to press for a scan until one is made.
+- The save states' X DELETE is square at both ends, its pill's rounded end squared off as its
+  word's box is.
+
 ## omega-zero 2.1.5: holo labels, X DELETE as a button
 
 - The labels' glitter is gone for a holo sheen, as on a holographic Pokémon card: a faint

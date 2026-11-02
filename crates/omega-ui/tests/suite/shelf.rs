@@ -960,3 +960,44 @@ fn on_a_row_of_mixed_systems_no_cart_reaches_into_or_covers_the_picked_one() {
         );
     }
 }
+
+/// A cart drawn as its model, as on the handheld, has the holo sheen over its face, posed as the
+/// face is, and the frame it shows follows the cart's sway.
+#[test]
+fn a_model_cart_has_its_holo_sheen_over_its_face() {
+    let mut s = snes_shelf();
+    settle(&mut s);
+    s.set_faces((0..3).map(|i| TexId::from_raw(20 + i)).collect());
+    s.set_meshes(CartMeshes::build(|model| {
+        MeshId::from_raw(model.index() + 1)
+    }));
+    let frames: Vec<TexId> = (0..omega_ui::HOLO_FRAMES)
+        .map(|k| TexId::from_raw(900 + k))
+        .collect();
+    for model in omega_ui::CartModel::ALL {
+        s.set_model_holo(model, frames.clone());
+    }
+    let mut out = Vec::new();
+    s.draw_row(None, 0.0, 0.0, 1.0, &mut out);
+    let sheen = |d: &Draw| match *d {
+        Draw::Tex { tex, .. } | Draw::Turned { tex, .. } | Draw::Spun { tex, .. } => {
+            frames.contains(&tex)
+        }
+        _ => false,
+    };
+    let models = out
+        .iter()
+        .filter(|d| matches!(d, Draw::Model { .. }))
+        .count();
+    let sheens = out.iter().filter(|d| sheen(d)).count();
+    assert_eq!(sheens, models, "{models} carts, {sheens} with a holo sheen");
+    // each sheen comes straight after its cart's model
+    for (i, d) in out.iter().enumerate() {
+        if sheen(d) {
+            assert!(
+                matches!(out[i - 1], Draw::Model { .. }),
+                "a sheen is not over its cart"
+            );
+        }
+    }
+}

@@ -631,14 +631,27 @@ impl Shelf {
                     Some(stack) => {
                         disc::push_stack(out, (x, y, w, h), &stack, colour, self.spin, pose.yaw)
                     }
-                    None => out.push(spin::posed_cart(
-                        (x, y, w, h),
-                        meshes.of(model),
-                        tex,
-                        colour,
-                        0.0,
-                        pose.yaw,
-                    )),
+                    None => {
+                        out.push(spin::posed_cart(
+                            (x, y, w, h),
+                            meshes.of(model),
+                            tex,
+                            colour,
+                            0.0,
+                            pose.yaw,
+                        ));
+                        // the label's holo sheen over the model's face, as far along as the
+                        // cart is turned
+                        if let Some(holo) = self.holo_at(model, pose.yaw) {
+                            out.push(spin::posed_face(
+                                (x, y, w, h),
+                                holo,
+                                alpha * dim,
+                                0.0,
+                                pose.yaw,
+                            ));
+                        }
+                    }
                 }
                 self.push_mark(i, (x, y, w, h), alpha * dim, out);
                 continue;

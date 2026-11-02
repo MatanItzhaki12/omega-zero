@@ -390,9 +390,9 @@ impl Wifi {
     }
 
     /// The notes under the networks, a line each, short enough for the list's panel at 640x480:
-    /// a scan under way, why a join went wrong, what is under way, or what to do next. Joined,
-    /// addressed and scanned there is nothing to say: the network's row says CONNECTED, and SSH
-    /// has the address.
+    /// a scan under way, why a join went wrong, what is under way, or what to do next. Joined and
+    /// addressed, the handheld's address on the network, IP 192.168.1.20, and under it, until
+    /// a scan, what to press for one.
     pub fn notes(&self) -> Vec<String> {
         if !self.present() {
             return vec!["This handheld has no Wi-Fi.".into()];
@@ -422,11 +422,21 @@ impl Wifi {
         if joined && self.status.ip.is_none() {
             return vec!["Waiting for an address…".into()];
         }
+        // joined and addressed: the address, as WI-FI's panel and SSH say it
+        let address = self
+            .status
+            .ip
+            .as_ref()
+            .filter(|_| joined)
+            .map(|ip| format!("IP {ip}"));
         if self.seen.is_none() {
-            return vec!["Press X to look for networks.".into()];
+            return address
+                .into_iter()
+                .chain(["Press X to look for networks.".to_string()])
+                .collect();
         }
         if joined {
-            return Vec::new();
+            return address.into_iter().collect();
         }
         vec![if self.entries().is_empty() {
             "No networks found. Press X to look again.".into()

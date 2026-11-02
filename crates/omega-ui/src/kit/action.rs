@@ -288,6 +288,18 @@ pub fn middle_action_face(word: &str, pill: &str, font: Font, pal: &Palette) -> 
             .copy_from_slice(&whole.rgba[from..from + (w * 4) as usize]);
     }
     fill(&mut face, [w as i32 - 1, 0, 1, BAR as i32], pal.frame);
+    // the pill's end squared off as the word's box is: its rounded columns as its straight
+    // middle, behind a frame line
+    for y in 0..BAR {
+        let row = (y * w * 4) as usize;
+        let middle = row + (PILL_END * 4) as usize;
+        let straight: [u8; 4] = face.rgba[middle..middle + 4].try_into().unwrap_or([0; 4]);
+        for x in 1..PILL_END {
+            let at = row + (x * 4) as usize;
+            face.rgba[at..at + 4].copy_from_slice(&straight);
+        }
+    }
+    fill(&mut face, [0, 0, 1, BAR as i32], pal.frame);
     face
 }
 

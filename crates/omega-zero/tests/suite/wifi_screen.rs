@@ -380,7 +380,10 @@ fn opening_network_never_scans() {
         r.tick(1_000);
     }
     assert!(refreshes > 10, "the status was not kept fresh: {refreshes}");
-    assert_eq!(r.status(), ["Press X to look for networks."]);
+    assert_eq!(
+        r.status(),
+        ["IP 192.168.1.20", "Press X to look for networks."]
+    );
 }
 
 #[test]
@@ -525,7 +528,10 @@ fn before_a_scan_the_list_holds_the_network_joined_and_the_saved_ones() {
         ],
         "a network showed a signal no scan heard"
     );
-    assert_eq!(r.status(), ["Press X to look for networks."]);
+    assert_eq!(
+        r.status(),
+        ["IP 192.168.1.20", "Press X to look for networks."]
+    );
     assert_eq!(scans(&r.radio), 0);
 }
 
@@ -540,7 +546,10 @@ fn the_network_the_status_names_is_listed_though_nothing_saved_names_it() {
     assert_eq!(r.status(), ["Waiting for an address…"]);
     r.radio.say(joined("Home", Some("192.168.1.20")));
     r.tick(16);
-    assert_eq!(r.status(), ["Press X to look for networks."]);
+    assert_eq!(
+        r.status(),
+        ["IP 192.168.1.20", "Press X to look for networks."]
+    );
 }
 
 #[test]
@@ -872,8 +881,8 @@ fn the_networks_list_the_joined_one_then_by_signal_then_the_saved_out_of_reach()
     );
     assert_eq!(
         r.status(),
-        Vec::<String>::new(),
-        "joined and addressed, a note still said something: SSH has the address"
+        ["IP 192.168.1.20"],
+        "joined and addressed, the note does not give the address"
     );
 }
 
@@ -998,7 +1007,7 @@ fn a_join_that_never_finishes_gives_up() {
 }
 
 #[test]
-fn joined_it_waits_for_an_address_then_leaves_it_to_ssh() {
+fn joined_it_waits_for_an_address_then_says_it() {
     let mut r = Rig::new();
     r.on_with(&[("Home", -48, true)], &[(0, "Home")]);
     r.radio.say(joined("Home", None));
@@ -1007,12 +1016,7 @@ fn joined_it_waits_for_an_address_then_leaves_it_to_ssh() {
     assert_eq!(r.view().networks[0].value, Some("CONNECTED"));
     r.radio.say(joined("Home", Some("192.168.1.20")));
     r.tick(16);
-    assert!(
-        r.status().is_empty(),
-        "the address is SSH's to say: {:?}",
-        r.status()
-    );
-    assert_eq!(r.a.wifi_summary(), Summary::Joined("Home".into()));
+    assert_eq!(r.status(), ["IP 192.168.1.20"], "the address is not said");
 }
 
 #[test]
