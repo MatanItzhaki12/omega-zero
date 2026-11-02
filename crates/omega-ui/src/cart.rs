@@ -251,22 +251,16 @@ pub fn face_labels(platform: Platform) -> Vec<(u32, u32)> {
 /// `cart`'s face, its label drawn from the cut kept for its scan, or from the scan itself when
 /// there is no cut of it yet.
 pub fn cart_face(cart: &Cart) -> CartFace {
-    face_of(cart, true, true)
-}
-
-/// `cart`'s face with its label as the art puts it down, before the foil plays over it: for
-/// checking what the label shows, pixel for pixel.
-pub fn cart_face_unfoiled(cart: &Cart) -> CartFace {
-    face_of(cart, true, false)
+    face_of(cart, true)
 }
 
 /// `cart`'s face in a generated label whatever scan it has: what a boot draws until the scan
 /// is cut.
 pub fn generated_face(cart: &Cart) -> CartFace {
-    face_of(cart, false, true)
+    face_of(cart, false)
 }
 
-fn face_of(cart: &Cart, scans: bool, foiled: bool) -> CartFace {
+fn face_of(cart: &Cart, scans: bool) -> CartFace {
     let model = model_of(cart);
     if model == CartModel::Disc {
         if let Some(face) = disc::face(cart, scans) {
@@ -285,9 +279,6 @@ fn face_of(cart: &Cart, scans: bool, foiled: bool) -> CartFace {
     mould_detail(&s, &mut face);
     recess_label(&s, &mut face, &shell);
     paste_label(&s, &mut face, &label);
-    if foiled {
-        foil(&s, &mut face);
-    }
     clip_to_silhouette(&s, &mut face);
     face
 }
@@ -756,70 +747,56 @@ fn paste_label(s: &Spec, face: &mut CartFace, label: &[u8]) {
     }
 }
 
-/// How a label's foil plays over it, as the holographic labels of Nintendo's own paks do: the
-/// light breaks on it in small facets, like shattered glass, each a little lighter or darker and
-/// faintly coloured; a soft band of sheen crosses it on the diagonal; here and there a facet
-/// catches the light whole, a glint. All of it slight, so the label's art reads through.
-const FOIL_FACET: i32 = 8;
-const FOIL_TINT: u32 = 12;
-const FOIL_SHEEN: f32 = 22.0;
-const FOIL_GLINT: u32 = 150;
+/// How many frames a model's holo sheen has: the light at as many places along the label.
+pub const HOLO_FRAMES: usize = 12;
 
-/// How far apart the facets' centres are, in art pixels.
-const FACET: u32 = 4;
+/// How a label's holo sheen is drawn, as on a holographic Pokémon card: a faint rainbow over the
+/// whole label, its colours running across it on the diagonal, and a brighter band of light
+/// where the light catches it. Each frame has the light a little further along; the shelf
+/// draws the one its cart's sway faces, so the light slides over the label as the cart turns.
+/// Alphas of 255.
+const HOLO_BASE: f32 = 16.0;
+const HOLO_BAND: f32 = 92.0;
 
-/// Lays the foil over the label in `face`, on the art's two-pixel grid.
-fn foil(s: &Spec, face: &mut CartFace) {
+/// The holo sheen over a `model` cart's label, `HOLO_FRAMES` frames of it, each the face's size
+/// at half its resolution, to be drawn over the face scaled up: clear but over the label. A
+/// disc has none.
+pub fn holo_frames(model: CartModel) -> Vec<CartFace> {
+    if model == CartModel::Disc {
+        return Vec::new();
+    }
+    let s = spec(model);
     let (lx, ly, lw, lh) = s.label;
-    let span = (lw + lh) as f32 * 0.5;
-    for y in ly..ly + lh {
-        for x in lx..lx + lw {
-            if s.label_round > 0 && !in_round_rect(x, y, s.label, s.label_round) {
-                continue;
+    let (w, h) = (s.w.div_ceil(2), s.h.div_ceil(2));
+    (0..HOLO_FRAMES)
+        .map(|k| {
+            let t = k as f32 / (HOLO_FRAMES - 1) as f32;
+            let mut rgba = vec![0u8; (w * h * 4) as usize];
+            for hy in 0..h {
+                for hx in 0..w {
+                    let (x, y) = (hx * 2 + 1, hy * 2 + 1);
+                    let inside = match s.label_round {
+                        0 => (lx..lx + lw).contains(&x) && (ly..ly + lh).contains(&y),
+                        r => in_round_rect(x, y, s.label, r),
+                    };
+                    if !inside {
+                        continue;
+                    }
+                    let (u, v) = ((x - lx) as f32 / lw as f32, (y - ly) as f32 / lh as f32);
+                    let along = u * 0.75 + v * 0.45;
+                    // the light's band, from past the top left to past the bottom right
+                    let light = -0.15 + 1.35 * t;
+                    let band = (-((along - light) / 0.16).powi(2)).exp();
+                    let hue = (along * 1.4 - t * 0.6).rem_euclid(1.0) * 360.0;
+                    let c = hsv_to_rgb(hue, 0.6, 1.0);
+                    let a = (HOLO_BASE + HOLO_BAND * band) as u8;
+                    let d = ((hy * w + hx) * 4) as usize;
+                    rgba[d..d + 4].copy_from_slice(&[c[0], c[1], c[2], a]);
+                }
             }
-            let (ax, ay) = (x / 2, y / 2);
-            let facet = shard(ax, ay);
-            let d = ((y * s.w + x) * 4) as usize;
-            let under = [face.rgba[d], face.rgba[d + 1], face.rgba[d + 2]];
-            let rainbow = hsv_to_rgb((facet % 360) as f32, 0.55, 1.0);
-            let tinted = lerp(under, rainbow, FOIL_TINT, 255);
-            // the sheen: one soft band across the label, a third of the way along
-            let along = ((x - lx) as f32 + (y - ly) as f32 * 0.5) / span;
-            let band = (-((along - 0.35) / 0.12).powi(2)).exp();
-            let lift = (facet as i32 % 256 - 128) * FOIL_FACET / 128 + (band * FOIL_SHEEN) as i32;
-            let mut c = tinted.map(|v| (v as i32 + lift).clamp(0, 255) as u8);
-            if scatter(ax, ay ^ 0x5bd1).is_multiple_of(260) {
-                c = lerp(c, [0xff; 3], FOIL_GLINT, 255);
-            }
-            face.rgba[d..d + 3].copy_from_slice(&c);
-        }
-    }
-}
-
-/// A steady scatter for the foil's facets and glints, the same each time a face is made.
-fn scatter(x: u32, y: u32) -> u32 {
-    let mut h = x.wrapping_mul(0x27d4_eb2d) ^ y.wrapping_mul(0x1656_67b1);
-    h ^= h >> 13;
-    h = h.wrapping_mul(0x85eb_ca6b);
-    h ^ (h >> 16)
-}
-
-/// The facet the art pixel `ax, ay` stands in, as a number to light and colour it by: the cell
-/// of the nearest of a scatter of centres, about `FACET` apart, so the facets are irregular.
-fn shard(ax: u32, ay: u32) -> u32 {
-    let (cx, cy) = (ax / FACET, ay / FACET);
-    let mut best = (u32::MAX, 0);
-    for gy in cy.saturating_sub(1)..=cy + 1 {
-        for gx in cx.saturating_sub(1)..=cx + 1 {
-            let h = scatter(gx, gy);
-            let (px, py) = (gx * FACET + h % FACET, gy * FACET + (h >> 8) % FACET);
-            let dist = ax.abs_diff(px).pow(2) + ay.abs_diff(py).pow(2);
-            if dist < best.0 {
-                best = (dist, h >> 16);
-            }
-        }
-    }
-    best.1
+            CartFace { rgba, w, h }
+        })
+        .collect()
 }
 
 fn generated_label(s: &Spec, title: &str) -> Vec<u8> {

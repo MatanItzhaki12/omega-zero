@@ -298,6 +298,12 @@ impl Frontend {
             let shadow = model_shadow(model);
             let id = compositor.create_texture(shadow.w, shadow.h, &shadow.rgba);
             self.session.app_mut().set_model_shadow(model, id);
+            // the label's holo sheen, at half the face's resolution: a soft light, scaled up
+            let holo = omega_ui::holo_frames(model)
+                .iter()
+                .map(|f| compositor.create_texture(f.w, f.h, &f.rgba))
+                .collect();
+            self.session.app_mut().set_model_holo(model, holo);
         }
         let meshes = CartMeshes::upload(|mesh| compositor.create_mesh(mesh));
         self.session.app_mut().set_cart_meshes(meshes);

@@ -3,13 +3,13 @@
 //! and A DELETE. A deletes it, its picture with it, and the switcher shows the one after it, or
 //! goes back to the game when it was the last; B, or X again, keeps it.
 //!
-//! The key is shown between RETURN and LOAD, level with them, on the kit's hint line (a SAVE
-//! tab and X DELETE in its well, as tall as the bar): the bar's own hints would stand bare on
-//! the game's screenshot there.
+//! The key is shown between RETURN and LOAD, level with them and drawn as they are, X in a
+//! button pill and DELETE big in the bar's font (kit::action's middle action): the bar's own
+//! hints would stand bare on the game's screenshot there.
 
 use omega_gfx::{out_h, out_w};
 use omega_input::{Action, Btn};
-use omega_ui::kit::hints::{hint_line_face, hint_line_width, HINT_LINE_H};
+use omega_ui::kit::action::{middle_action_face, Font, BAR};
 use omega_ui::kit::layout::screen_px;
 use omega_ui::kit::palette::Palette;
 use omega_ui::kit::panel::panel_face;
@@ -20,21 +20,12 @@ use omega_ui::{Draw, Toast, UndoFace};
 
 use crate::app::App;
 use crate::pause_menu::PendingUndo;
-use crate::screens::bar::DELETE;
 use crate::screens::lone::{notes, Lone, NOTE_GAP};
 use crate::screens::power::WIDTH;
 
-/// The hint line's title.
-pub const HINT_TITLE: &str = "SAVE";
-
-/// The line between RETURN and LOAD saying X deletes, in `pal`.
-pub fn delete_hint_face(pal: &Palette) -> UndoFace {
-    hint_line_face(
-        hint_line_width(HINT_TITLE, &[DELETE]),
-        HINT_TITLE,
-        &[DELETE],
-        pal,
-    )
+/// X DELETE between RETURN and LOAD, in the bar's `font` and `pal`.
+pub fn delete_hint_face(font: Font, pal: &Palette) -> UndoFace {
+    middle_action_face("DELETE", "X", font, pal)
 }
 
 /// The panel's title.
@@ -82,7 +73,7 @@ impl App {
         let px = omega_ui::SPRITE_PX;
         Some([
             (out_w() / px).saturating_sub(hint.w) / 2,
-            (out_h() / px).saturating_sub(HINT_LINE_H),
+            (out_h() / px).saturating_sub(BAR),
         ])
     }
 

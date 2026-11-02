@@ -273,6 +273,24 @@ fn face_in(
     ActionFace { face, rise: RISE }
 }
 
+/// An action standing between the bar's two, on its row: `pill` in the button and `word` big in
+/// `font` beside it, as the right action has them, without the notch, the word's box closed by
+/// a frame line where the notch would be. `BAR` tall. The save states' X DELETE is one.
+pub fn middle_action_face(word: &str, pill: &str, font: Font, pal: &Palette) -> UndoFace {
+    let room = [word_box(word, font), hint_box(pill)];
+    let whole = face_in(Side::Right, word, pill, font, room, pal).face;
+    let w = whole.w - NOTCH + 1;
+    let mut face = blank(w, BAR);
+    for y in 0..BAR {
+        let from = (((y + RISE) * whole.w) * 4) as usize;
+        let to = ((y * w) * 4) as usize;
+        face.rgba[to..to + (w * 4) as usize]
+            .copy_from_slice(&whole.rgba[from..from + (w * 4) as usize]);
+    }
+    fill(&mut face, [w as i32 - 1, 0, 1, BAR as i32], pal.frame);
+    face
+}
+
 /// The bar's button pill standing on its own, both its ends rounded, `text` in its dark middle
 /// on the rows the buttons print theirs on: the shelf's system, "GBA", between the actions. It
 /// is the bar's full height, and has 3 dark pixels either side of the text's ink.

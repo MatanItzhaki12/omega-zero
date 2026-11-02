@@ -764,6 +764,14 @@ impl App {
         }
     }
 
+    /// `model`'s holo sheen, on every shelf: its frames, the light from one end of the label to
+    /// the other.
+    pub fn set_model_holo(&mut self, model: CartModel, frames: Vec<TexId>) {
+        for (_, shelf) in &mut self.shelves {
+            shelf.set_model_holo(model, frames.clone());
+        }
+    }
+
     pub fn set_gb_cart_shadows(&mut self, notched: TexId, rounded: TexId) {
         for (_, shelf) in &mut self.shelves {
             shelf.set_gb_shadow(GbShell::Notched, notched);

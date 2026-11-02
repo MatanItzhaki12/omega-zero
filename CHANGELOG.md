@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## omega-zero 2.1.5: holo labels, X DELETE as a button
+
+- The labels' glitter is gone for a holo sheen, as on a holographic Pokémon card: a faint
+  rainbow over the label, and a brighter band of light that slides across it, on the diagonal,
+  as the cart sways on the shelf. It is drawn over the cart in twelve frames, the one its sway
+  faces each frame.
+- The save states' X DELETE is a button as RETURN and LOAD are: X in a pill and DELETE big in
+  the bar's font, on the bar's row between them.
+
 ## omega-zero 2.1.4: foil on the labels, parts that peek
 
 - Every cart's label has a foil over it, as the holographic labels of Nintendo's own Pokémon

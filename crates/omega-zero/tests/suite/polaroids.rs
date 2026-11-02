@@ -280,12 +280,12 @@ fn a_deletes_the_save_shown_and_the_switcher_shows_the_next() {
 #[test]
 fn x_delete_stands_level_with_return_and_load() {
     use omega_gfx::{out_h, out_w};
-    use omega_ui::kit::hints::HINT_LINE_H;
+    use omega_ui::kit::action::{Font, BAR as HINT_LINE_H};
     use omega_ui::kit::palette::palette;
     use omega_zero::screens::delete_state::delete_hint_face;
     use omega_zero::screens::lone::Lone;
-    let face = delete_hint_face(palette(0));
-    assert_eq!(face.h, HINT_LINE_H, "the line is not the bar's height");
+    let face = delete_hint_face(Font::Bold, palette(0));
+    assert_eq!(face.h, HINT_LINE_H, "X DELETE is not the bar's height");
     let (_d, mut a, _ring) = two_saves_shown();
     a.set_delete_hint(Lone {
         tex: omega_ui::TexId::from_raw(4_242),

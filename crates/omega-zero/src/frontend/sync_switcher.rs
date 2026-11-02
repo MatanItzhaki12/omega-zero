@@ -22,8 +22,8 @@ pub(crate) struct Switcher {
     baked: Option<Panel>,
     /// The DELETE STATE panel, by the age it says and the palette colour.
     delete: Baked<(String, u8)>,
-    /// The X DELETE line, by the palette colour.
-    hint: Baked<u8>,
+    /// The X DELETE action, by the palette colour and the bar's font.
+    hint: Baked<(u8, omega_ui::kit::action::Font)>,
 }
 
 /// What the panel shows: the age of the save shown, which of how many it is, the panel's width
@@ -73,9 +73,12 @@ pub(crate) fn sync_switcher(
     }
     sync_panel(app, compositor, state);
     let pal = app.palette();
+    let font = app.font();
     if let Some(hint) = state
         .hint
-        .bake(compositor, app.palette_colour(), |_| delete_hint_face(pal))
+        .bake(compositor, (app.palette_colour(), font), |&(_, font)| {
+            delete_hint_face(font, pal)
+        })
     {
         app.set_delete_hint(hint);
     }

@@ -112,6 +112,9 @@ pub struct Shelf {
     pub scroll: f32,
     faces: Vec<TexId>,
     shadows: [Option<TexId>; CartModel::ALL.len()],
+    /// Each model's holo sheen, its frames with the light from one end of the label to the
+    /// other (`cart::holo_frames`).
+    holo: [Vec<TexId>; CartModel::ALL.len()],
     models: Vec<CartModel>,
     /// How many discs each cart stands as: one, but for a game on several discs.
     discs: Vec<usize>,
@@ -140,6 +143,7 @@ impl Shelf {
             scroll: 0.0,
             faces: Vec::new(),
             shadows: [None; CartModel::ALL.len()],
+            holo: Default::default(),
             meshes: None,
             ride: 0.0,
             vel: 0.0,
@@ -167,6 +171,21 @@ impl Shelf {
     /// The black outline that backs a `model` cart not drawn as a model.
     pub fn set_model_shadow(&mut self, model: CartModel, face: TexId) {
         self.shadows[model.index()] = Some(face);
+    }
+
+    /// `model`'s holo sheen, its frames in order of the light along the label.
+    pub fn set_model_holo(&mut self, model: CartModel, frames: Vec<TexId>) {
+        self.holo[model.index()] = frames;
+    }
+
+    /// The frame of `model`'s holo sheen a cart turned `yaw` shows: the light along its label as
+    /// far as the cart is turned, end to end over the sway's reach, so it slides over the label
+    /// as the cart turns one way and back.
+    fn holo_at(&self, model: CartModel, yaw: f32) -> Option<TexId> {
+        let frames = &self.holo[model.index()];
+        let last = frames.len().checked_sub(1)?;
+        let t = (0.5 + yaw / (2.0 * SWAY)).clamp(0.0, 1.0);
+        frames.get((t * last as f32).round() as usize).copied()
     }
 
     /// The models carts are drawn with from now on, sides and all.
@@ -646,6 +665,8 @@ impl Shelf {
                     ));
                 }
             }
+            // the label's holo sheen over the face, as far along as the cart is turned
+            let holo = face.and_then(|_| self.holo_at(model, pose.yaw));
             out.push(match face {
                 Some(tex) => spin::posed_face((x, y, w, h), tex, alpha * dim, 0.0, pose.yaw),
                 None => {
@@ -664,6 +685,15 @@ impl Shelf {
                     }
                 }
             });
+            if let Some(tex) = holo {
+                out.push(spin::posed_face(
+                    (x, y, w, h),
+                    tex,
+                    alpha * dim,
+                    0.0,
+                    pose.yaw,
+                ));
+            }
         }
     }
 }
