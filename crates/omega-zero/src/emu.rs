@@ -182,8 +182,7 @@ struct Shared {
     input: AtomicU16,
     /// Held X and Y are turbo A and B: the system's rule, switched live from MENU.
     turbo: AtomicBool,
-    /// Each present shows the frame after the one the game is at: Settings > Gameplay's
-    /// Run-Ahead.
+    /// A change of buttons is answered a frame sooner: Settings > Gameplay's Run-Ahead.
     run_ahead: AtomicBool,
     speed: AtomicU8,
     observed: AtomicU8,
@@ -519,8 +518,9 @@ impl EmuHandle {
         self.shared.turbo.store(on, Ordering::Relaxed);
     }
 
-    /// Shows each present the frame after the one the game is at, from the next present on: a
-    /// press answered a frame sooner, for twice the core's work.
+    /// Answers a change of buttons a frame sooner, from the next present on: the frame before it
+    /// played again with them, as if they had been pressed then. Every frame keeps a state for
+    /// it, and only a change plays a frame twice.
     pub fn set_run_ahead(&self, on: bool) {
         self.shared.run_ahead.store(on, Ordering::Relaxed);
     }
@@ -721,9 +721,11 @@ impl Worker {
         let mut out = Vec::new();
         // the sound a frame made, the core's buffer and this one traded back and forth
         let mut audio = Vec::new();
-        // run-ahead's state of the frame the game is at, and the sound of the frame after it,
-        // which no one hears; and whether the core has refused it, which ends it for the game
+        // run-ahead: the state the last frame began from and the buttons it was played with,
+        // while they still hold; the sound of a frame played again, which was heard the first
+        // time; and whether the core has refused a state, which ends it for the game
         let (mut ahead_state, mut ahead_sound) = (Vec::new(), Vec::new());
+        let mut ahead_held: Option<ButtonMask> = None;
         let mut ahead_refused = false;
         let mut gated = (false, false);
         // a system whose states are too big to keep many of, the PlayStation, keeps none
@@ -754,6 +756,8 @@ impl Worker {
         while !self.shared.stop.load(Ordering::Relaxed) {
             for cmd in self.cmds.try_iter() {
                 self.apply(cmd, core.as_mut(), &mut transport, &mut cable, &link);
+                // a state loaded, a reset or a disc swapped leaves the kept one behind
+                ahead_held = None;
             }
 
             if let Some(t) = transport.as_mut() {
@@ -844,6 +848,7 @@ impl Worker {
                     .rewind_fill
                     .store(rewind.fill(), Ordering::Relaxed);
                 core.take_audio_into(&mut audio);
+                ahead_held = None;
             } else if ceiling > 0 {
                 let one = FAST_TARGET.saturating_sub(post_cost);
                 if speed == Speed::Fast {
@@ -860,13 +865,17 @@ impl Worker {
                     && self.rules.rewinds
                     && transport.is_none()
                     && cable.is_none();
-                let mut restore = false;
+                if !ahead {
+                    ahead_held = None;
+                }
                 let began = Instant::now();
                 let mut ran = 0u32;
                 let (mut skipped, mut drawn) = (None::<Duration>, Duration::ZERO);
                 loop {
                     ran += 1;
                     let last = ran >= ceiling || cost.last(began.elapsed(), budget);
+                    // the buttons as held, before turbo pulses them, which run-ahead compares
+                    let held = input;
                     let input = if self.shared.turbo.load(Ordering::Relaxed) {
                         input.turbo(turbo_frame)
                     } else {
@@ -914,34 +923,42 @@ impl Worker {
                             }
                         }
                         None if ahead => {
-                            // the frame the game is at, its sound and its achievements kept,
-                            // its picture not drawn
-                            core.set_frame_skip(true);
-                            core.run_frame(input);
-                            if cheevos {
-                                omega_cheevos::frame();
-                            }
-                            core.take_audio_into(&mut audio);
-                            // and the one after it, with the same buttons held, drawn and shown,
-                            // then gone again once it is published
-                            match core.serialize_into(&mut ahead_state) {
-                                Ok(()) => {
-                                    core.set_frame_skip(false);
-                                    core.run_frame(input);
-                                    core.take_audio_into(&mut ahead_sound);
-                                    restore = true;
+                            // the buttons changed: the last frame is played again with them,
+                            // as if they had been pressed a frame sooner, its picture not drawn
+                            // and its sound, heard the first time, let go. While they hold the
+                            // game just plays on, never put back, so its sound runs unbroken.
+                            if ahead_held.is_some_and(|was| was != held) {
+                                match core.unserialize(&ahead_state) {
+                                    Ok(()) => {
+                                        core.set_frame_skip(true);
+                                        core.run_frame(input);
+                                        core.take_audio_into(&mut ahead_sound);
+                                    }
+                                    Err(e) => {
+                                        eprintln!(
+                                            "omega-zero: run-ahead: {e}, so it is off for this game"
+                                        );
+                                        ahead_refused = true;
+                                    }
                                 }
+                            }
+                            // where this frame begins, for the next change of buttons
+                            ahead_held = match core.serialize_into(&mut ahead_state) {
+                                Ok(()) => Some(held),
                                 Err(e) => {
                                     eprintln!(
                                         "omega-zero: run-ahead: {e}, so it is off for this game"
                                     );
                                     ahead_refused = true;
+                                    None
                                 }
-                            }
+                            };
+                            core.set_frame_skip(false);
+                            core.run_frame(input);
                         }
                         None => core.run_frame(input),
                     }
-                    if cheevos && !ahead {
+                    if cheevos {
                         omega_cheevos::frame();
                     }
                     let took = frame_began.elapsed();
@@ -999,13 +1016,6 @@ impl Worker {
                 flush_outbound(&mut transport, &link);
                 self.publish(core.video_xrgb8888(), core.video_size());
                 self.frame_done(served);
-                // back to the frame the game is at, before a snapshot or a save is taken of it
-                if restore {
-                    if let Err(e) = core.unserialize(&ahead_state) {
-                        eprintln!("omega-zero: run-ahead: {e}, so it is off for this game");
-                        ahead_refused = true;
-                    }
-                }
 
                 since_snapshot += 1;
                 if cable.is_some() || speed == Speed::Fast {
@@ -1022,10 +1032,7 @@ impl Worker {
                     }
                 }
 
-                // run-ahead has the frame's sound already, the one after it left unheard
-                if !ahead {
-                    core.take_audio_into(&mut audio);
-                }
+                core.take_audio_into(&mut audio);
                 if speed == Speed::Normal || ff_sound {
                     let target = drc_target(ring.capacity_frames());
                     let queued = ring.queued_frames();
@@ -1093,6 +1100,7 @@ impl Worker {
                         Wait::Request => {
                             for cmd in self.cmds.try_iter() {
                                 self.apply(cmd, core.as_mut(), &mut transport, &mut cable, &link);
+                                ahead_held = None;
                             }
                             continue;
                         }

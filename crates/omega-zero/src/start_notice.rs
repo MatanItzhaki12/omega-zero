@@ -386,6 +386,7 @@ impl App {
             | Action::PowerPress
             | Action::PowerTap
             | Action::PowerHold
+            | Action::PowerRestart
             | Action::PowerOff => {
                 self.start_notice = None;
                 false

@@ -451,6 +451,7 @@ impl App {
             | Action::PowerPress
             | Action::PowerTap
             | Action::PowerHold
+            | Action::PowerRestart
             | Action::PowerOff => {
                 self.opening = None;
                 false

@@ -1294,48 +1294,104 @@ fn a_press_set_before_a_tick_is_in_that_presents_frame() {
     assert!(late.is_empty(), "presents shown a press late: {late:?}");
 }
 
-/// With run-ahead on, each present shows the frame after the one the game is at, and the game
-/// itself stays where it was: a state taken, or a rewind, is of the frame the game is at.
+/// A core that counts the frames A was held for, its picture the count, and the times a state
+/// was put back into it.
+struct Held {
+    video: Vec<u8>,
+    count: u32,
+    restored: Arc<AtomicUsize>,
+}
+
+impl RetroCore for Held {
+    fn load(&mut self, _rom: &Path) -> Result<(), CoreError> {
+        Ok(())
+    }
+    fn run_frame(&mut self, input: ButtonMask) {
+        if input.0 & ButtonMask::A != 0 {
+            self.count += 1;
+        }
+        self.video[..4].copy_from_slice(&self.count.to_le_bytes());
+    }
+    fn video_xrgb8888(&self) -> &[u8] {
+        &self.video
+    }
+    fn take_audio(&mut self) -> Vec<i16> {
+        vec![0; 1092]
+    }
+    fn serialize(&mut self) -> Result<Vec<u8>, CoreError> {
+        Ok(self.count.to_le_bytes().to_vec())
+    }
+    fn unserialize(&mut self, data: &[u8]) -> Result<(), CoreError> {
+        self.restored.fetch_add(1, Ordering::Relaxed);
+        self.count = u32::from_le_bytes(data[..4].try_into().expect("a u32 count"));
+        Ok(())
+    }
+    fn save_ram(&self) -> Option<Vec<u8>> {
+        None
+    }
+    fn load_save_ram(&mut self, _data: &[u8]) -> Result<(), CoreError> {
+        Ok(())
+    }
+    fn av_info(&self) -> AvInfo {
+        MockCore::new().av_info()
+    }
+}
+
+/// With run-ahead on, a press is answered a frame sooner: the frame before it is played again
+/// with it, so the first frame shown with A down has counted it twice. While the buttons hold,
+/// no state is ever put back, and the game's sound runs on unbroken.
 #[test]
 #[ignore = "real time: needs a quiet machine; task test:timing runs it"]
-fn run_ahead_shows_the_next_frame_and_keeps_the_game_where_it_is() {
+fn run_ahead_answers_a_press_a_frame_sooner_and_restores_only_on_a_change() {
     let _turn = turn();
-    let emu = spawn_with_core(Box::new(MockCore::new()));
+    let restored = Arc::new(AtomicUsize::new(0));
+    let emu = spawn_with_core(Box::new(Held {
+        video: vec![0; (240 * 160 * 4) as usize],
+        count: 0,
+        restored: restored.clone(),
+    }));
     emu.set_driven(true);
     assert!(
         wait_for(|| emu.locked()),
         "the worker never locked to the display"
     );
     emu.set_run_ahead(true);
-    for _ in 0..30 {
+    let present = |input: u16| {
+        emu.set_input(ButtonMask(input));
         emu.tick(PANEL);
         assert!(
             emu.wait_frame(Duration::from_millis(100)),
             "a tick was never served"
         );
         let shown = emu.latest_frame().expect("nothing was published");
-        let at = frame_count(&emu);
-        let mut next = MockCore::new();
-        next.unserialize(&(at + 1).to_le_bytes())
-            .expect("the reference core refused the frame count");
-        assert_eq!(
-            &shown[..],
-            next.video_xrgb8888(),
-            "the game is at frame {at}, and frame {} was not what was shown",
-            at + 1
-        );
         std::thread::sleep(Duration::from_millis(8));
+        u32::from_le_bytes(shown[..4].try_into().expect("a count"))
+    };
+    for _ in 0..5 {
+        assert_eq!(present(0), 0);
     }
-    // and off again, the picture is the frame the game is at
+    let before = restored.load(Ordering::Relaxed);
+    assert_eq!(
+        present(ButtonMask::A),
+        2,
+        "the press was not answered a frame sooner"
+    );
+    assert_eq!(
+        restored.load(Ordering::Relaxed),
+        before + 1,
+        "a press put back one state"
+    );
+    for n in 3..10 {
+        assert_eq!(present(ButtonMask::A), n);
+    }
+    assert_eq!(
+        restored.load(Ordering::Relaxed),
+        before + 1,
+        "a state was put back while the buttons held"
+    );
+    // let go, and off again: each frame counts as it is played
+    assert_eq!(present(0), 8, "letting go was not answered a frame sooner");
     emu.set_run_ahead(false);
-    emu.tick(PANEL);
-    emu.wait_frame(Duration::from_millis(100));
-    emu.tick(PANEL);
-    assert!(emu.wait_frame(Duration::from_millis(100)));
-    let shown = emu.latest_frame().expect("nothing was published");
-    let at = frame_count(&emu);
-    let mut same = MockCore::new();
-    same.unserialize(&at.to_le_bytes())
-        .expect("the reference core refused the frame count");
-    assert_eq!(&shown[..], same.video_xrgb8888(), "run-ahead stayed on");
+    present(0);
+    assert_eq!(present(ButtonMask::A), 9, "run-ahead stayed on");
 }

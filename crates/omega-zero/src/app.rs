@@ -1353,8 +1353,10 @@ impl App {
                 return self.flush_resume();
             }
             Action::PowerTap => return self.power_press(),
-            // holding POWER powers off at once, with no menu between
+            // holding POWER powers off at once, with no menu between; START pressed while it
+            // is held restarts instead
             Action::PowerHold => return self.power_off_now(),
+            Action::PowerRestart => return self.restart_now(),
             Action::PowerOff => return,
             _ => {}
         }
@@ -3112,6 +3114,20 @@ impl App {
         self.flush_resume();
         self.finish_slide();
         self.begin_power_off();
+    }
+
+    /// Restarts at once, as holding POWER powers off: START pressed while it is held.
+    pub(crate) fn restart_now(&mut self) {
+        if self.shutting_down() {
+            return;
+        }
+        self.close_pause_menu();
+        self.flush_resume();
+        self.finish_slide();
+        if self.link_active() {
+            self.end_link();
+        }
+        self.begin_restart();
     }
 
     pub(crate) fn begin_power_off(&mut self) {

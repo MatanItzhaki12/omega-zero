@@ -47,6 +47,8 @@ pub enum Action {
     PowerPress,
     PowerTap,
     PowerHold,
+    /// START pressed while POWER is held, before the hold powers off: a restart instead.
+    PowerRestart,
     PowerOff,
     LidClose,
     LidOpen,
@@ -104,6 +106,8 @@ pub struct Gestures {
     menu_eject_fired: bool,
     power_down_at: Option<Millis>,
     power_hold_fired: bool,
+    /// START was pressed for a restart under POWER: its release goes nowhere either.
+    start_for_power: bool,
     vol_up_at: Option<Millis>,
     vol_down_at: Option<Millis>,
     vol_up_ramp: Option<Millis>,
@@ -228,6 +232,13 @@ impl Gestures {
                 vec![Action::PowerPress]
             }
             Btn::Lid => vec![Action::LidClose],
+            // START under a held POWER restarts rather than powers off, and the hold that would
+            // have powered off never fires; neither the game nor a menu sees START
+            Btn::Start if self.power_down_at.is_some() && !self.power_hold_fired => {
+                self.power_hold_fired = true;
+                self.start_for_power = true;
+                vec![Action::PowerRestart]
+            }
             Btn::VolUp | Btn::VolDown => self.volume_press(b, now),
             Btn::L2 if !self.keys.game_l2_r2 => self.l2_down(),
             Btn::R2 if !self.keys.game_l2_r2 => self.r2_down(),
@@ -254,6 +265,10 @@ impl Gestures {
             Btn::Menu => self.menu_up(now),
             Btn::Power => self.power_up(),
             Btn::Lid => vec![Action::LidOpen],
+            Btn::Start if self.start_for_power => {
+                self.start_for_power = false;
+                Vec::new()
+            }
             Btn::VolUp | Btn::VolDown => self.volume_release(b),
             Btn::L2 if !self.keys.game_l2_r2 => self.l2_up(),
             Btn::R2 if !self.keys.game_l2_r2 => self.r2_up(),

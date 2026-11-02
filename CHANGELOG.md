@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## omega-zero 2.3.1: run-ahead without the crackle, and START restarts
+
+- Run-Ahead no longer crackles. It put the game back a frame after every frame it showed, and a
+  core keeps part of its sound outside its states, so the sound broke sixty times a second. Now
+  the game plays on as it always does, keeping a state of each frame, and only a change of
+  buttons plays the frame before again with them: a press is still answered a frame sooner, and
+  while the buttons hold the sound runs unbroken.
+- Pressing START while POWER is held, before the hold powers off, restarts the handheld instead,
+  the game saved first as a power-off saves it. START goes to neither the game nor a menu.
+
 ## omega-zero 2.3.0: run-ahead
 
 - Settings > Gameplay has Run-Ahead, off to begin with. On, each present shows the frame after

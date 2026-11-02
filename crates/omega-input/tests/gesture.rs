@@ -750,3 +750,36 @@ fn new_keys_let_go_of_a_rewind_and_a_fast_forward_under_way() {
         "R2 stayed held as the chord it was"
     );
 }
+
+/// START pressed while POWER is held, before the hold fires, is a restart: the hold that would
+/// have powered off never fires, and START reaches neither the game nor a menu, down or up.
+#[test]
+fn start_under_a_held_power_restarts_instead_of_powering_off() {
+    let mut g = Gestures::new();
+    g.feed(Down(Btn::Power), 0);
+    assert_eq!(g.feed(Down(Btn::Start), 300), vec![PowerRestart]);
+    assert!(
+        g.tick(POWER_HOLD_MS * 2).is_empty(),
+        "the hold powered off as well"
+    );
+    assert!(
+        g.feed(Up(Btn::Start), 2100).is_empty(),
+        "START's release reached the game"
+    );
+    assert_eq!(g.feed(Up(Btn::Power), 2200), vec![PowerOff]);
+    // and START on its own is START again
+    assert_eq!(g.feed(Down(Btn::Start), 3000), vec![GbaDown(Btn::Start)]);
+    assert_eq!(g.feed(Up(Btn::Start), 3100), vec![GbaUp(Btn::Start)]);
+}
+
+/// Once the hold has fired the console is going off, and START changes nothing.
+#[test]
+fn start_after_the_hold_has_fired_is_too_late() {
+    let mut g = Gestures::new();
+    g.feed(Down(Btn::Power), 0);
+    assert_eq!(g.tick(POWER_HOLD_MS), vec![PowerHold]);
+    assert_ne!(
+        g.feed(Down(Btn::Start), POWER_HOLD_MS + 50),
+        vec![PowerRestart]
+    );
+}

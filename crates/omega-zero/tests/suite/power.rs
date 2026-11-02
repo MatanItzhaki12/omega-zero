@@ -482,3 +482,21 @@ fn a_shut_lid_over_a_session_takes_its_network_down_too() {
     );
     assert!(jobs.contains(&RadioJob::Cool));
 }
+
+/// START pressed while POWER is held restarts rather than powers off, the game saved first as
+/// a power-off saves it.
+#[test]
+fn start_under_a_held_power_restarts() {
+    let d = tmp_root_with_carts(&["Emerald"]);
+    let mut a = app_playing_in(d.path(), "Emerald");
+    a.apply(Action::PowerRestart);
+    assert!(a.restarting(), "it did not restart");
+    assert!(!a.powering_off(), "it powered off as well");
+    assert!(
+        StateRing::new(d.path(), Platform::Gba, Core::Mgba, "Emerald")
+            .read_resume()
+            .unwrap()
+            .is_some(),
+        "the game was not saved before the restart"
+    );
+}
