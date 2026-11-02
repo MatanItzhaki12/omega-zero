@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## omega-zero 2.1.7: a quieter holo sheen, on the cart picked
+
+- The holo sheen is subtler, its rainbow fainter and its band of light softer.
+- Only the cart picked has it, fading in as it comes to the middle of the shelf: the carts
+  beside it, and those scrolling past to a new one, have none. The shelf draws one more face
+  over one cart rather than over every cart in sight, so it sways as smoothly as before.
+
 ## omega-zero 2.1.6: the holo sheen on the handheld, the IP on Network
 
 - The holo sheen was drawn only over a cart drawn flat, never over one drawn as its model, as

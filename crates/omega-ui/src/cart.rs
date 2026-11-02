@@ -755,8 +755,8 @@ pub const HOLO_FRAMES: usize = 12;
 /// where the light catches it. Each frame has the light a little further along; the shelf
 /// draws the one its cart's sway faces, so the light slides over the label as the cart turns.
 /// Alphas of 255.
-const HOLO_BASE: f32 = 20.0;
-const HOLO_BAND: f32 = 110.0;
+const HOLO_BASE: f32 = 8.0;
+const HOLO_BAND: f32 = 64.0;
 
 /// The holo sheen over a `model` cart's label, `HOLO_FRAMES` frames of it, each the face's size
 /// at half its resolution, to be drawn over the face scaled up: clear but over the label. A

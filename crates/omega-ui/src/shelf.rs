@@ -101,6 +101,9 @@ const LEAN_MAX: f32 = 0.35;
 const LEAN_FROM: f32 = 0.05;
 /// A turn or a lift smaller than these cannot be seen, so the cart is drawn square and level.
 const STILL_YAW: f32 = 0.002;
+
+/// How far from the middle, in carts, the holo sheen has faded out: only the cart picked has it.
+const HOLO_REACH: f32 = 0.25;
 const STILL_LIFT: f32 = 0.05;
 
 const REPEAT_DELAY_MS: Millis = 400;
@@ -178,14 +181,21 @@ impl Shelf {
         self.holo[model.index()] = frames;
     }
 
-    /// The frame of `model`'s holo sheen a cart turned `yaw` shows: the light along its label as
-    /// far as the cart is turned, end to end over the sway's reach, so it slides over the label
-    /// as the cart turns one way and back.
-    fn holo_at(&self, model: CartModel, yaw: f32) -> Option<TexId> {
+    /// The frame of `model`'s holo sheen a cart turned `yaw`, `offset` from the middle, shows,
+    /// and how much of it: the light along its label as far as the cart is turned, end to end
+    /// over the sway's reach, so it slides over the label as the cart turns one way and back.
+    /// Only the cart picked has it, fading in as it comes to the middle: one more face drawn
+    /// over one cart, not over every cart in sight, and none while the row scrolls past.
+    fn holo_at(&self, model: CartModel, yaw: f32, offset: f32) -> Option<(TexId, f32)> {
+        let fade = 1.0 - offset.abs() / HOLO_REACH;
+        if fade <= 0.0 {
+            return None;
+        }
         let frames = &self.holo[model.index()];
         let last = frames.len().checked_sub(1)?;
         let t = (0.5 + yaw / (2.0 * SWAY)).clamp(0.0, 1.0);
-        frames.get((t * last as f32).round() as usize).copied()
+        let tex = frames.get((t * last as f32).round() as usize).copied()?;
+        Some((tex, fade))
     }
 
     /// The models carts are drawn with from now on, sides and all.
@@ -642,11 +652,11 @@ impl Shelf {
                         ));
                         // the label's holo sheen over the model's face, as far along as the
                         // cart is turned
-                        if let Some(holo) = self.holo_at(model, pose.yaw) {
+                        if let Some((holo, fade)) = self.holo_at(model, pose.yaw, offset) {
                             out.push(spin::posed_face(
                                 (x, y, w, h),
                                 holo,
-                                alpha * dim,
+                                alpha * dim * fade,
                                 0.0,
                                 pose.yaw,
                             ));
@@ -679,7 +689,7 @@ impl Shelf {
                 }
             }
             // the label's holo sheen over the face, as far along as the cart is turned
-            let holo = face.and_then(|_| self.holo_at(model, pose.yaw));
+            let holo = face.and_then(|_| self.holo_at(model, pose.yaw, offset));
             out.push(match face {
                 Some(tex) => spin::posed_face((x, y, w, h), tex, alpha * dim, 0.0, pose.yaw),
                 None => {
@@ -698,11 +708,11 @@ impl Shelf {
                     }
                 }
             });
-            if let Some(tex) = holo {
+            if let Some((tex, fade)) = holo {
                 out.push(spin::posed_face(
                     (x, y, w, h),
                     tex,
-                    alpha * dim,
+                    alpha * dim * fade,
                     0.0,
                     pose.yaw,
                 ));
