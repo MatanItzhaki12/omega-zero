@@ -636,6 +636,9 @@ fn the_status_is_a_line_in_the_panels_well_that_grows_it() {
         kind: LinkKind::Cable,
         picking: status.is_none(),
         status,
+        online: None,
+        detail: None,
+        rooms: None,
     };
     let bare = link_panel_face(&view(None), pal);
     let told = link_panel_face(&view(Some(LinkStep::Waiting.line())), pal);
@@ -647,4 +650,38 @@ fn the_status_is_a_line_in_the_panels_well_that_grows_it() {
         .filter(|p| p[..3] == pal.dim)
         .count();
     assert!(dim > 0, "the status is not in the dim colour of a note");
+}
+
+/// The ROOMS panel lists a row a room, no more than five in view, the status under them while
+/// there are none.
+#[test]
+fn the_rooms_panel_grows_with_its_rooms_up_to_five() {
+    use omega_zero::link_screen::RoomsView;
+    let pal = palette(0);
+    let face = |n: usize, status: Option<&'static str>| {
+        let rooms = RoomsView {
+            lines: (0..n)
+                .map(|i| (format!("Player {i}"), "Pokemon - Emerald".to_string()))
+                .collect(),
+            lit: 0,
+            first: 0,
+        };
+        link_panel_face(
+            &omega_zero::link_screen::LinkView {
+                role: LinkRow::Join,
+                kind: LinkKind::Cable,
+                picking: false,
+                status,
+                online: Some(true),
+                detail: None,
+                rooms: Some(rooms),
+            },
+            pal,
+        )
+    };
+    let none = face(0, Some("No rooms open right now"));
+    let (two, five, nine) = (face(2, None), face(5, None), face(9, None));
+    assert!(two.h > none.h || none.h > 0);
+    assert!(five.h > two.h, "a room more took no room");
+    assert_eq!(nine.h, five.h, "more than five rooms in view");
 }

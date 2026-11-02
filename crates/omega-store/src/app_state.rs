@@ -88,6 +88,10 @@ pub struct AppState {
     pub holo: bool,
     /// Each present shows the frame after the one the game is at.
     pub run_ahead: bool,
+    /// The name shown in online rooms, as typed; empty for the one made up for it.
+    pub online_name: String,
+    /// The relay an online room is opened through, by its place in RetroArch's list.
+    pub relay: u8,
 }
 
 impl Default for AppState {
@@ -130,6 +134,9 @@ impl Default for AppState {
             boot_animation: false,
             holo: true,
             run_ahead: false,
+            online_name: String::new(),
+            // Madrid's, the nearest of RetroArch's relays to most of Europe and the Middle East
+            relay: 1,
         }
     }
 }
@@ -148,7 +155,7 @@ pub fn read_app_state(root: &Path) -> AppState {
 
 pub fn write_app_state(root: &Path, s: &AppState) -> std::io::Result<()> {
     let text = format!(
-        "cart={}\ncart_platform={}\nbrightness={}\nblue_light={}\nvolume={}\nvolume_hp={}\nmuted={}\nmuted_hp={}\nclock_set={}\nutc_offset_min={}\nrumble={}\nff_speed={}\nff_sound={}\ncolour_correction={}\nscreen_filter={}\nwifi={}\nssh={}\nbluetooth={}\nbackdrop={}\nbackdrop_moving={}\nbackdrop_colour={}\nfont={}\nauto_load={}\neject_save={}\nrewind={}\nturbo={}\nblending={}\ngb_palette={}\nshow_recents={}\nshow_titles={}\nclock_24h={}\nlid_off_min={}\ncheevos={}\ncheevos_hardcore={}\nboot_animation={}\nholo={}\nrun_ahead={}\n",
+        "cart={}\ncart_platform={}\nbrightness={}\nblue_light={}\nvolume={}\nvolume_hp={}\nmuted={}\nmuted_hp={}\nclock_set={}\nutc_offset_min={}\nrumble={}\nff_speed={}\nff_sound={}\ncolour_correction={}\nscreen_filter={}\nwifi={}\nssh={}\nbluetooth={}\nbackdrop={}\nbackdrop_moving={}\nbackdrop_colour={}\nfont={}\nauto_load={}\neject_save={}\nrewind={}\nturbo={}\nblending={}\ngb_palette={}\nshow_recents={}\nshow_titles={}\nclock_24h={}\nlid_off_min={}\ncheevos={}\ncheevos_hardcore={}\nboot_animation={}\nholo={}\nrun_ahead={}\nonline_name={}\nrelay={}\n",
         s.cart.as_deref().unwrap_or(""),
         s.cart_platform.map_or(String::new(), platform_key),
         s.brightness,
@@ -186,6 +193,8 @@ pub fn write_app_state(root: &Path, s: &AppState) -> std::io::Result<()> {
         s.boot_animation as u8,
         s.holo as u8,
         s.run_ahead as u8,
+        online_name(&s.online_name),
+        s.relay,
     );
     atomic_write(&state_path(root), text.as_bytes())
 }
@@ -228,6 +237,8 @@ fn parse(text: &str) -> Option<AppState> {
     let mut boot_animation = None;
     let mut holo = None;
     let mut run_ahead = None;
+    let mut online_name_read = None;
+    let mut relay = None;
     for line in text.lines().filter(|l| !l.is_empty()) {
         let Some((key, value)) = line.split_once('=') else {
             continue;
@@ -269,6 +280,8 @@ fn parse(text: &str) -> Option<AppState> {
             "boot_animation" => boot_animation = flag(value),
             "holo" => holo = flag(value),
             "run_ahead" => run_ahead = flag(value),
+            "online_name" => online_name_read = Some(online_name(value)),
+            "relay" => relay = value.trim().parse().ok(),
             "lid_off_min" => {
                 lid_off_min = value.parse().ok().filter(|m| LID_OFF_MINUTES.contains(m))
             }
@@ -315,6 +328,8 @@ fn parse(text: &str) -> Option<AppState> {
         boot_animation: boot_animation.unwrap_or(fallback.boot_animation),
         holo: holo.unwrap_or(fallback.holo),
         run_ahead: run_ahead.unwrap_or(fallback.run_ahead),
+        online_name: online_name_read.unwrap_or(fallback.online_name),
+        relay: relay.unwrap_or(fallback.relay),
     })
 }
 
@@ -354,4 +369,18 @@ fn on_off(value: &str) -> Option<bool> {
         "off" => Some(false),
         _ => None,
     }
+}
+
+/// A name for online rooms as it can be kept and sent: printable characters only, trimmed, and
+/// no longer than the 31 bytes RetroArch's nick field holds.
+pub fn online_name(name: &str) -> String {
+    let kept: String = name
+        .chars()
+        .filter(|c| !c.is_control() && *c != '=')
+        .collect();
+    let mut kept = kept.trim().to_string();
+    while kept.len() > 31 {
+        kept.pop();
+    }
+    kept.trim_end().to_string()
 }

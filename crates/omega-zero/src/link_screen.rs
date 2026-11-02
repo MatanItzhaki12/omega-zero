@@ -147,7 +147,7 @@ fn working_arcs(since: Millis, now: Millis) -> [f32; RINGS] {
 /// Where the plug's bottom edge is at `now`, in art pixels from the strip's top edge.
 pub fn plug_bottom(menu: GameMenu, now: Millis) -> i32 {
     match menu {
-        GameMenu::Pick(_) => PICK,
+        GameMenu::Pick(_) | GameMenu::Rooms { .. } => PICK,
         GameMenu::Working { since, .. } => working_plug(since, now),
         GameMenu::Linked { worked, since, .. } => between(
             working_plug(worked, since),
@@ -166,7 +166,7 @@ pub fn plug_bottom(menu: GameMenu, now: Millis) -> i32 {
 /// Where the adapter's body ends at `now`, in art pixels from the strip's top edge.
 pub fn adapter_bottom(menu: GameMenu, now: Millis) -> i32 {
     match menu {
-        GameMenu::Pick(_) => ADAPTER_PICK,
+        GameMenu::Pick(_) | GameMenu::Rooms { .. } => ADAPTER_PICK,
         GameMenu::Working { since, .. } => working_adapter(since, now),
         GameMenu::Linked { worked, since, .. } => between(
             working_adapter(worked, since),
@@ -198,7 +198,7 @@ pub fn shake(menu: GameMenu, now: Millis) -> i32 {
 /// while linking, all lit once linked, and fade away when the link fails or ends.
 pub fn arc_alphas(menu: GameMenu, now: Millis) -> [f32; RINGS] {
     let smooth = match menu {
-        GameMenu::Pick(_) => [0.0; RINGS],
+        GameMenu::Pick(_) | GameMenu::Rooms { .. } => [0.0; RINGS],
         GameMenu::Working { since, .. } => working_arcs(since, now),
         GameMenu::Linked { worked, since, .. } => {
             let from = working_arcs(worked, since);
@@ -226,6 +226,7 @@ fn role_of(menu: GameMenu) -> LinkRow {
         | GameMenu::Linked { role, .. }
         | GameMenu::Failed { role, .. }
         | GameMenu::Unplug { role, .. } => role,
+        GameMenu::Rooms { .. } => LinkRow::Join,
     }
 }
 
@@ -317,6 +318,47 @@ pub struct LinkView {
     pub kind: LinkKind,
     pub picking: bool,
     pub status: Option<&'static str>,
+    /// Online or nearby, when the game can link online: None when it cannot.
+    pub online: Option<bool>,
+    /// A line more under the status: who this handheld is online, or who it is linked with.
+    pub detail: Option<String>,
+    /// The rooms open online, while one is being picked.
+    pub rooms: Option<RoomsView>,
+}
+
+/// The rooms open online, as the ROOMS panel lists them: each host's name and their game, the
+/// lit one, and the first in view.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RoomsView {
+    pub lines: Vec<(String, String)>,
+    pub lit: usize,
+    pub first: usize,
+}
+
+/// How many rooms the ROOMS panel shows at once.
+pub const ROOM_ROWS: usize = 5;
+
+/// How many characters of a room's game its row has room for, beside its host's name.
+const GAME_CHARS: usize = 14;
+
+/// A room's game as its row prints it: its name without its region and revision, a Pokémon
+/// game by its colour, another by its series, cut to fit.
+pub fn short_game(name: &str) -> String {
+    let name = name.split(" (").next().unwrap_or(name).trim();
+    let name = match name.strip_prefix("Pokemon - ") {
+        Some(colour) => colour.trim_end_matches(" Version").trim(),
+        None => name.split(" - ").next().unwrap_or(name).trim(),
+    };
+    match name.chars().count() > GAME_CHARS {
+        true => format!(
+            "{}…",
+            name.chars()
+                .take(GAME_CHARS - 1)
+                .collect::<String>()
+                .trim_end()
+        ),
+        false => name.to_string(),
+    }
 }
 
 /// The kind's word on the MODE row.
@@ -330,7 +372,10 @@ fn kind_word(kind: LinkKind) -> &'static str {
 /// The LINK panel in `pal`: ROLE with its value and carets, MODE with the link's kind, and the
 /// status as a note under them in the dim colour, the panel as tall as what it holds.
 pub fn link_panel_face(view: &LinkView, pal: &Palette) -> UndoFace {
-    let rows = [
+    if let Some(rooms) = &view.rooms {
+        return rooms_panel_face(rooms, view.status, pal);
+    }
+    let mut rows = vec![
         ViewRow {
             label: RowLabel::Setting("ROLE"),
             value: Some(RowValue::Choice(view.role.text())),
@@ -342,14 +387,57 @@ pub fn link_panel_face(view: &LinkView, pal: &Palette) -> UndoFace {
             dim: false,
         },
     ];
+    if let Some(online) = view.online {
+        rows.push(ViewRow {
+            label: RowLabel::Setting("VIA"),
+            value: Some(RowValue::Said(if online { "Online" } else { "Nearby" })),
+            dim: false,
+        });
+    }
     let held = rows_height(rows.len());
-    let lines: Vec<String> = view.status.iter().map(|s| s.to_string()).collect();
+    let lines: Vec<String> = view
+        .status
+        .iter()
+        .map(|s| s.to_string())
+        .chain(view.detail.clone())
+        .collect();
     let content = match lines.len() {
         0 => held,
         n => held + notes_height(n),
     };
     let mut panel = panel_face(PANEL_W, panel_height(content), "LINK", true, pal);
     hold(&mut panel, &rows, view.picking.then_some(0), pal);
+    notes(&mut panel, &lines, held + NOTE_GAP, pal);
+    panel.face
+}
+
+/// The ROOMS panel in `pal`: the rooms in view, each host's name and their game, the lit one
+/// lit, and `status` under them while there are none to show.
+fn rooms_panel_face(rooms: &RoomsView, status: Option<&'static str>, pal: &Palette) -> UndoFace {
+    let rows: Vec<ViewRow> = rooms
+        .lines
+        .iter()
+        .skip(rooms.first)
+        .take(ROOM_ROWS)
+        .map(|(host, game)| ViewRow {
+            label: RowLabel::Name(host.clone()),
+            value: Some(RowValue::Name(game.clone())),
+            dim: false,
+        })
+        .collect();
+    let held = rows_height(rows.len());
+    let lines: Vec<String> = status.iter().map(|s| s.to_string()).collect();
+    let content = match lines.len() {
+        0 => held,
+        n => held + notes_height(n),
+    };
+    let mut panel = panel_face(PANEL_W, panel_height(content.max(1)), "ROOMS", true, pal);
+    hold(
+        &mut panel,
+        &rows,
+        Some(rooms.lit.saturating_sub(rooms.first)),
+        pal,
+    );
     notes(&mut panel, &lines, held + NOTE_GAP, pal);
     panel.face
 }
@@ -398,7 +486,7 @@ impl LinkActions {
     /// The actions `menu` has.
     pub fn of(menu: GameMenu) -> LinkActions {
         match menu {
-            GameMenu::Pick(_) => LinkActions::Pick,
+            GameMenu::Pick(_) | GameMenu::Rooms { .. } => LinkActions::Pick,
             GameMenu::Working { .. } => LinkActions::Working,
             GameMenu::Linked { opened: true, .. } => LinkActions::Linked,
             GameMenu::Failed { .. } => LinkActions::Failed,
@@ -443,6 +531,18 @@ pub struct LinkBar {
     pub hints: Option<TexId>,
 }
 
+/// Y on the link screen, for a game that can link online: nearby or online.
+pub const VIA: Hint<'static> = Hint {
+    key: "Y",
+    word: "VIA",
+};
+
+/// Y on the ROOMS panel: the lobby asked for its rooms again.
+pub const REFRESH: Hint<'static> = Hint {
+    key: "Y",
+    word: "REFRESH",
+};
+
 /// SELECT on the link screen: it switches between the cable and the wireless adapter.
 pub const MODE: Hint<'static> = Hint {
     key: "SELECT",
@@ -453,28 +553,70 @@ impl App {
     /// What the LINK panel shows, while the link screen is open.
     pub fn link_view(&self) -> Option<LinkView> {
         let menu = self.game_menu?;
+        let online = self.online_available().then_some(self.link_online);
+        let going_online = online == Some(true);
         let status = match menu {
+            GameMenu::Working { step, .. } if going_online => Some(step.line()),
             GameMenu::Working { step, .. } => Some(step.shown(self.radio.warmed()).line()),
             GameMenu::Linked { .. } => Some("Linked"),
             GameMenu::Failed { fail, .. } => fail.shown().map(|_| fail.line()),
+            GameMenu::Rooms { .. } => self.rooms_status(),
             GameMenu::Pick(_) | GameMenu::Unplug { .. } => None,
+        };
+        let detail = match menu {
+            GameMenu::Linked { .. } => self.link_peer.as_ref().map(|p| format!("With {p}")),
+            GameMenu::Working { role, .. } if going_online => Some(match role {
+                LinkRow::Host => format!(
+                    "As {} through {}",
+                    self.online_name(),
+                    crate::options::relay_word(self.state.relay)
+                ),
+                LinkRow::Join => format!("As {}", self.online_name()),
+            }),
+            _ => None,
+        };
+        let rooms = match menu {
+            GameMenu::Rooms { lit } => Some(RoomsView {
+                lines: self
+                    .online_rooms
+                    .iter()
+                    .map(|r| (r.username.clone(), short_game(&r.game_name)))
+                    .collect(),
+                lit,
+                first: lit.saturating_sub(ROOM_ROWS - 1),
+            }),
+            _ => None,
         };
         Some(LinkView {
             role: role_of(menu),
             kind: self.link_hardware,
             picking: matches!(menu, GameMenu::Pick(_)),
             status,
+            online,
+            detail,
+            rooms,
         })
     }
 
     /// The keys between picking's actions: SELECT MODE where the seated game can switch between
     /// the cable and the adapter, and ◀▶ SWAP, which swaps HOST and JOIN.
     pub fn link_hints(&self) -> Vec<Hint<'static>> {
+        if matches!(self.game_menu, Some(GameMenu::Rooms { .. })) {
+            return vec![REFRESH];
+        }
         let switchable = self.seated().is_some_and(|stem| self.link_switchable(stem));
-        match switchable {
+        let mut hints = match switchable {
             true => vec![MODE, SWAP],
             false => vec![SWAP],
+        };
+        if self.online_available() {
+            hints.insert(0, VIA);
+            // three are too many for the narrowest bar: ROLE's carets show it swaps
+            if switchable {
+                hints.retain(|h| *h != SWAP);
+            }
         }
+        hints
     }
 
     /// The link screen's actions shown now, and how far they are sunk.

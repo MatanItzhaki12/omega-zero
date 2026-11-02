@@ -18,7 +18,7 @@ use omega_zero::emu::{CoreState, EmuHandle, Speed};
 use omega_zero::link_kind::LinkKind;
 use omega_zero::link_net::{Cancel, TcpLink};
 use omega_zero::link_radio::{LinkRole, RadioJob, RadioJobs};
-use omega_zero::link_screen::{LinkActions, LinkView, MODE};
+use omega_zero::link_screen::{LinkActions, LinkView, MODE, VIA};
 use omega_zero::link_start::{LinkFail, LinkStarter, LinkStep};
 use omega_zero::persist::{self, Snapshot};
 use omega_zero::screens::bar::SWAP;
@@ -490,6 +490,10 @@ fn the_link_screen_draws_its_panel_over_the_backdrop_in_place_of_the_game() {
             kind: LinkKind::Cable,
             picking: true,
             status: None,
+            // a GBA game on gpSP over the cable can link online: nearby until Y says otherwise
+            online: Some(false),
+            detail: None,
+            rooms: None,
         })
     );
     let mut out = Vec::new();
@@ -1246,7 +1250,9 @@ fn pick_offers_return_and_link_with_mode_and_swap_between_them() {
     assert_eq!(app.link_bar_shown(), Some((LinkActions::Pick, 0)));
     assert_eq!(LinkActions::Pick.action(Side::Left), ("RETURN", "B"));
     assert_eq!(LinkActions::Pick.action(Side::Right), ("LINK", "A"));
-    assert_eq!(app.link_hints(), vec![MODE, SWAP]);
+    // a GBA game on gpSP can link online too: Y switches it, and ROLE's carets say it swaps,
+    // three hints being too many for the narrowest bar
+    assert_eq!(app.link_hints(), vec![VIA, MODE]);
 }
 
 #[test]
@@ -1679,4 +1685,87 @@ fn the_shortcut_still_opens_the_screen_when_nothing_is_linked() {
     app.apply(Action::GameMenu);
     assert!(app.game_menu_open());
     assert_eq!(app.toast(), None);
+}
+
+/// Y on the link screen takes a GBA game on gpSP online and back; a game on mGBA has no VIA
+/// row, and Y is refused.
+#[test]
+fn y_takes_a_gpsp_game_online_and_mgba_has_no_via() {
+    let (mut app, _d) = playing_on(Core::Gpsp);
+    app.apply(Action::GameMenu);
+    assert_eq!(app.link_view().unwrap().online, Some(false));
+    app.apply(Action::GbaDown(Btn::Y));
+    assert_eq!(
+        app.link_view().unwrap().online,
+        Some(true),
+        "Y did not go online"
+    );
+    app.apply(Action::GbaDown(Btn::Y));
+    assert_eq!(
+        app.link_view().unwrap().online,
+        Some(false),
+        "Y did not come back nearby"
+    );
+
+    let (mut app, _d) = playing_on(Core::Mgba);
+    app.apply(Action::GameMenu);
+    assert_eq!(
+        app.link_view().unwrap().online,
+        None,
+        "mGBA was offered online play"
+    );
+    assert!(!app.link_hints().contains(&VIA));
+}
+
+/// Online with no Wi-Fi joined, A says so rather than reaching for the lobby.
+#[test]
+fn going_online_with_no_wifi_says_to_join_one() {
+    for role in [LinkRow::Host, LinkRow::Join] {
+        let (mut app, _d) = playing_on(Core::Gpsp);
+        app.apply(Action::GameMenu);
+        if role == LinkRow::Join {
+            app.apply(Action::GbaDown(Btn::Right));
+        }
+        app.apply(Action::GbaDown(Btn::Y));
+        app.apply(Action::GbaDown(Btn::A));
+        assert!(
+            matches!(
+                app.game_menu(),
+                Some(GameMenu::Failed {
+                    fail: LinkFail::NoWifi,
+                    ..
+                })
+            ),
+            "{role:?} online with no Wi-Fi: {:?}",
+            app.game_menu()
+        );
+        assert_eq!(
+            app.link_view().unwrap().status,
+            Some("Join a Wi-Fi network first")
+        );
+    }
+}
+
+/// A room's game is printed by what tells it apart: a Pokémon game by its colour, another by
+/// its series, and cut to fit beside its host's name.
+#[test]
+fn a_rooms_game_is_shortened_to_what_tells_it_apart() {
+    use omega_zero::link_screen::short_game;
+    assert_eq!(
+        short_game("Pokemon - Emerald Version (USA, Europe)"),
+        "Emerald"
+    );
+    assert_eq!(
+        short_game("Pokemon - FireRed Version (USA, Europe) (Rev 1)"),
+        "FireRed"
+    );
+    assert_eq!(
+        short_game("Advance Wars 2 - Black Hole Rising (USA)"),
+        "Advance Wars 2"
+    );
+    assert_eq!(
+        short_game("Some Very Long Game Name Indeed"),
+        "Some Very Lon…"
+    );
+    assert_eq!(short_game(""), "");
 }

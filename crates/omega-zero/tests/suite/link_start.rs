@@ -329,3 +329,169 @@ fn a_starter_that_is_dropped_stops_waiting() {
         std::thread::sleep(Duration::from_millis(2));
     }
 }
+
+// ---- online ----
+
+use std::io::{Read, Write};
+use std::sync::Mutex;
+
+use omega_zero::link_start::OnlineJob;
+
+/// A lobby answering /tunnel with the relay at `relay` and /add with a room's id, keeping every
+/// form it is sent.
+fn fake_lobby(relay: u16) -> (String, Arc<Mutex<Vec<String>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let forms = Arc::new(Mutex::new(Vec::new()));
+    let kept = forms.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { return };
+            let mut asked = Vec::new();
+            let mut byte = [0u8; 1];
+            while !asked.ends_with(b"\r\n\r\n") && stream.read(&mut byte).unwrap_or(0) == 1 {
+                asked.push(byte[0]);
+            }
+            let head = String::from_utf8_lossy(&asked).to_string();
+            let length = head
+                .lines()
+                .find_map(|l| {
+                    l.to_ascii_lowercase()
+                        .strip_prefix("content-length:")
+                        .map(|v| v.trim().to_string())
+                })
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(0);
+            let mut body = vec![0u8; length];
+            let _ = stream.read_exact(&mut body);
+            let said = if head.starts_with("GET /tunnel") {
+                format!("tunnel_addr=127.0.0.1\ntunnel_port={relay}\n")
+            } else {
+                kept.lock()
+                    .unwrap()
+                    .push(String::from_utf8_lossy(&body).to_string());
+                "id=1\nconnectable=1\n".to_string()
+            };
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{said}",
+                said.len()
+            );
+        }
+    });
+    (format!("http://127.0.0.1:{port}/"), forms)
+}
+
+fn relay_id(magic: &[u8; 4], id: &[u8; 12]) -> [u8; 16] {
+    let mut out = [0u8; 16];
+    out[..4].copy_from_slice(magic);
+    out[4..].copy_from_slice(id);
+    out
+}
+
+/// A room opened online: its relay found in the lobby, a session taken there, the room put up
+/// with that session, and a player the relay brings let in as the one who joins.
+#[test]
+fn a_room_opened_online_is_put_up_and_takes_the_player_its_relay_brings() {
+    let relay = TcpListener::bind("127.0.0.1:0").unwrap();
+    let relay_port = relay.local_addr().unwrap().port();
+    let (lobby, forms) = fake_lobby(relay_port);
+    let session = [5u8; 12];
+    let fake_relay = std::thread::spawn(move || {
+        let (mut control, _) = relay.accept().unwrap();
+        let mut ask = [0u8; 16];
+        control.read_exact(&mut ask).unwrap();
+        control.write_all(&relay_id(b"RATS", &session)).unwrap();
+        // the room is in the lobby before a player is brought
+        std::thread::sleep(Duration::from_millis(300));
+        let link = [6u8; 12];
+        control.write_all(&relay_id(b"RATL", &link)).unwrap();
+        let (mut theirs, _) = relay.accept().unwrap();
+        let mut addr = [0u8; 16];
+        control.read_exact(&mut addr).unwrap();
+        let mut answer = relay_id(b"RATA", &link).to_vec();
+        answer.extend([0u8; 16]);
+        control.write_all(&answer).unwrap();
+        let mut claim = [0u8; 16];
+        theirs.read_exact(&mut claim).unwrap();
+        let joined = omega_zero::netplay::join(theirs, "Guest", BAIL).expect("the player's join");
+        (control, joined)
+    });
+    let mut starter = LinkStarter::spawn_online(
+        OnlineJob::Host {
+            nick: "RG SP".into(),
+            relay: "madrid".into(),
+            game: "Pokemon - Emerald Version (USA, Europe)".into(),
+            crc: 0x1F1C_08FB,
+            rom: None,
+        },
+        &lobby,
+    );
+    let steps = drain_steps(&mut starter);
+    assert_eq!(steps, vec![LinkStep::Room, LinkStep::Waiting]);
+    let (_control, joined) = fake_relay.join().unwrap();
+    assert_eq!(joined.peer, "RG SP");
+    let forms = forms.lock().unwrap();
+    let room = forms.first().expect("the room was never put up");
+    for field in [
+        "mitm_session=BQUFBQUFBQUFBQUF",
+        "mitm_server=madrid",
+        "game_crc=1F1C08FB",
+        "username=RG%20SP",
+    ] {
+        assert!(
+            room.split('&').any(|f| f == field),
+            "{field} missing from {room}"
+        );
+    }
+}
+
+/// The ready link of a room opened online plays as client 0, and names who joined.
+#[test]
+fn a_room_joined_at_an_address_plays_as_the_client_the_host_numbers_it() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let host = std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        omega_zero::netplay::host(stream, "RetroArch", 0, BAIL)
+    });
+    let mut starter = LinkStarter::spawn_online(
+        OnlineJob::JoinAt {
+            nick: "RG SP".into(),
+            addr: "127.0.0.1".into(),
+            port,
+        },
+        "http://127.0.0.1:9/",
+    );
+    match drain(&mut starter) {
+        LinkProgress::Ready(ready) => {
+            assert_eq!(ready.client, Some(1));
+            assert_eq!(ready.peer.as_deref(), Some("RetroArch"));
+        }
+        LinkProgress::Failed(fail) => panic!("the join failed: {fail:?}"),
+        LinkProgress::At(_) => unreachable!(),
+    }
+    let hosted = host.join().unwrap().expect("the host's side");
+    assert_eq!(hosted.peer, "RG SP");
+}
+
+#[test]
+fn a_lobby_that_cannot_be_reached_fails_the_room_as_the_lobby() {
+    let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = closed.local_addr().unwrap().port();
+    drop(closed);
+    let mut starter = LinkStarter::spawn_online(
+        OnlineJob::Host {
+            nick: "RG SP".into(),
+            relay: "madrid".into(),
+            game: "Emerald".into(),
+            crc: 0,
+            rom: None,
+        },
+        &format!("http://127.0.0.1:{port}/"),
+    );
+    assert!(matches!(
+        drain(&mut starter),
+        LinkProgress::Failed(LinkFail::Lobby)
+    ));
+}

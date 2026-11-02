@@ -242,7 +242,7 @@ impl PauseRow {
             PauseRow::FastForwardSound => "Sound while fast-forwarding",
             PauseRow::Rewind => "Hold L2 to go back",
             PauseRow::Turbo => "Hold X and Y for turbo A and B",
-            PauseRow::RunAhead => "A frame sooner, for more battery",
+            PauseRow::RunAhead => "A frame sooner on gpSP",
             PauseRow::Rumble => "For games with a rumble pak",
             PauseRow::LoadOnInsert => "A picks up where you left off",
             PauseRow::SaveOnEject => "Ejecting saves where you were",

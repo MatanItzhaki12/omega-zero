@@ -1,7 +1,12 @@
-use std::sync::mpsc::{channel, Receiver, TryRecvError};
+use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
+use std::time::{Duration, Instant};
+
+use omega_retro::LinkChannel;
 
 use crate::link_net::{Cancel, TcpLink, HOST_BOUND};
 use crate::link_radio::{self, LinkRole, RadioFail};
+use crate::netplay::{self, NetplayFail, NetplayLink, RelayHost};
+use crate::netplay_lobby::{self, Announce, Announcer, Room};
 
 #[cfg(feature = "device")]
 pub const HOST_ADDR: &str = "10.42.0.1";
@@ -36,6 +41,10 @@ pub fn link_port() -> u16 {
 pub enum LinkStep {
     Radio,
     Waiting,
+    /// Online: a room being opened through a relay and put up in the lobby.
+    Room,
+    /// Online: the room being reached.
+    Reaching,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,10 +53,23 @@ pub enum LinkFail {
     NobodyCame,
     PeerVanished,
     Cancelled,
+    /// Online: the lobby or the relay could not be reached.
+    Lobby,
+    /// Online: the room would not let this handheld in: full, or it has a password.
+    Refused,
+    /// Online: the room runs another emulator.
+    OtherCore,
+    /// Online: the handheld has joined no Wi-Fi network.
+    NoWifi,
 }
 
 impl LinkStep {
-    pub const ALL: [LinkStep; 2] = [LinkStep::Radio, LinkStep::Waiting];
+    pub const ALL: [LinkStep; 4] = [
+        LinkStep::Radio,
+        LinkStep::Waiting,
+        LinkStep::Room,
+        LinkStep::Reaching,
+    ];
 
     pub fn index(self) -> usize {
         self as usize
@@ -57,6 +79,8 @@ impl LinkStep {
         match self {
             LinkStep::Radio => "Bringing the radio up",
             LinkStep::Waiting => "Looking for the other player",
+            LinkStep::Room => "Opening a room online",
+            LinkStep::Reaching => "Reaching the room",
         }
     }
 
@@ -69,10 +93,14 @@ impl LinkStep {
 }
 
 impl LinkFail {
-    pub const SHOWN: [LinkFail; 3] = [
+    pub const SHOWN: [LinkFail; 7] = [
         LinkFail::Radio,
         LinkFail::NobodyCame,
         LinkFail::PeerVanished,
+        LinkFail::Lobby,
+        LinkFail::Refused,
+        LinkFail::OtherCore,
+        LinkFail::NoWifi,
     ];
 
     pub fn shown(self) -> Option<usize> {
@@ -85,14 +113,26 @@ impl LinkFail {
             LinkFail::NobodyCame => "Nobody arrived",
             LinkFail::PeerVanished => "The other player vanished",
             LinkFail::Cancelled => "Cancelled",
+            LinkFail::Lobby => "The online lobby did not answer",
+            LinkFail::Refused => "The room would not let us in",
+            LinkFail::OtherCore => "The room runs another emulator",
+            LinkFail::NoWifi => "Join a Wi-Fi network first",
         }
     }
 }
 
 pub enum LinkProgress {
     At(LinkStep),
-    Ready(TcpLink),
+    Ready(Connected),
     Failed(LinkFail),
+}
+
+/// A link made: the connection the core's packets go over, the client the core plays as when
+/// the other end numbered it (online), and the other player's name when they gave one.
+pub struct Connected {
+    pub link: Box<dyn LinkChannel>,
+    pub client: Option<u16>,
+    pub peer: Option<String>,
 }
 
 fn classify(e: &std::io::Error) -> LinkFail {
@@ -157,7 +197,12 @@ impl LinkStarter {
             match socket(port, &flag) {
                 Ok(link) => {
                     eprintln!("omega-zero: link: {role:?} connected on {HOST_ADDR}:{port}");
-                    if tx.send(LinkProgress::Ready(link)).is_err() {
+                    let ready = Connected {
+                        link: Box::new(link),
+                        client: None,
+                        peer: None,
+                    };
+                    if tx.send(LinkProgress::Ready(ready)).is_err() {
                         eprintln!("omega-zero: link: nobody left to hand it to, radio back down");
                         radio_down();
                     }
@@ -204,6 +249,254 @@ impl LinkStarter {
 impl Drop for LinkStarter {
     fn drop(&mut self) {
         self.cancel.cancel();
+    }
+}
+
+/// How long a room stays open for a player to come, and how long a room or a player is given
+/// to say who they are.
+pub const ROOM_OPEN: Duration = Duration::from_secs(300);
+const ANSWER: Duration = Duration::from_secs(15);
+
+/// What an online link is to do.
+#[derive(Clone, Debug)]
+pub enum OnlineJob {
+    /// Open a room through the relay called `relay` and wait for a player.
+    Host {
+        nick: String,
+        relay: String,
+        game: String,
+        crc: u32,
+        /// The ROM the room's checksum is read off, on the link's thread: `crc` when there is
+        /// none.
+        rom: Option<std::path::PathBuf>,
+    },
+    /// Join a room from the lobby.
+    Join { nick: String, room: Room },
+    /// Join the room at an address, as RetroArch on the same network hosts one.
+    JoinAt {
+        nick: String,
+        addr: String,
+        port: u16,
+    },
+}
+
+/// An online link: the netplay connection, and what keeps it open the while: the relay session
+/// it came through and the room put up in the lobby.
+struct OnlineLink {
+    link: NetplayLink,
+    _relay: Option<RelayHost>,
+    _room: Option<Announcer>,
+}
+
+impl LinkChannel for OnlineLink {
+    fn send(&mut self, flags: i32, buf: &[u8]) {
+        self.link.send(flags, buf);
+    }
+
+    fn try_recv(&mut self) -> Option<Vec<u8>> {
+        self.link.try_recv()
+    }
+
+    fn is_closed(&self) -> bool {
+        self.link.is_closed()
+    }
+
+    fn send_end(&mut self) {
+        self.link.send_end();
+    }
+
+    fn peer_ended(&self) -> bool {
+        self.link.peer_ended()
+    }
+}
+
+fn online_fail(e: &NetplayFail) -> LinkFail {
+    match e {
+        NetplayFail::Full | NetplayFail::Banned | NetplayFail::Password | NetplayFail::Refused => {
+            LinkFail::Refused
+        }
+        NetplayFail::Core(_) => LinkFail::OtherCore,
+        NetplayFail::TimedOut => LinkFail::NobodyCame,
+        NetplayFail::Probe | NetplayFail::Protocol(_) | NetplayFail::Io(_) => {
+            LinkFail::PeerVanished
+        }
+    }
+}
+
+impl LinkStarter {
+    /// Starts `job` online, through RetroArch's lobby at `lobby` and its relays.
+    pub fn spawn_online(job: OnlineJob, lobby: &str) -> LinkStarter {
+        let (tx, rx) = channel();
+        let cancel = Cancel::new();
+        let flag = cancel.clone();
+        let lobby = lobby.to_string();
+        std::thread::Builder::new()
+            .name("omega-online".into())
+            .spawn(move || {
+                let outcome = match job {
+                    OnlineJob::Host {
+                        nick,
+                        relay,
+                        game,
+                        crc,
+                        rom,
+                    } => {
+                        let crc = rom
+                            .and_then(|rom| std::fs::read(rom).ok())
+                            .map_or(crc, |bytes| crate::label_sync::crc32(&bytes));
+                        host_online(&tx, &flag, &lobby, &nick, &relay, game, crc)
+                    }
+                    OnlineJob::Join { nick, room } => {
+                        let _ = tx.send(LinkProgress::At(LinkStep::Reaching));
+                        let joined = match room.relay() {
+                            Some((addr, port, session)) => {
+                                netplay::join_relay(&addr, port, session, &nick, ANSWER)
+                            }
+                            None => direct(&room.ip, room.port)
+                                .and_then(|s| netplay::join(s, &nick, ANSWER)),
+                        };
+                        joined.map(|j| ready(j, None, None)).map_err(|e| {
+                            eprintln!("omega-zero: netplay: the room: {e}");
+                            online_fail(&e)
+                        })
+                    }
+                    OnlineJob::JoinAt { nick, addr, port } => {
+                        let _ = tx.send(LinkProgress::At(LinkStep::Reaching));
+                        direct(&addr, port)
+                            .and_then(|s| netplay::join(s, &nick, ANSWER))
+                            .map(|j| ready(j, None, None))
+                            .map_err(|e| {
+                                eprintln!("omega-zero: netplay: {addr}:{port}: {e}");
+                                online_fail(&e)
+                            })
+                    }
+                };
+                let progress = match outcome {
+                    Ok(connected) => LinkProgress::Ready(connected),
+                    Err(_) if flag.is_cancelled() => LinkProgress::Failed(LinkFail::Cancelled),
+                    Err(fail) => LinkProgress::Failed(fail),
+                };
+                let _ = tx.send(progress);
+            })
+            .expect("the online link's thread");
+        LinkStarter {
+            rx,
+            cancel,
+            done: false,
+        }
+    }
+}
+
+fn ready(j: netplay::Joined, relay: Option<RelayHost>, room: Option<Announcer>) -> Connected {
+    Connected {
+        link: Box::new(OnlineLink {
+            link: j.link,
+            _relay: relay,
+            _room: room,
+        }),
+        client: Some(j.client),
+        peer: Some(j.peer),
+    }
+}
+
+fn direct(addr: &str, port: u16) -> Result<std::net::TcpStream, NetplayFail> {
+    use std::net::ToSocketAddrs;
+    let mut last = None;
+    for at in (addr, port).to_socket_addrs()? {
+        match std::net::TcpStream::connect_timeout(&at, ANSWER) {
+            Ok(s) => return Ok(s),
+            Err(e) => last = Some(e),
+        }
+    }
+    Err(NetplayFail::Io(last.unwrap_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("no address for {addr}"),
+        )
+    })))
+}
+
+/// Opens a room through the relay called `relay`, puts it up in the lobby, and waits for a
+/// player until [`ROOM_OPEN`] has passed or the link is cancelled.
+fn host_online(
+    tx: &Sender<LinkProgress>,
+    cancel: &Cancel,
+    lobby: &str,
+    nick: &str,
+    relay: &str,
+    game: String,
+    crc: u32,
+) -> Result<Connected, LinkFail> {
+    let _ = tx.send(LinkProgress::At(LinkStep::Room));
+    let (addr, port) = netplay_lobby::tunnel(lobby, relay).map_err(|e| {
+        eprintln!("omega-zero: netplay: the relay {relay}: {e}");
+        LinkFail::Lobby
+    })?;
+    let hosting = RelayHost::open(&addr, port, ANSWER).map_err(|e| {
+        eprintln!("omega-zero: netplay: the relay at {addr}:{port}: {e}");
+        LinkFail::Lobby
+    })?;
+    let room = Announcer::start(
+        lobby,
+        Announce {
+            username: nick.to_string(),
+            game_name: game,
+            game_crc: crc,
+            relay: relay.to_string(),
+            session: hosting.session,
+        },
+    );
+    let _ = tx.send(LinkProgress::At(LinkStep::Waiting));
+    let until = Instant::now() + ROOM_OPEN;
+    while Instant::now() < until {
+        if cancel.is_cancelled() {
+            return Err(LinkFail::Cancelled);
+        }
+        let Some(player) = hosting.next_player(Duration::from_millis(250)) else {
+            continue;
+        };
+        match netplay::host(player, nick, crc, ANSWER) {
+            Ok(joined) => {
+                eprintln!("omega-zero: netplay: {} joined the room", joined.peer);
+                room.set_players(2);
+                return Ok(ready(joined, Some(hosting), Some(room)));
+            }
+            // the lobby looking in, or a player who did not finish: the room stays open
+            Err(NetplayFail::Probe) => {}
+            Err(e) => eprintln!("omega-zero: netplay: a player could not join: {e}"),
+        }
+    }
+    Err(LinkFail::NobodyCame)
+}
+
+/// The joinable rooms in the lobby at `lobby`, fetched on a thread of their own.
+pub struct RoomsFetch {
+    rx: Receiver<Result<Vec<Room>, ()>>,
+}
+
+impl RoomsFetch {
+    pub fn spawn(lobby: &str) -> RoomsFetch {
+        let (tx, rx) = channel();
+        let lobby = lobby.to_string();
+        let _ = std::thread::Builder::new()
+            .name("omega-rooms".into())
+            .spawn(move || {
+                let rooms = netplay_lobby::rooms(&lobby)
+                    .map(|all| all.into_iter().filter(Room::joinable).collect())
+                    .map_err(|e| eprintln!("omega-zero: netplay: the lobby's rooms: {e}"));
+                let _ = tx.send(rooms);
+            });
+        RoomsFetch { rx }
+    }
+
+    /// The rooms once they have come: none while they are on their way, an error when the lobby
+    /// could not be reached.
+    pub fn poll(&self) -> Option<Result<Vec<Room>, ()>> {
+        match self.rx.try_recv() {
+            Ok(rooms) => Some(rooms),
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => Some(Err(())),
+        }
     }
 }
 

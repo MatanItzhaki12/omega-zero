@@ -38,6 +38,8 @@ pub enum OptionsPage {
     Achievements,
     /// Each system's default core, opened from GAMEPLAY's last row.
     Emulators,
+    /// The name and the relay of online play, opened from GAMEPLAY.
+    Online,
 }
 
 /// The systems with more than one core to run on, so a default to pick.
@@ -50,6 +52,7 @@ impl OptionsPage {
             OptionsPage::Shelf => "SHELF",
             OptionsPage::Achievements => "ACHIEVEMENTS",
             OptionsPage::Emulators => "EMULATORS",
+            OptionsPage::Online => "ONLINE PLAY",
         }
     }
 
@@ -66,8 +69,10 @@ impl OptionsPage {
                 OptionRow::RunAhead,
                 OptionRow::Blending,
                 OptionRow::Palette,
+                OptionRow::OnlinePlay,
                 OptionRow::Emulators,
             ],
+            OptionsPage::Online => &[OptionRow::OnlineName, OptionRow::Relay],
             OptionsPage::Achievements => {
                 &[OptionRow::Cheevos, OptionRow::Account, OptionRow::Hardcore]
             }
@@ -90,7 +95,9 @@ impl OptionsPage {
     /// The Settings row that opens it, or the panel it opens from.
     pub fn settings_row(self) -> SettingsRow {
         match self {
-            OptionsPage::Gameplay | OptionsPage::Emulators => SettingsRow::Gameplay,
+            OptionsPage::Gameplay | OptionsPage::Emulators | OptionsPage::Online => {
+                SettingsRow::Gameplay
+            }
             OptionsPage::Shelf => SettingsRow::Shelf,
             OptionsPage::Achievements => SettingsRow::Achievements,
         }
@@ -101,6 +108,7 @@ impl OptionsPage {
     pub fn parent(self) -> Option<(OptionsPage, OptionRow)> {
         match self {
             OptionsPage::Emulators => Some((OptionsPage::Gameplay, OptionRow::Emulators)),
+            OptionsPage::Online => Some((OptionsPage::Gameplay, OptionRow::OnlinePlay)),
             OptionsPage::Gameplay | OptionsPage::Shelf | OptionsPage::Achievements => None,
         }
     }
@@ -134,12 +142,24 @@ pub enum OptionRow {
     /// The RetroAchievements account: A signs in on the keyboard, Y signs out.
     Account,
     Hardcore,
+    /// GAMEPLAY's way into the ONLINE PLAY panel.
+    OnlinePlay,
+    /// The name online rooms show: A types it on the keyboard.
+    OnlineName,
+    /// The relay an online room is opened through.
+    Relay,
 }
 
 impl OptionRow {
     /// A opens the keyboard or a panel on the row rather than stepping it: the row ends in a ›.
     pub fn opens(self) -> bool {
-        matches!(self, OptionRow::Account | OptionRow::Emulators)
+        matches!(
+            self,
+            OptionRow::Account
+                | OptionRow::Emulators
+                | OptionRow::OnlinePlay
+                | OptionRow::OnlineName
+        )
     }
 
     /// Left and Right step the row's value, which stands between a ◀ and a ▶ while it is lit.
@@ -172,6 +192,9 @@ impl OptionRow {
             OptionRow::Cheevos => "Achievements",
             OptionRow::Account => "Account",
             OptionRow::Hardcore => "Hardcore",
+            OptionRow::OnlinePlay => "Online Play",
+            OptionRow::OnlineName => "Name",
+            OptionRow::Relay => "Relay",
         }
     }
 
@@ -199,6 +222,9 @@ impl OptionRow {
             OptionRow::Cheevos => "Check games for achievements",
             OptionRow::Account => "A signs in, Y signs out",
             OptionRow::Hardcore => "No state loads or rewind, from the next game",
+            OptionRow::OnlinePlay => "Your name and relay for online rooms",
+            OptionRow::OnlineName => "What the other player sees",
+            OptionRow::Relay => "The nearest is the quickest",
         }
     }
 }
@@ -208,6 +234,8 @@ impl OptionRow {
 pub enum Step {
     User,
     Password,
+    /// The name for online rooms, typed on its own.
+    OnlineName,
 }
 
 /// The keyboard up over the panel, signing in to RetroAchievements.
@@ -223,6 +251,7 @@ impl SignIn {
     pub fn prompt(&self) -> String {
         match self.step {
             Step::User => "RetroAchievements user name".to_string(),
+            Step::OnlineName => "Your name in online rooms".to_string(),
             Step::Password => format!("RetroAchievements password for {}", self.user),
         }
     }
@@ -302,6 +331,17 @@ fn step<T: Copy + PartialEq>(items: &[T], at: T, right: bool) -> T {
     items[if right { (i + 1) % n } else { (i + n - 1) % n }]
 }
 
+/// A relay's name as the panel prints it, by its place in RetroArch's list.
+pub fn relay_word(relay: u8) -> &'static str {
+    match crate::netplay_lobby::RELAYS.get(relay as usize).copied() {
+        Some("nyc") => "NEW YORK",
+        Some("madrid") => "MADRID",
+        Some("saopaulo") => "SAO PAULO",
+        Some("singapore") => "SINGAPORE",
+        _ => "MADRID",
+    }
+}
+
 impl App {
     /// What `row` is set to, as its panel prints it.
     pub fn option_text(&self, row: OptionRow) -> String {
@@ -342,6 +382,9 @@ impl App {
                 None => "SIGN IN".to_string(),
             },
             OptionRow::Hardcore => on_off(s.cheevos_hardcore),
+            OptionRow::OnlinePlay => String::new(),
+            OptionRow::OnlineName => self.online_name(),
+            OptionRow::Relay => relay_word(s.relay).to_string(),
         }
     }
 
@@ -389,7 +432,17 @@ impl App {
                 }
             }
             // the keyboard signs in, not the arrows, and A opens the panel
-            OptionRow::Account | OptionRow::Emulators => return,
+            OptionRow::Account
+            | OptionRow::Emulators
+            | OptionRow::OnlinePlay
+            | OptionRow::OnlineName => return,
+            OptionRow::Relay => {
+                let n = crate::netplay_lobby::RELAYS.len() as u8;
+                s.relay = match right {
+                    true => (s.relay + 1) % n,
+                    false => (s.relay + n - 1) % n,
+                };
+            }
             // kept in default_core.ini, not the state
             OptionRow::DefaultCore(platform) => return self.step_default_core(platform, right),
             // A alone puts them back, not the arrows
@@ -442,6 +495,11 @@ impl App {
             Action::GbaDown(Btn::Up) => screen.row = step(rows, row, false),
             Action::GbaDown(Btn::Down) => screen.row = step(rows, row, true),
             Action::GbaDown(Btn::A) if row == OptionRow::Account => self.open_sign_in(),
+            Action::GbaDown(Btn::A) if row == OptionRow::OnlineName => self.open_online_name(),
+            Action::GbaDown(Btn::A) if row == OptionRow::OnlinePlay => self.go(
+                Phase::Options(OptionsScreen::new(OptionsPage::Online)),
+                Dir::Deeper,
+            ),
             Action::GbaDown(Btn::A) if row == OptionRow::Emulators => {
                 self.count_switched_games();
                 self.go(
@@ -473,6 +531,38 @@ impl App {
             },
             _ => {}
         }
+    }
+
+    /// A on Name: the keyboard slides in over the panel, the name rooms show already typed.
+    fn open_online_name(&mut self) {
+        let name = self.online_name();
+        let Phase::Options(screen) = &mut self.phase else {
+            return;
+        };
+        let before = Phase::Options(screen.clone());
+        screen.typing = Some(SignIn {
+            step: Step::OnlineName,
+            user: String::new(),
+            keys: Keyboard {
+                text: name,
+                ..Keyboard::default()
+            },
+        });
+        self.slide_from(before, Dir::Deeper);
+    }
+
+    /// The name online rooms show: the one typed, else the RetroAchievements user's, else
+    /// "RG SP".
+    pub fn online_name(&self) -> String {
+        if !self.state.online_name.is_empty() {
+            return self.state.online_name.clone();
+        }
+        self.root
+            .as_deref()
+            .and_then(crate::achievements::Account::load)
+            .map(|a| omega_store::online_name(&a.user))
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| "RG SP".to_string())
     }
 
     /// A on Account: the keyboard slides in over the panel, asking for the user name, the one
@@ -537,6 +627,12 @@ impl App {
         }
         let typed = std::mem::take(&mut t.keys.text);
         match t.step {
+            Step::OnlineName => {
+                screen.typing = None;
+                self.slide_from(before, Dir::Back);
+                self.state.online_name = omega_store::online_name(&typed);
+                self.persist();
+            }
             // from the user name to the password the keyboard stays where it is
             Step::User => {
                 t.step = Step::Password;

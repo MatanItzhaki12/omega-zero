@@ -141,6 +141,10 @@ struct Reload {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum GameMenu {
     Pick(LinkRow),
+    /// The rooms open online, the lit one's place in the list.
+    Rooms {
+        lit: usize,
+    },
     Working {
         role: LinkRow,
         step: LinkStep,
@@ -332,6 +336,16 @@ pub struct App {
     pub(crate) link_bar: Option<LinkBar>,
     starting: Option<LinkStarting>,
     pub(crate) link_transport: Option<(u16, Box<dyn LinkChannel>)>,
+    /// The other player's name, when an online link gave one.
+    pub(crate) link_peer: Option<String>,
+    /// The link screen goes online rather than nearby, for a game that can.
+    pub(crate) link_online: bool,
+    /// The rooms open online, as the lobby last listed them, and their listing under way.
+    pub(crate) online_rooms: Vec<crate::netplay_lobby::Room>,
+    pub(crate) rooms_fetch: Option<crate::link_start::RoomsFetch>,
+    pub(crate) rooms_failed: bool,
+    /// The room picked to join.
+    pub(crate) online_room: Option<crate::netplay_lobby::Room>,
     pub(crate) restarting: bool,
     pub(crate) act_at: Millis,
     pub(crate) root: Option<PathBuf>,
@@ -537,6 +551,12 @@ impl App {
             link_bar: None,
             starting: None,
             link_transport: None,
+            link_peer: None,
+            link_online: false,
+            online_rooms: Vec::new(),
+            rooms_fetch: None,
+            rooms_failed: false,
+            online_room: None,
             restarting: false,
             act_at: 0,
             root: None,
@@ -1081,6 +1101,8 @@ impl App {
     pub fn end_link(&mut self) {
         self.link = None;
         self.link_player = None;
+        self.link_peer = None;
+        self.online_room = None;
         self.sync_link_badge();
         self.radio.ask(RadioJob::Down);
         self.radio.ask(RadioJob::Cool);
@@ -1283,11 +1305,8 @@ impl App {
             Some(GameMenu::Working { since, .. }) => since,
             _ => self.now(),
         };
-        self.start_link_from(
-            LinkStarter::spawn(reload.role.role(), link_port()),
-            reload.role.client_id(),
-            since,
-        );
+        let starter = self.link_starter(reload.role);
+        self.start_link_from(starter, reload.role.client_id(), since);
     }
 
     pub fn link_reload_failed(&mut self) {
@@ -1866,6 +1885,7 @@ impl App {
         }
         self.timers();
         self.poll_link();
+        self.poll_rooms();
         let now = self.now();
         let ready = self.core_faces_ready();
         if let Some(picker) = &mut self.core_picker {
@@ -2878,8 +2898,39 @@ impl App {
                     self.game_menu = Some(GameMenu::Pick(role.other()));
                 }
                 Action::GbaDown(Btn::Select) => self.switch_hardware(),
+                Action::GbaDown(Btn::Y) if self.online_available() => {
+                    self.link_online = !self.link_online
+                }
+                Action::GbaDown(Btn::Y) => self.refuse(),
+                Action::GbaDown(Btn::A) if self.online_available() && self.link_online => {
+                    self.pick_online(role)
+                }
                 Action::GbaDown(Btn::A) => self.pick_link(role),
                 Action::GbaDown(Btn::B) | Action::GameMenu => self.close_game_menu(),
+                _ => {}
+            },
+            GameMenu::Rooms { lit } => match action {
+                Action::GbaDown(Btn::Up) => {
+                    self.game_menu = Some(GameMenu::Rooms {
+                        lit: lit.saturating_sub(1),
+                    })
+                }
+                Action::GbaDown(Btn::Down) => {
+                    let last = self.online_rooms.len().saturating_sub(1);
+                    self.game_menu = Some(GameMenu::Rooms {
+                        lit: (lit + 1).min(last),
+                    })
+                }
+                Action::GbaDown(Btn::Y) => self.list_rooms(),
+                Action::GbaDown(Btn::A) => match self.online_rooms.get(lit).cloned() {
+                    Some(room) => {
+                        self.online_room = Some(room);
+                        self.pick_link(LinkRow::Join);
+                    }
+                    None => self.refuse(),
+                },
+                Action::GbaDown(Btn::B) => self.game_menu = Some(GameMenu::Pick(LinkRow::Join)),
+                Action::GameMenu => self.close_game_menu(),
                 _ => {}
             },
             GameMenu::Working { .. } => {
@@ -2923,6 +2974,99 @@ impl App {
             step: LinkStep::Radio,
             since,
         });
+    }
+
+    /// Whether the game in play can link online: a GBA game on gpSP, over the cable, whose
+    /// link packets RetroArch's netplay carries. The wireless adapter's are left nearby, as
+    /// GB-Link leaves them: a relay's delay is more than they take.
+    pub(crate) fn online_available(&self) -> bool {
+        self.platform == Platform::Gba
+            && self.core == Core::Gpsp
+            && self.link_hardware == LinkKind::Cable
+    }
+
+    /// A online: hosting opens a room straight away; joining lists the rooms open first.
+    fn pick_online(&mut self, role: LinkRow) {
+        if !self.online() {
+            let now = self.now();
+            self.game_menu = Some(GameMenu::Failed {
+                role,
+                fail: LinkFail::NoWifi,
+                worked: now,
+                since: now,
+            });
+            return;
+        }
+        match role {
+            LinkRow::Host => self.pick_link(role),
+            LinkRow::Join => self.list_rooms(),
+        }
+    }
+
+    /// The ROOMS panel, the lobby asked for the rooms open.
+    fn list_rooms(&mut self) {
+        self.online_rooms.clear();
+        self.rooms_failed = false;
+        self.rooms_fetch = Some(crate::link_start::RoomsFetch::spawn(
+            crate::netplay_lobby::LOBBY,
+        ));
+        self.game_menu = Some(GameMenu::Rooms { lit: 0 });
+    }
+
+    /// The rooms, once the lobby has listed them.
+    fn poll_rooms(&mut self) {
+        let Some(fetch) = &self.rooms_fetch else {
+            return;
+        };
+        if let Some(rooms) = fetch.poll() {
+            self.rooms_fetch = None;
+            match rooms {
+                Ok(rooms) => self.online_rooms = rooms,
+                Err(()) => self.rooms_failed = true,
+            }
+        }
+    }
+
+    /// The ROOMS panel's note: the lobby being asked, or why no room is listed.
+    pub(crate) fn rooms_status(&self) -> Option<&'static str> {
+        if self.rooms_fetch.is_some() {
+            Some("Finding rooms")
+        } else if self.rooms_failed {
+            Some(LinkFail::Lobby.line())
+        } else if self.online_rooms.is_empty() {
+            Some("No rooms open right now")
+        } else {
+            None
+        }
+    }
+
+    /// What starts a link as `role`: online, through RetroArch's lobby, when the link screen
+    /// says so; else nearby, over the handhelds' own radio.
+    fn link_starter(&self, role: LinkRow) -> LinkStarter {
+        if !(self.online_available() && self.link_online) {
+            return LinkStarter::spawn(role.role(), link_port());
+        }
+        let nick = self.online_name();
+        let job = match (role, self.online_room.clone()) {
+            (LinkRow::Join, Some(room)) => crate::link_start::OnlineJob::Join { nick, room },
+            _ => {
+                let cart = self.seated_cart();
+                crate::link_start::OnlineJob::Host {
+                    nick,
+                    relay: crate::netplay_lobby::RELAYS
+                        .get(self.state.relay as usize)
+                        .unwrap_or(&crate::netplay_lobby::RELAYS[1])
+                        .to_string(),
+                    game: cart
+                        .map(|c| c.stem.clone())
+                        .or_else(|| self.seated().map(str::to_string))
+                        .unwrap_or_default(),
+                    crc: 0,
+                    rom: cart.map(|c| c.rom.clone()),
+                }
+            }
+        };
+        LinkStarter::spawn_online(job, crate::netplay_lobby::LOBBY)
     }
 
     fn switch_hardware(&mut self) {
@@ -2979,10 +3123,7 @@ impl App {
         }
         let (_, serial) = self.link_mode(&stem);
         if serial == loaded {
-            return self.start_link(
-                LinkStarter::spawn(role.role(), link_port()),
-                role.client_id(),
-            );
+            return self.start_link(self.link_starter(role), role.client_id());
         }
         if self.snapshot.as_ref().is_some_and(|s| !s.resume_trusted()) {
             return self.refuse();
@@ -3060,7 +3201,7 @@ impl App {
                 }
                 self.starting = Some(starting);
             }
-            Some(LinkProgress::Ready(link)) => {
+            Some(LinkProgress::Ready(ready)) => {
                 let (role, worked) = self.working_role(starting.client_id);
                 self.game_menu = Some(GameMenu::Linked {
                     role,
@@ -3068,8 +3209,11 @@ impl App {
                     since: self.now(),
                     opened: false,
                 });
-                self.begin_link(starting.client_id);
-                self.link_transport = Some((starting.client_id, Box::new(link)));
+                // online, the client the core plays as is the one the room numbered it
+                let client_id = ready.client.unwrap_or(starting.client_id);
+                self.link_peer = ready.peer;
+                self.begin_link(client_id);
+                self.link_transport = Some((client_id, ready.link));
             }
             Some(LinkProgress::Failed(LinkFail::Cancelled)) => self.game_menu = None,
             Some(LinkProgress::Failed(fail)) => {
