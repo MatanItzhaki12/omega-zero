@@ -288,6 +288,7 @@ fn setting<'a>(label: &'a str, value: &'a str, lit: bool) -> Row<'a> {
         carets: true,
         opens: false,
         dim: false,
+        caret_room: false,
     }
 }
 

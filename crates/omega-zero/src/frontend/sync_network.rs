@@ -117,6 +117,7 @@ pub(crate) fn sync_network(app: &mut App, compositor: &mut Compositor, state: &m
                     carets: line.carets,
                     opens: line.opens,
                     dim: false,
+                    caret_room: false,
                 };
                 row_face(setting_w, &row, pal)
             })

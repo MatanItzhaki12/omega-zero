@@ -307,6 +307,7 @@ pub fn options_panel_face(view: &OptionsView, pal: &Palette) -> UndoFace {
                 carets: row.carets(),
                 opens: row.opens(),
                 dim: false,
+                caret_room: false,
             },
             pal,
         );

@@ -338,6 +338,7 @@ fn bluetooth_art(shot: Shot, pal: &Palette) -> UndoFace {
         carets: true,
         opens: false,
         dim: false,
+        caret_room: false,
     };
     let all = vec![
         device("8BitDo SN30 Pro", Some("CONNECTED"), DeviceKind::Gamepad),

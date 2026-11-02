@@ -66,6 +66,7 @@ pub(crate) fn sync_bluetooth(
             carets: line.carets,
             opens: line.opens,
             dim: false,
+            caret_room: false,
         };
         row_face(switch_w, &row, pal)
     });

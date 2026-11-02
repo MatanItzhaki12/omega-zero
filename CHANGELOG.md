@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The LINK panel's values end in one line: NAME's and PASSWORD's, which have no arrows, stood
+  further right than PLAY's, ROLE's and SERVER's.
+
 ## omega-zero 2.4.1
 
 - The LINK screen's rows are a settings list: up and down move between them, left and right

@@ -113,6 +113,7 @@ fn composed(shown: &Shown, pal: &Palette) -> UndoFace {
         carets: true,
         opens: false,
         dim: false,
+        caret_room: false,
     };
     let [x, y, rw, _] = row_rect(wells[0], 0);
     over(&mut art, &row_face(rw, &radio, pal), x, y);

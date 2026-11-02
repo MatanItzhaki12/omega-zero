@@ -87,6 +87,9 @@ pub struct Row<'a> {
     /// A ◀ and a ▶ either side of the value while the row is lit, for a value Left and Right
     /// change. Their room is kept unlit too.
     pub carets: bool,
+    /// The carets' room kept with no carets drawn, so the value lines up with those of rows
+    /// that have them.
+    pub caret_room: bool,
     /// A › at the right end, lit or not, for a row that opens another screen.
     pub opens: bool,
     /// A setting that is not available: everything in it drawn faint, lit or not, and no carets
@@ -207,7 +210,8 @@ pub fn row_face(width_u: u32, row: &Row, pal: &Palette) -> UndoFace {
     // is blank, and the value hands that pixel back on its right, so its ink ends as far from
     // what follows (or the band's end) as the name's starts from the band's.
     let mut items = Vec::new();
-    if row.carets {
+    let caret_room = row.carets || row.caret_room;
+    if caret_room {
         items.push(arrow(0, ARROW_GAP));
     }
     if let Some(value) = value {
@@ -217,7 +221,7 @@ pub fn row_face(width_u: u32, row: &Row, pal: &Palette) -> UndoFace {
             after: -1,
         });
     }
-    if row.carets {
+    if caret_room {
         items.push(arrow(ARROW_GAP, 0));
     }
     if row.opens {
@@ -230,8 +234,8 @@ pub fn row_face(width_u: u32, row: &Row, pal: &Palette) -> UndoFace {
     let label = row.label.to_uppercase();
     name(&mut face, &label, room, colour(pal, ink.name));
     let caret = inked(&CARET, ink.value);
-    let carets_shown = row.lit && !row.dim;
-    if row.carets {
+    let carets_shown = row.carets && row.lit && !row.dim;
+    if caret_room {
         let x = xs.next().expect("the ◀'s place");
         if carets_shown {
             art(&mut face, &caret, x, pal);
@@ -241,7 +245,7 @@ pub fn row_face(width_u: u32, row: &Row, pal: &Palette) -> UndoFace {
         let x = xs.next().expect("the value's place");
         word(&mut face, value, x, colour(pal, ink.value));
     }
-    if row.carets {
+    if caret_room {
         let x = xs.next().expect("the ▶'s place");
         if carets_shown {
             art(&mut face, &flip(&caret), x, pal);

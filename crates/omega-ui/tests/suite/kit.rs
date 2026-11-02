@@ -449,6 +449,7 @@ fn row<'a>(label: &'a str, value: Option<&'a str>, flags: &str) -> Row<'a> {
         carets: has("carets"),
         opens: has("opens"),
         dim: has("dim"),
+        caret_room: false,
     }
 }
 
@@ -1020,4 +1021,21 @@ fn rows_stand_in_a_well_a_pixel_into_its_sides() {
     assert_eq!(row_rect(panel.well, 0), [5, 18, 150, ROW_H]);
     assert_eq!(row_rect(panel.well, 2), [5, 18 + 2 * ROW_H, 150, ROW_H]);
     assert_eq!(panel_height(0), 23);
+}
+/// A row kept clear of the carets' room draws its value where a row with carets draws its
+/// own unlit, so the two line up in one panel.
+#[test]
+fn a_row_with_caret_room_lines_up_with_one_with_carets() {
+    let with = |carets: bool, caret_room: bool| Row {
+        label: "NAME",
+        value: Some("HOST"),
+        carets,
+        caret_room,
+        ..Row::default()
+    };
+    let carets = row_face(150, &with(true, false), &RAMP);
+    let room = row_face(150, &with(false, true), &RAMP);
+    let neither = row_face(150, &with(false, false), &RAMP);
+    assert_eq!(room.rgba, carets.rgba, "the value moved off the carets' line");
+    assert_ne!(neither.rgba, carets.rgba, "a row with no room already lined up");
 }

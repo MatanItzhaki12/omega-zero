@@ -29,7 +29,7 @@ use crate::link_kind::LinkKind;
 use crate::list_view::{RowLabel, RowValue, TypingView, ViewRow};
 use crate::nav::progress;
 use crate::screens::bar::BarSet;
-use crate::screens::lone::{hold, notes, notes_height, rows_height, Lone, NOTE_GAP};
+use crate::screens::lone::{hold, hold_aligned, notes, notes_height, rows_height, Lone, NOTE_GAP};
 
 /// One of the art's faces uploaded: its texture and its size in art pixels.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -452,7 +452,8 @@ pub fn link_panel_face(view: &LinkView, pal: &Palette) -> UndoFace {
         true => view.picking.then_some(0),
         false => view.lit,
     };
-    hold(&mut panel, &rows, lit, pal);
+    // values with carets and without, as ROLE's and NAME's, end in one line
+    hold_aligned(&mut panel, &rows, lit, pal);
     notes(&mut panel, &lines, held + NOTE_GAP, pal);
     panel.face
 }

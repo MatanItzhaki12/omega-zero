@@ -376,6 +376,7 @@ pub fn pause_panel_face(view: &PauseView, pal: &Palette) -> UndoFace {
             carets: line.carets,
             opens: line.row.opens(),
             dim: line.dim,
+            caret_room: false,
         };
         over(&mut panel.face, &row_face(w, &row, pal), x, y);
     }

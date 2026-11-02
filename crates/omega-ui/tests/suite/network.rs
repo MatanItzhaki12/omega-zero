@@ -304,6 +304,7 @@ fn network_composed(networks: &[ListRow], note: Option<&str>, pal: &Palette) -> 
             carets: true,
             opens: false,
             dim: false,
+            caret_room: false,
         };
         let [x, y, w, _] = row_rect(chrome.wells[0], i as u32);
         over(&mut art, &row_face(w, &row, pal), x, y);

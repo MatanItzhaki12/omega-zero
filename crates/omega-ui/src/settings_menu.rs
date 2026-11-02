@@ -353,6 +353,7 @@ pub fn settings_row_face(w: u32, shown: &RowShown, pal: &Palette) -> UndoFace {
         carets: shown.row.carets(),
         opens: shown.row.opens(),
         dim: false,
+        caret_room: false,
     };
     row_face(w, &row, pal)
 }
