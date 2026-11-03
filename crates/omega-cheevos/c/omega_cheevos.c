@@ -2,19 +2,100 @@
  * oc_* calls below. Rust serialises every call, so nothing here locks. The client's requests go
  * out through omega_cheevos_server_call, which Rust answers later with oc_answer, and what
  * happens in a game comes back through omega_cheevos_event. The game's memory is read through
- * rc_libretro, from the map the core declared or the regions it answers for by number. */
+ * rc_libretro, from the map the core declared or the regions it answers for by number. A disc's
+ * files are read for its hash by rcheevos' own reader, but a compressed PSP image (.cso), which it
+ * cannot read, is read sector by sector through omega_cheevos_cso_*. */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "rc_api_runtime.h"
 #include "rc_client.h"
+#include "rc_hash.h"
 #include "rc_libretro.h"
 
 extern void omega_cheevos_server_call(uint32_t id, const char* url, const char* post_data,
                                       const char* content_type);
 extern void omega_cheevos_event(uint32_t kind, const char* title, const char* description,
                                 uint32_t points);
+extern void* omega_cheevos_cso_open(const char* path);
+extern size_t omega_cheevos_cso_read(void* cso, uint32_t sector, void* buffer, size_t bytes);
+extern void omega_cheevos_cso_close(void* cso);
+
+/* rcheevos' own reader, for every disc image but a .cso */
+static struct rc_hash_cdreader disc_reader;
+
+/* a track opened by either reader */
+typedef struct track_t {
+  int cso;
+  void* handle;
+} track_t;
+
+static int is_cso(const char* path) {
+  const char* dot = strrchr(path, '.');
+  if (!dot || strlen(dot) != 4)
+    return 0;
+  const char* want = ".cso";
+  for (int i = 0; i < 4; i++) {
+    char ch = dot[i];
+    if (ch >= 'A' && ch <= 'Z')
+      ch = (char)(ch - 'A' + 'a');
+    if (ch != want[i])
+      return 0;
+  }
+  return 1;
+}
+
+static void* RC_CCONV open_track(const char* path, uint32_t track,
+                                 const struct rc_hash_iterator* iterator) {
+  void* handle = is_cso(path) ? omega_cheevos_cso_open(path)
+                              : disc_reader.open_track_iterator(path, track, iterator);
+  if (!handle)
+    return NULL;
+  track_t* t = (track_t*)malloc(sizeof(track_t));
+  if (!t) {
+    is_cso(path) ? omega_cheevos_cso_close(handle) : disc_reader.close_track(handle);
+    return NULL;
+  }
+  t->cso = is_cso(path);
+  t->handle = handle;
+  return t;
+}
+
+static size_t RC_CCONV read_sector(void* track, uint32_t sector, void* buffer, size_t bytes) {
+  track_t* t = (track_t*)track;
+  return t->cso ? omega_cheevos_cso_read(t->handle, sector, buffer, bytes)
+                : disc_reader.read_sector(t->handle, sector, buffer, bytes);
+}
+
+static void RC_CCONV close_track(void* track) {
+  track_t* t = (track_t*)track;
+  if (!t)
+    return;
+  if (t->cso)
+    omega_cheevos_cso_close(t->handle);
+  else
+    disc_reader.close_track(t->handle);
+  free(t);
+}
+
+static uint32_t RC_CCONV first_track_sector(void* track) {
+  track_t* t = (track_t*)track;
+  /* a .cso is one data track of 2048-byte sectors from the start */
+  return t->cso ? 0 : disc_reader.first_track_sector(t->handle);
+}
+
+static void use_disc_readers(void) {
+  struct rc_hash_cdreader reader;
+  rc_hash_get_default_cdreader(&disc_reader);
+  memset(&reader, 0, sizeof(reader));
+  reader.open_track_iterator = open_track;
+  reader.read_sector = read_sector;
+  reader.close_track = close_track;
+  reader.first_track_sector = first_track_sector;
+  rc_hash_init_custom_cdreader(&reader);
+}
 
 static rc_client_t* client;
 
@@ -161,9 +242,15 @@ int oc_start(int hardcore) {
     rc_client_set_event_handler(client, event_handler);
     /* memory is read only in oc_frame, on the thread that runs the core */
     rc_client_set_allow_background_memory_reads(client, 0);
+    use_disc_readers();
   }
   rc_client_set_hardcore_enabled(client, hardcore);
   return 1;
+}
+
+int oc_hash(uint32_t console, const char* path, char* out) {
+  use_disc_readers();
+  return rc_hash_generate_from_file(out, console, path);
 }
 
 int oc_hardcore(void) {

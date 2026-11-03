@@ -27,6 +27,7 @@ pub const CONSOLE_SNES: u32 = 3;
 pub const CONSOLE_GB: u32 = 4;
 pub const CONSOLE_GBA: u32 = 5;
 pub const CONSOLE_GBC: u32 = 6;
+pub const CONSOLE_PSP: u32 = 41;
 
 /// How long one request may take before it is given up as a network error the client retries.
 const REQUEST_SECS: &str = "30";
@@ -37,6 +38,7 @@ const RETRYABLE: c_int = -2;
 extern "C" {
     fn oc_start(hardcore: c_int) -> c_int;
     fn oc_hardcore() -> c_int;
+    fn oc_hash(console: u32, path: *const c_char, out: *mut c_char) -> c_int;
     fn oc_user_agent(buffer: *mut c_char, size: usize) -> usize;
     fn oc_login_password(user: *const c_char, password: *const c_char);
     fn oc_login_token(user: *const c_char, token: *const c_char);
@@ -309,6 +311,17 @@ pub fn game_unreachable() -> bool {
     with_client(|| unsafe { oc_game_unreachable() } != 0).unwrap_or(false)
 }
 
+/// The hash RetroAchievements knows the game `rom` of `console` by, where it can be made: a
+/// cartridge's of its ROM, a PSP game's of the files on its disc.
+pub fn game_hash(console: u32, rom: &Path) -> Option<String> {
+    let path = c(&rom.to_string_lossy());
+    let mut out = [0 as c_char; 33];
+    // SAFETY: the path lives through the call, and `out` holds the 32 digits and their end
+    let made = unsafe { oc_hash(console, path.as_ptr(), out.as_mut_ptr()) };
+    // SAFETY: rcheevos ends the digits it wrote
+    (made != 0).then(|| text(out.as_ptr()))
+}
+
 /// Loads the achievements of the game `rom` of `console` again, its memory as `begin_game`
 /// set it: after a sign-in or a network that came too late for the game's start.
 pub fn reload_game(console: u32, rom: &Path) {
@@ -544,6 +557,61 @@ pub extern "C" fn omega_cheevos_event(
     event(kind, &text(title), &text(description), points);
 }
 
+/// rcheevos opens a compressed PSP image to hash its game's files: the image, open, or null.
+#[no_mangle]
+pub extern "C" fn omega_cheevos_cso_open(path: *const c_char) -> *mut c_void {
+    match omega_store::psp::Cso::open(Path::new(&text(path))) {
+        Some(cso) => Box::into_raw(Box::new(cso)).cast(),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// `bytes` of the image from its sector `sector` on, into `buffer`: how many there were.
+///
+/// # Safety
+///
+/// `cso` is one `omega_cheevos_cso_open` gave and has not closed, and `buffer` holds `bytes`.
+#[no_mangle]
+pub unsafe extern "C" fn omega_cheevos_cso_read(
+    cso: *mut c_void,
+    sector: u32,
+    buffer: *mut c_void,
+    bytes: usize,
+) -> usize {
+    if cso.is_null() || buffer.is_null() {
+        return 0;
+    }
+    // SAFETY: as the caller promises
+    let (cso, out) = unsafe {
+        (
+            &mut *cso.cast::<omega_store::psp::Cso>(),
+            std::slice::from_raw_parts_mut(buffer.cast::<u8>(), bytes),
+        )
+    };
+    let mut done = 0;
+    for (i, chunk) in out.chunks_mut(omega_store::psp::SECTOR).enumerate() {
+        let Some(data) = cso.sector(sector + i as u32) else {
+            break;
+        };
+        chunk.copy_from_slice(&data[..chunk.len()]);
+        done += chunk.len();
+    }
+    done
+}
+
+/// The image put away.
+///
+/// # Safety
+///
+/// `cso` is one `omega_cheevos_cso_open` gave, not closed before.
+#[no_mangle]
+pub unsafe extern "C" fn omega_cheevos_cso_close(cso: *mut c_void) {
+    if !cso.is_null() {
+        // SAFETY: as the caller promises
+        drop(unsafe { Box::from_raw(cso.cast::<omega_store::psp::Cso>()) });
+    }
+}
+
 /// One request through curl: the post data goes in on its standard input, so a password never
 /// stands on a command line, and the HTTP status comes after the body on a line of its own.
 fn fetch(url: &str, post: Option<&str>, content_type: &str, agent: &str) -> (c_int, Vec<u8>) {
@@ -620,6 +688,92 @@ mod tests {
         assert!(!hardcore_active());
         frame();
         pump();
+    }
+
+    /// A directory record for `name` at sector `lba`, `len` long.
+    fn record(name: &str, lba: u32, len: u32, folder: bool) -> Vec<u8> {
+        let name = name.as_bytes();
+        let size = 33 + name.len() + (1 - name.len() % 2);
+        let mut r = vec![0u8; size];
+        r[0] = size as u8;
+        r[2..6].copy_from_slice(&lba.to_le_bytes());
+        r[6..10].copy_from_slice(&lba.to_be_bytes());
+        r[10..14].copy_from_slice(&len.to_le_bytes());
+        r[14..18].copy_from_slice(&len.to_be_bytes());
+        r[25] = if folder { 2 } else { 0 };
+        r[32] = name.len() as u8;
+        r[33..33 + name.len()].copy_from_slice(name);
+        r
+    }
+
+    const S: usize = omega_store::psp::SECTOR;
+
+    /// A UMD image: the descriptor at 16, the root at 18, PSP_GAME at 19, SYSDIR at 20, its
+    /// PARAM.SFO at 21 and EBOOT.BIN at 22.
+    fn umd(eboot: &[u8]) -> Vec<u8> {
+        let sectors = 24u32;
+        let mut img = vec![0u8; sectors as usize * S];
+        let pvd = 16 * S;
+        img[pvd] = 1;
+        img[pvd + 1..pvd + 6].copy_from_slice(b"CD001");
+        img[pvd + 80..pvd + 84].copy_from_slice(&sectors.to_le_bytes());
+        img[pvd + 156..pvd + 190].copy_from_slice(&record("\0", 18, S as u32, true)[..34]);
+        let mut put = |at: usize, bytes: &[u8]| img[at..at + bytes.len()].copy_from_slice(bytes);
+        put(18 * S, &record("PSP_GAME", 19, S as u32, true));
+        let sfo = omega_store::psp::param_sfo(&[("DISC_ID", "ULUS10391"), ("TITLE", "Test")]);
+        let sfo_record = record("PARAM.SFO;1", 21, sfo.len() as u32, false);
+        put(19 * S, &sfo_record);
+        put(
+            19 * S + sfo_record.len(),
+            &record("SYSDIR", 20, S as u32, true),
+        );
+        put(
+            20 * S,
+            &record("EBOOT.BIN;1", 22, eboot.len() as u32, false),
+        );
+        put(21 * S, &sfo);
+        put(22 * S, eboot);
+        img
+    }
+
+    /// `img` as a CISO, every block kept as it is.
+    fn cso(img: &[u8]) -> Vec<u8> {
+        let blocks: Vec<&[u8]> = img.chunks(S).collect();
+        let mut out = b"CISO".to_vec();
+        out.extend_from_slice(&24u32.to_le_bytes());
+        out.extend_from_slice(&(img.len() as u64).to_le_bytes());
+        out.extend_from_slice(&(S as u32).to_le_bytes());
+        out.extend_from_slice(&[1, 0, 0, 0]);
+        let mut at = (24 + (blocks.len() + 1) * 4) as u32;
+        for b in &blocks {
+            out.extend_from_slice(&(at | 0x8000_0000).to_le_bytes());
+            at += b.len() as u32;
+        }
+        out.extend_from_slice(&at.to_le_bytes());
+        for b in blocks {
+            out.extend_from_slice(b);
+        }
+        out
+    }
+
+    /// A PSP game is known by its disc's PARAM.SFO and EBOOT.BIN, whether its image is an ISO
+    /// or the same disc compressed, and two games apart by their files.
+    #[test]
+    fn a_psp_game_is_hashed_from_its_disc_iso_or_cso_alike() {
+        let d = tempfile::tempdir().unwrap();
+        let iso = d.path().join("Game.iso");
+        std::fs::write(&iso, umd(b"one game's code")).unwrap();
+        let hash = game_hash(CONSOLE_PSP, &iso).expect("the ISO hashed");
+        assert_eq!(hash.len(), 32, "{hash}");
+        let packed = d.path().join("Game.cso");
+        std::fs::write(&packed, cso(&umd(b"one game's code"))).unwrap();
+        assert_eq!(game_hash(CONSOLE_PSP, &packed), Some(hash.clone()));
+        let other = d.path().join("Other.iso");
+        std::fs::write(&other, umd(b"another game's")).unwrap();
+        assert_ne!(game_hash(CONSOLE_PSP, &other), Some(hash));
+        let junk = d.path().join("Junk.cso");
+        std::fs::write(&junk, b"not a disc").unwrap();
+        assert_eq!(game_hash(CONSOLE_PSP, &junk), None);
     }
 
     #[test]

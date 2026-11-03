@@ -99,15 +99,15 @@ impl Account {
 }
 
 /// The console a system's games are checked as; none for one RetroAchievements does not read
-/// here, the PlayStation, whose discs are not hashed.
+/// here: the PlayStation, whose core's memory is not mapped for it.
 pub fn console_of(platform: Platform) -> Option<u32> {
     match platform {
         Platform::Gb => Some(omega_cheevos::CONSOLE_GB),
         Platform::Gbc => Some(omega_cheevos::CONSOLE_GBC),
         Platform::Gba => Some(omega_cheevos::CONSOLE_GBA),
         Platform::Snes => Some(omega_cheevos::CONSOLE_SNES),
-        // the PSP's are to come, with its discs hashed
-        Platform::Ps1 | Platform::Psp => None,
+        Platform::Psp => Some(omega_cheevos::CONSOLE_PSP),
+        Platform::Ps1 => None,
     }
 }
 
@@ -495,6 +495,7 @@ mod tests {
         assert_eq!(console_of(Platform::Gbc), Some(6));
         assert_eq!(console_of(Platform::Snes), Some(3));
         assert_eq!(console_of(Platform::Ps1), None);
+        assert_eq!(console_of(Platform::Psp), Some(41));
     }
 
     #[test]

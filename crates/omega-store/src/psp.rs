@@ -13,6 +13,9 @@ use std::path::Path;
 
 use crate::ps1::{find_entry, sfo_text, USER};
 
+/// How many bytes a UMD's sector holds.
+pub const SECTOR: usize = USER;
+
 /// What a PSP game's PARAM.SFO says it is.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Sfo {
@@ -184,8 +187,8 @@ fn pbp_sfo(path: &Path) -> Option<Vec<u8>> {
 }
 
 /// A CISO image: the disc in blocks, each deflated or, where its index's top bit is set, kept as
-/// it is.
-struct Cso {
+/// it is. What hashes a game for its achievements reads one this way too.
+pub struct Cso {
     file: File,
     block: u32,
     align: u8,
@@ -197,7 +200,7 @@ struct Cso {
 const CSO_HEADER: usize = 24;
 
 impl Cso {
-    fn open(path: &Path) -> Option<Cso> {
+    pub fn open(path: &Path) -> Option<Cso> {
         let mut file = File::open(path).ok()?;
         let mut head = [0u8; CSO_HEADER];
         file.read_exact(&mut head).ok()?;
@@ -222,7 +225,8 @@ impl Cso {
         })
     }
 
-    fn sector(&mut self, lba: u32) -> Option<[u8; USER]> {
+    /// The disc's sector `lba`, its 2048 bytes; `None` past its end.
+    pub fn sector(&mut self, lba: u32) -> Option<[u8; USER]> {
         let at = lba as u64 * USER as u64;
         let n = (at / self.block as u64) as usize;
         let (this, next) = (*self.index.get(n)?, *self.index.get(n + 1)?);

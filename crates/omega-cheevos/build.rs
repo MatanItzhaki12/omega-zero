@@ -1,6 +1,7 @@
 //! Builds rcheevos, RetroAchievements' own client library (MIT, vendored in rcheevos/), and
-//! omega-zero's shim over it. Only what the handhelds' cartridges need is built: a game is
-//! identified by hashing its ROM, so the hashers for discs, zips and encrypted games are left out.
+//! omega-zero's shim over it. Only what the handhelds' games need is built: a cartridge is
+//! identified by hashing its ROM and a PSP game by the files on its disc, so the hashers for
+//! zips and encrypted games are left out.
 
 use std::path::Path;
 
@@ -26,7 +27,6 @@ fn main() {
         .include(rc)
         .include("c/include")
         .define("RC_CLIENT_SUPPORTS_HASH", None)
-        .define("RC_HASH_NO_DISC", None)
         .define("RC_HASH_NO_ZIP", None)
         .define("RC_HASH_NO_ENCRYPTED", None)
         .warnings(false)
@@ -36,13 +36,7 @@ fn main() {
     build.files(sources(&rc.join("rcheevos"), &[]));
     build.files(sources(
         &rc.join("rhash"),
-        &[
-            "aes.c",
-            "cdreader.c",
-            "hash_disc.c",
-            "hash_encrypted.c",
-            "hash_zip.c",
-        ],
+        &["aes.c", "hash_encrypted.c", "hash_zip.c"],
     ));
     build.compile("omega_cheevos");
     println!("cargo:rerun-if-changed=c");
