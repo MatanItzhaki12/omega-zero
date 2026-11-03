@@ -299,3 +299,48 @@ fn before_its_first_frame_a_console_game_is_laid_out_for_its_usual_picture() {
         }
     }
 }
+
+/// A PSP game: Fit as wide as the canvas holds its 480x272 in its own shape, Actual at that
+/// 480x272 in the middle, Stretch the whole canvas; whatever size PPSSPP draws at.
+#[test]
+fn a_psp_game_fits_its_own_shape_shows_its_actual_size_or_stretches() {
+    for (c, fit, actual) in [
+        (
+            Canvas::FOUR_THREE,
+            [0.0, 59.0, 640.0, 363.0],
+            [80.0, 104.0, 480.0, 272.0],
+        ),
+        (
+            Canvas::WIDE,
+            [0.0, 36.0, 720.0, 408.0],
+            [120.0, 104.0, 480.0, 272.0],
+        ),
+        (
+            Canvas::SQUARE,
+            [0.0, 156.0, 720.0, 408.0],
+            [120.0, 224.0, 480.0, 272.0],
+        ),
+    ] {
+        for frame in [(480, 272), (960, 544)] {
+            let at = |mode| screen_on_frame(c, Platform::Psp, mode, frame).view;
+            assert_eq!(at(VideoMode::Fit).rect, fit, "{c:?} {frame:?} fit");
+            assert_eq!(at(VideoMode::Actual).rect, actual, "{c:?} {frame:?} actual");
+            assert_eq!(
+                at(VideoMode::Stretch).rect,
+                [0.0, 0.0, c.w as f32, c.h as f32],
+                "{c:?} stretch"
+            );
+            assert_eq!(at(VideoMode::Fit).filter, Filter::Sharp);
+            assert_eq!(at(VideoMode::Fit).uv, WHOLE_TEXTURE);
+        }
+    }
+    assert_eq!(VideoMode::parse("fit"), Some(VideoMode::Fit));
+    assert_eq!(
+        VideoMode::Fit.step_in(&VideoMode::PSP, true),
+        VideoMode::Actual
+    );
+    assert_eq!(
+        VideoMode::Fit.step_in(&VideoMode::PSP, false),
+        VideoMode::Stretch
+    );
+}

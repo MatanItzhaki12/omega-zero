@@ -40,10 +40,36 @@ impl VideoMode {
 }
 
 pub fn video_mode_for(root: &Path, stem: &str) -> VideoMode {
+    video_mode_or(root, stem, VideoMode::default())
+}
+
+/// The picture `stem` was set to show in, else `fallback`: the PSP's own default.
+pub fn video_mode_or(root: &Path, stem: &str, fallback: VideoMode) -> VideoMode {
     ini::value(root, VIDEO_MODE_FILE, stem)
         .as_deref()
         .and_then(VideoMode::parse)
-        .unwrap_or_default()
+        .unwrap_or(fallback)
+}
+
+impl VideoMode {
+    /// The picture modes a PSP game steps through, Fit first.
+    pub const PSP: [VideoMode; 3] = [VideoMode::Fit, VideoMode::Actual, VideoMode::Stretch];
+
+    /// The mode after this one among `modes`, or before it.
+    pub fn step_in(self, modes: &[VideoMode], right: bool) -> VideoMode {
+        let n = modes.len();
+        let i = modes.iter().position(|m| *m == self).unwrap_or(0);
+        modes[if right { (i + 1) % n } else { (i + n - 1) % n }]
+    }
+
+    /// As a menu prints it.
+    pub fn word(self) -> &'static str {
+        match self {
+            VideoMode::Actual => "ACTUAL",
+            VideoMode::Stretch => "STRETCH",
+            VideoMode::Fit => "FIT",
+        }
+    }
 }
 
 pub fn write_video_mode(root: &Path, stem: &str, mode: VideoMode) -> std::io::Result<()> {

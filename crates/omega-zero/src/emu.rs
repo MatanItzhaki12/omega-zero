@@ -190,6 +190,8 @@ enum Cmd {
 
 struct Shared {
     input: AtomicU16,
+    /// The left analog stick, x in the low half and y in the high, for a core that reads one.
+    analog: AtomicU32,
     /// Held X and Y are turbo A and B: the system's rule, switched live from MENU.
     turbo: AtomicBool,
     /// A change of buttons is answered a frame sooner: Settings > Gameplay's Run-Ahead.
@@ -308,6 +310,7 @@ impl EmuHandle {
         let frames = Frames::new((GBA_W * GBA_H * 4) as usize);
         let shared = Arc::new(Shared {
             input: AtomicU16::new(0),
+            analog: AtomicU32::new(0),
             turbo: AtomicBool::new(rules.turbo),
             run_ahead: AtomicBool::new(false),
             speed: AtomicU8::new(Speed::Paused as u8),
@@ -475,6 +478,12 @@ impl EmuHandle {
                 Err(e) => e.into_inner().0,
             };
         }
+    }
+
+    /// The left analog stick, x and y, right and down positive.
+    pub fn set_analog(&self, x: i16, y: i16) {
+        let packed = (x as u16 as u32) | ((y as u16 as u32) << 16);
+        self.shared.analog.store(packed, Ordering::Relaxed);
     }
 
     pub fn set_input(&self, mask: ButtonMask) {
@@ -862,6 +871,8 @@ impl Worker {
                 self.shared.clocked.notify_all();
             }
             let input = ButtonMask(self.shared.input.load(Ordering::Relaxed));
+            let stick = self.shared.analog.load(Ordering::Relaxed);
+            core.set_analog(0, stick as u16 as i16, (stick >> 16) as u16 as i16);
             crate::latency::emu_frame(input.0);
             let mut span = 1u32;
             let ceiling = match speed {

@@ -193,11 +193,17 @@ impl Session {
     }
 
     fn sync_pad(&mut self) {
+        // the stick changed in the game's menu
+        if let Some(stick) = self.app.take_stick() {
+            self.pad.set_stick(stick);
+        }
         for btn in self.app.taken_buttons() {
             self.pad.apply(Action::GbaUp(*btn));
         }
         if let Some(emu) = &self.emu {
             emu.set_input(self.pad.mask());
+            let (x, y) = self.pad.analog();
+            emu.set_analog(x, y);
         }
     }
 
@@ -445,8 +451,15 @@ impl Session {
         let core = omega_store::core_for_platform(&self.root, stem, platform);
         self.app.set_core(core);
         self.app.set_platform(platform);
+        let fallback = match platform {
+            Platform::Psp => self.app.psp_screen(),
+            _ => crate::video_mode::VideoMode::default(),
+        };
         self.app
-            .set_video_mode(crate::video_mode::video_mode_for(&self.root, stem));
+            .set_video_mode(crate::video_mode::video_mode_or(&self.root, stem, fallback));
+        // the D-pad as the stick, for a game that wants one the handheld has none of
+        self.pad
+            .set_stick(crate::input::stick_for(&self.root, stem, platform));
         self.app.set_link_loaded(serial);
         // hardcore picks up from no state, as it loads none
         let resume = (!self.app.starting_clean() && !self.app.hardcore())

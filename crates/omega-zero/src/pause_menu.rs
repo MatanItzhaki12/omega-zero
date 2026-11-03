@@ -100,6 +100,7 @@ impl PausePage {
                 PauseRow::Controls,
             ],
             PausePage::Screen => &[
+                PauseRow::Picture,
                 PauseRow::ScreenFilter,
                 PauseRow::Palette,
                 PauseRow::ColourCorrection,
@@ -108,6 +109,7 @@ impl PausePage {
                 PauseRow::BlueLight,
             ],
             PausePage::Gameplay => &[
+                PauseRow::Stick,
                 PauseRow::FastForward,
                 PauseRow::FastForwardSound,
                 PauseRow::Rewind,
@@ -180,6 +182,10 @@ pub enum PauseRow {
     Hardcore,
     /// The game's achievement at this place in the list.
     Achievement(usize),
+    /// A PSP game's picture: Fit, Actual or Stretch, for this game.
+    Picture,
+    /// A PSP game's D-pad as the stick: held L2, toggled by L2, or never, for this game.
+    Stick,
 }
 
 impl PauseRow {
@@ -205,6 +211,8 @@ impl PauseRow {
             PauseRow::Rewind => "Rewind",
             PauseRow::Turbo => "Turbo Buttons",
             PauseRow::RunAhead => "Run-Ahead",
+            PauseRow::Picture => "Picture",
+            PauseRow::Stick => "D-Pad as Stick",
             PauseRow::Rumble => "Rumble",
             PauseRow::LoadOnInsert => "Load State on Insert",
             PauseRow::SaveOnEject => "Save State on Eject",
@@ -243,6 +251,8 @@ impl PauseRow {
             PauseRow::Rewind => "Hold L2 to go back",
             PauseRow::Turbo => "Hold X and Y for turbo A and B",
             PauseRow::RunAhead => "A frame sooner on gpSP",
+            PauseRow::Picture => "For this game: Fit fills the width",
+            PauseRow::Stick => "For this game: L2 makes the D-pad the stick",
             PauseRow::Rumble => "For games with a rumble pak",
             PauseRow::LoadOnInsert => "A picks up where you left off",
             PauseRow::SaveOnEject => "Ejecting saves where you were",
@@ -447,6 +457,7 @@ impl App {
                 PauseRow::Turbo => self.platform.turbo_xy(),
                 // gpSP's alone: run-ahead is for no other core
                 PauseRow::RunAhead => self.core == Core::Gpsp,
+                PauseRow::Picture | PauseRow::Stick => self.platform == Platform::Psp,
                 PauseRow::Restart => !self.link_active(),
                 PauseRow::Achievements => crate::achievements::console_of(self.platform).is_some(),
                 PauseRow::Progress | PauseRow::List => {
@@ -512,6 +523,13 @@ impl App {
             PauseRow::Rewind => self.option_text(OptionRow::Rewind),
             PauseRow::Turbo => self.option_text(OptionRow::Turbo),
             PauseRow::RunAhead => self.option_text(OptionRow::RunAhead),
+            PauseRow::Picture => self.video_mode.word().to_string(),
+            PauseRow::Stick => match self.stick_now() {
+                crate::input::Stick::HoldL2 => "HOLD L2",
+                crate::input::Stick::ToggleL2 => "PRESS L2",
+                crate::input::Stick::Off => "OFF",
+            }
+            .to_string(),
             PauseRow::Rumble => self.option_text(OptionRow::Rumble),
             PauseRow::LoadOnInsert => self.option_text(OptionRow::LoadOnInsert),
             PauseRow::SaveOnEject => self.option_text(OptionRow::SaveOnEject),
@@ -649,6 +667,8 @@ impl App {
             }
             PauseRow::ColourCorrection => self.change_setting(SettingsRow::ColourCorrection, right),
             PauseRow::FastForward => self.step_ff_speed(right),
+            PauseRow::Picture => self.step_picture(right),
+            PauseRow::Stick => self.step_stick(right),
             PauseRow::Brightness | PauseRow::BlueLight => {
                 let (level, max) = match row {
                     PauseRow::Brightness => (&mut self.state.brightness, BRIGHTNESS_MAX),

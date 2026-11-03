@@ -113,6 +113,8 @@ pub struct AppState {
     pub shelf: String,
     pub picked: String,
     pub picked_platform: Option<Platform>,
+    /// How a PSP game is shown when it was not set for itself: `fit`, `actual` or `stretch`.
+    pub psp_screen: String,
 }
 
 impl Default for AppState {
@@ -170,6 +172,7 @@ impl Default for AppState {
             shelf: String::new(),
             picked: String::new(),
             picked_platform: None,
+            psp_screen: "fit".to_string(),
         }
     }
 }
@@ -233,7 +236,7 @@ pub fn write_app_state(root: &Path, s: &AppState) -> std::io::Result<()> {
     );
     let text = text
         + &format!(
-            "backup={}\nbackup_host={}\nbackup_name={}\nbackup_user={}\nbackup_password={}\nbackup_share={}\nbackup_dir={}\nshelf={}\npicked={}\npicked_platform={}\n",
+            "backup={}\nbackup_host={}\nbackup_name={}\nbackup_user={}\nbackup_password={}\nbackup_share={}\nbackup_dir={}\nshelf={}\npicked={}\npicked_platform={}\npsp_screen={}\n",
             s.backup as u8,
             kept_text(&s.backup_host),
             kept_text(&s.backup_name),
@@ -244,6 +247,7 @@ pub fn write_app_state(root: &Path, s: &AppState) -> std::io::Result<()> {
             kept_text(&s.shelf),
             kept_text(&s.picked),
             s.picked_platform.map_or(String::new(), platform_key),
+            kept_text(&s.psp_screen),
         );
     atomic_write(&state_path(root), text.as_bytes())
 }
@@ -291,7 +295,7 @@ fn parse(text: &str) -> Option<AppState> {
     let mut online_password_read = None;
     let mut online_address_read = None;
     let mut backup = None;
-    let mut backup_text: [Option<String>; 8] = Default::default();
+    let mut backup_text: [Option<String>; 9] = Default::default();
     let mut picked_platform = None;
     for line in text.lines().filter(|l| !l.is_empty()) {
         let Some((key, value)) = line.split_once('=') else {
@@ -403,6 +407,7 @@ fn parse(text: &str) -> Option<AppState> {
         backup_dir: text_or(&mut backup_text[5], fallback.backup_dir),
         shelf: text_or(&mut backup_text[6], fallback.shelf),
         picked: text_or(&mut backup_text[7], fallback.picked),
+        psp_screen: text_or(&mut backup_text[8], fallback.psp_screen),
         picked_platform: picked_platform.or(fallback.picked_platform),
     })
 }
@@ -474,7 +479,7 @@ pub fn online_password(password: &str) -> String {
 }
 
 /// The keys of the state's free text, read into one place by their order here.
-const TEXT_KEYS: [&str; 8] = [
+const TEXT_KEYS: [&str; 9] = [
     "backup_host",
     "backup_name",
     "backup_user",
@@ -483,6 +488,7 @@ const TEXT_KEYS: [&str; 8] = [
     "backup_dir",
     "shelf",
     "picked",
+    "psp_screen",
 ];
 
 fn text_or(read: &mut Option<String>, fallback: String) -> String {

@@ -32,7 +32,7 @@ pub const PANEL_W: u32 = 268;
 
 /// How many rows a panel shows at once, GAMEPLAY's all: a longer list, as a NAS's folders can
 /// be, shows those round the lit one.
-pub const VIEW_ROWS: usize = 12;
+pub const VIEW_ROWS: usize = 13;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum OptionsPage {
@@ -85,6 +85,7 @@ impl OptionsPage {
                 OptionRow::RunAhead,
                 OptionRow::Blending,
                 OptionRow::Palette,
+                OptionRow::PspScreen,
                 OptionRow::OnlinePlay,
                 OptionRow::Emulators,
             ],
@@ -186,6 +187,8 @@ pub enum OptionRow {
     OnlineName,
     /// The relay an online room is opened through.
     Relay,
+    /// How a PSP game is shown unless set for itself: Fit, Actual or Stretch.
+    PspScreen,
     /// Save Backup, on or off.
     BackupOn,
     /// The NAS: A opens FIND NAS.
@@ -272,6 +275,7 @@ impl OptionRow {
             OptionRow::OnlinePlay => "Online Play",
             OptionRow::OnlineName => "Name",
             OptionRow::Relay => "Relay",
+            OptionRow::PspScreen => "PSP Screen",
             OptionRow::BackupOn => "Save Backup",
             OptionRow::BackupNas => "NAS",
             OptionRow::BackupUser => "User",
@@ -314,6 +318,7 @@ impl OptionRow {
             OptionRow::OnlinePlay => "Your name and relay for online rooms",
             OptionRow::OnlineName => "What the other player sees",
             OptionRow::Relay => "The nearest is the quickest",
+            OptionRow::PspScreen => "Fit fills the width; each game can differ",
             OptionRow::BackupOn => "Saves copy to a NAS as they're made",
             OptionRow::BackupNas => "A Samba share on this Wi-Fi",
             OptionRow::BackupUser => "None signs in as a guest",
@@ -505,6 +510,7 @@ impl App {
             OptionRow::OnlinePlay => String::new(),
             OptionRow::OnlineName => self.online_name(),
             OptionRow::Relay => relay_word(s.relay).to_string(),
+            OptionRow::PspScreen => self.psp_screen().word().to_string(),
             OptionRow::BackupOn
             | OptionRow::BackupNas
             | OptionRow::BackupUser
@@ -582,6 +588,12 @@ impl App {
             | OptionRow::OnlinePlay
             | OptionRow::OnlineName => return,
             OptionRow::BackupOn => return self.change_backup(row),
+            OptionRow::PspScreen => {
+                let to = self
+                    .psp_screen()
+                    .step_in(&crate::video_mode::VideoMode::PSP, right);
+                self.state.psp_screen = to.as_str().to_string();
+            }
             OptionRow::BackupNas
             | OptionRow::BackupUser
             | OptionRow::BackupPassword

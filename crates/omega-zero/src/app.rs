@@ -360,6 +360,8 @@ pub struct App {
     pub(crate) backup_fail_told: bool,
     /// When Save Backup last asked Wi-Fi to join again, for saves waiting on a network.
     pub(crate) backup_woke_at: Option<Millis>,
+    /// The stick a game's menu set, for the session's pad to take.
+    pub(crate) stick_pending: Option<crate::input::Stick>,
     /// The keyboard asks again for a room's password, the one given having been turned away.
     pub(crate) link_refused: bool,
     /// Local, the link goes to RetroArch on this network rather than to another handheld.
@@ -588,6 +590,7 @@ impl App {
             backup_seen: (0, 0),
             backup_fail_told: false,
             backup_woke_at: None,
+            stick_pending: None,
             link_refused: false,
             link_retroarch: false,
             link_advanced: false,
@@ -1065,6 +1068,49 @@ impl App {
         self.video_mode = mode;
     }
 
+    /// How a PSP game is shown when it was not set for itself: Settings > Gameplay's.
+    pub fn psp_screen(&self) -> VideoMode {
+        VideoMode::parse(&self.state.psp_screen).unwrap_or(VideoMode::Fit)
+    }
+
+    /// The game's menu: the PSP game's picture stepped on, kept for the game.
+    pub(crate) fn step_picture(&mut self, right: bool) {
+        let to = self.video_mode.step_in(&VideoMode::PSP, right);
+        self.set_picture(to);
+    }
+
+    /// How the D-pad stands in for the stick in the game in play.
+    pub(crate) fn stick_now(&self) -> crate::input::Stick {
+        match (&self.root, &self.phase) {
+            (Some(root), Phase::Playing { cart }) => {
+                crate::input::stick_for(root, cart, self.platform)
+            }
+            _ => crate::input::Stick::Off,
+        }
+    }
+
+    /// The game's menu: the PSP game's stick stepped on, kept for the game and handed to the pad.
+    pub(crate) fn step_stick(&mut self, right: bool) {
+        use crate::input::Stick;
+        const ORDER: [Stick; 3] = [Stick::HoldL2, Stick::ToggleL2, Stick::Off];
+        let at = ORDER
+            .iter()
+            .position(|s| *s == self.stick_now())
+            .unwrap_or(0);
+        let to = ORDER[if right { (at + 1) % 3 } else { (at + 2) % 3 }];
+        if let (Some(root), Phase::Playing { cart }) = (&self.root, &self.phase) {
+            if let Err(e) = crate::input::write_stick(root, cart, to) {
+                eprintln!("omega-zero: psp_stick.ini: {e}");
+            }
+        }
+        self.stick_pending = Some(to);
+    }
+
+    /// The stick a game's menu set since the last call, for the session's pad.
+    pub fn take_stick(&mut self) -> Option<crate::input::Stick> {
+        self.stick_pending.take()
+    }
+
     pub fn source_rect(&self) -> [f32; 4] {
         video_mode::source_rect(self.platform, self.video_mode)
     }
@@ -1108,7 +1154,7 @@ impl App {
         }
     }
 
-    fn set_picture(&mut self, mode: VideoMode) {
+    pub(crate) fn set_picture(&mut self, mode: VideoMode) {
         if self.video_mode == mode {
             return;
         }
