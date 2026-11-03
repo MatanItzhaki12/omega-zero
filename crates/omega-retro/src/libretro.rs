@@ -1230,10 +1230,26 @@ mod tests {
         let mut host = host_with(HashMap::new(), false);
         host.gl = Some(Box::new(FakeGpu));
         let _a = Active::bind(&mut host);
-        // RETRO_HW_CONTEXT_OPENGL_CORE and Vulkan: neither is the handheld's
-        for kind in [1, 6] {
+        // RETRO_HW_CONTEXT_OPENGL, _OPENGL_CORE and _VULKAN: none is the handheld's
+        for kind in [1, 3, 6] {
             let mut cb = hw_request(kind);
             assert!(!unsafe { environment(SET_HW_RENDER, &mut cb as *mut _ as *mut c_void) });
+        }
+    }
+
+    /// PPSSPP built for OpenGL ES asks for RETRO_HW_CONTEXT_OPENGLES2, 2 in libretro.h: refusing it
+    /// left PPSSPP drawing every frame on the CPU.
+    #[test]
+    fn opengl_es_is_taken_by_libretro_s_own_numbers() {
+        let mut host = host_with(HashMap::new(), false);
+        host.gl = Some(Box::new(FakeGpu));
+        let _a = Active::bind(&mut host);
+        for kind in [2, 4, 5] {
+            let mut cb = hw_request(kind);
+            assert!(
+                unsafe { environment(SET_HW_RENDER, &mut cb as *mut _ as *mut c_void) },
+                "context type {kind} refused"
+            );
         }
     }
 

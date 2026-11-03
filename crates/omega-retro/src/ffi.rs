@@ -31,7 +31,9 @@ pub const SET_HW_RENDER: c_uint = 14;
 pub const GET_PREFERRED_HW_RENDER: c_uint = 56;
 /// A core says it shares its context with the frontend's, as PPSSPP does.
 pub const SET_HW_SHARED_CONTEXT: c_uint = 44 | EXPERIMENTAL;
-pub const HW_CONTEXT_OPENGLES2: c_uint = 3;
+// libretro.h's numbering: 1 is desktop OpenGL, 2 OpenGL ES 2, 3 desktop OpenGL core, 4 OpenGL ES 3,
+// 5 the ES version asked for, 6 Vulkan
+pub const HW_CONTEXT_OPENGLES2: c_uint = 2;
 pub const HW_CONTEXT_OPENGLES3: c_uint = 4;
 /// OpenGL ES of the version the callback's `version_major` and `version_minor` name.
 pub const HW_CONTEXT_OPENGLES_VERSION: c_uint = 5;
