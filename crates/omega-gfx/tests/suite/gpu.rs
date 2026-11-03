@@ -43,17 +43,21 @@ fn a_frame_drawn_on_the_emulators_thread_comes_back_the_right_way_up() {
             .expect("current on the emulator's thread");
         assert!(!gpu.proc_address("glClear").is_null());
         let mut frames = GpuFrames::new((64, 32), gpu.shares()).expect("the framebuffers");
+        // before the core draws anything, its framebuffer is black, not what the GPU's memory held
+        let fresh = frames.finish((8, 8));
         let first = frames.framebuffer();
         draw(&frames, (48, 20), 5);
         let a = frames.finish((48, 20));
-        assert_ne!(
+        assert_eq!(
             frames.framebuffer(),
             first,
-            "the next frame went into the same one"
+            "the core is told of another framebuffer: one that caches it would draw into the wrong one"
         );
+        // a frame the core skips drawing hands over the last picture it drew again
+        let skipped = frames.finish((48, 20));
         draw(&frames, (64, 32), 0);
         let b = frames.finish((64, 32));
-        (a, b)
+        (a, b, skipped, fresh)
     })
     .join()
     .expect("the emulator's thread");
@@ -71,4 +75,15 @@ fn a_frame_drawn_on_the_emulators_thread_comes_back_the_right_way_up() {
     assert_eq!(at(10, 15), [0, 255, 0], "the picture came back upside down");
     assert_eq!(at(47, 19), [0, 255, 0]);
     assert_eq!(frames.1.size(), (64, 32));
+    let GpuFrame::Pixels(again, _) = frames.2 else {
+        panic!("a texture handed over");
+    };
+    assert_eq!(again, px, "a skipped frame handed over something else");
+    let GpuFrame::Pixels(black, _) = frames.3 else {
+        panic!("a texture handed over");
+    };
+    assert!(
+        black.chunks_exact(4).all(|p| p[..3] == [0, 0, 0]),
+        "a fresh framebuffer showed what the GPU's memory held"
+    );
 }

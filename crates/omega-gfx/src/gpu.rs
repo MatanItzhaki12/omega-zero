@@ -7,8 +7,10 @@
 //! whose own context is desktop OpenGL, the frame is read back into memory and uploaded as any
 //! other core's picture is.
 //!
-//! Three framebuffers take turns, so the core draws into one while the compositor still shows
-//! the one before.
+//! The core draws into one framebuffer of its own, every frame: a core may skip drawing a frame,
+//! or draw it late, and its framebuffer still holds the last picture it drew. As each frame is
+//! handed over, that picture is copied on the GPU into one of three textures that take turns, so
+//! the core draws the next frame while the compositor still shows the one before.
 
 use std::ffi::c_void;
 
@@ -58,11 +60,89 @@ unsafe impl Send for GpuFrame {}
 struct Target {
     fbo: u32,
     tex: u32,
+    /// Depth and stencil, for the core's framebuffer; none for a texture frames are copied to.
     depth: u32,
+}
+
+impl Target {
+    /// A framebuffer `w` by `h` drawing into a texture, with depth and stencil when `depth`,
+    /// cleared to black so nothing left in the GPU's memory ever shows.
+    fn new(w: i32, h: i32, depth: bool) -> Result<Target, GfxError> {
+        let (mut fbo, mut tex, mut rb) = (0, 0, 0);
+        unsafe {
+            gl::GenTextures(1, &mut tex);
+            gl::BindTexture(gl::TEXTURE_2D, tex);
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                gl::RGBA8 as i32,
+                w,
+                h,
+                0,
+                gl::RGBA,
+                gl::UNSIGNED_BYTE,
+                std::ptr::null(),
+            );
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
+            gl::GenFramebuffers(1, &mut fbo);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, fbo);
+            gl::FramebufferTexture2D(
+                gl::FRAMEBUFFER,
+                gl::COLOR_ATTACHMENT0,
+                gl::TEXTURE_2D,
+                tex,
+                0,
+            );
+            if depth {
+                gl::GenRenderbuffers(1, &mut rb);
+                gl::BindRenderbuffer(gl::RENDERBUFFER, rb);
+                gl::RenderbufferStorage(gl::RENDERBUFFER, gl::DEPTH24_STENCIL8, w, h);
+                gl::FramebufferRenderbuffer(
+                    gl::FRAMEBUFFER,
+                    gl::DEPTH_STENCIL_ATTACHMENT,
+                    gl::RENDERBUFFER,
+                    rb,
+                );
+            }
+            let status = gl::CheckFramebufferStatus(gl::FRAMEBUFFER);
+            if status == gl::FRAMEBUFFER_COMPLETE {
+                gl::Viewport(0, 0, w, h);
+                gl::ClearColor(0.0, 0.0, 0.0, 1.0);
+                gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT);
+            }
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            let target = Target {
+                fbo,
+                tex,
+                depth: rb,
+            };
+            if status != gl::FRAMEBUFFER_COMPLETE {
+                target.delete();
+                return Err(GfxError::Framebuffer(status));
+            }
+            Ok(target)
+        }
+    }
+
+    fn delete(&self) {
+        unsafe {
+            gl::DeleteFramebuffers(1, &self.fbo);
+            if self.depth != 0 {
+                gl::DeleteRenderbuffers(1, &self.depth);
+            }
+            gl::DeleteTextures(1, &self.tex);
+        }
+    }
 }
 
 /// The framebuffers a core draws into, on the emulator's thread with its context current.
 pub struct GpuFrames {
+    /// The one the core draws every frame into.
+    core: Target,
+    /// The textures frames are copied to and handed over in, taking turns.
     targets: Vec<Target>,
     next: usize,
     size: (u32, u32),
@@ -70,57 +150,24 @@ pub struct GpuFrames {
 }
 
 impl GpuFrames {
-    /// Three framebuffers `size` big, with depth and stencil: the most a core says it draws.
+    /// The core's framebuffer `size` big, with depth and stencil, the most a core says it draws,
+    /// and the three textures its frames are handed over in.
     pub fn new(size: (u32, u32), shares: bool) -> Result<GpuFrames, GfxError> {
         let (w, h) = (size.0.max(1) as i32, size.1.max(1) as i32);
+        let core = Target::new(w, h, true)?;
         let mut targets = Vec::with_capacity(RING);
         for _ in 0..RING {
-            let (mut fbo, mut tex, mut depth) = (0, 0, 0);
-            unsafe {
-                gl::GenTextures(1, &mut tex);
-                gl::BindTexture(gl::TEXTURE_2D, tex);
-                gl::TexImage2D(
-                    gl::TEXTURE_2D,
-                    0,
-                    gl::RGBA8 as i32,
-                    w,
-                    h,
-                    0,
-                    gl::RGBA,
-                    gl::UNSIGNED_BYTE,
-                    std::ptr::null(),
-                );
-                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
-                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
-                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
-                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
-                gl::GenRenderbuffers(1, &mut depth);
-                gl::BindRenderbuffer(gl::RENDERBUFFER, depth);
-                gl::RenderbufferStorage(gl::RENDERBUFFER, gl::DEPTH24_STENCIL8, w, h);
-                gl::GenFramebuffers(1, &mut fbo);
-                gl::BindFramebuffer(gl::FRAMEBUFFER, fbo);
-                gl::FramebufferTexture2D(
-                    gl::FRAMEBUFFER,
-                    gl::COLOR_ATTACHMENT0,
-                    gl::TEXTURE_2D,
-                    tex,
-                    0,
-                );
-                gl::FramebufferRenderbuffer(
-                    gl::FRAMEBUFFER,
-                    gl::DEPTH_STENCIL_ATTACHMENT,
-                    gl::RENDERBUFFER,
-                    depth,
-                );
-                let status = gl::CheckFramebufferStatus(gl::FRAMEBUFFER);
-                gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-                if status != gl::FRAMEBUFFER_COMPLETE {
-                    return Err(GfxError::Framebuffer(status));
+            match Target::new(w, h, false) {
+                Ok(t) => targets.push(t),
+                Err(e) => {
+                    core.delete();
+                    targets.iter().for_each(Target::delete);
+                    return Err(e);
                 }
             }
-            targets.push(Target { fbo, tex, depth });
         }
         Ok(GpuFrames {
+            core,
             targets,
             next: 0,
             size: (w as u32, h as u32),
@@ -128,9 +175,9 @@ impl GpuFrames {
         })
     }
 
-    /// The framebuffer the core draws the frame about to run into.
+    /// The framebuffer the core draws into: the same one every frame.
     pub fn framebuffer(&self) -> u32 {
-        self.targets[self.next].fbo
+        self.core.fbo
     }
 
     /// How big the framebuffers are.
@@ -138,44 +185,45 @@ impl GpuFrames {
         self.size
     }
 
-    /// The pixels of the frame handed over last, `size` of it, XRGB8888 the right way up.
+    /// The pixels of the core's last picture, `size` of it, XRGB8888 the right way up.
     pub fn read_last(&self, size: (u32, u32)) -> Vec<u8> {
         let size = (size.0.min(self.size.0), size.1.min(self.size.1));
-        let last = (self.next + RING - 1) % RING;
-        read_back(self.targets[last].fbo, size)
+        read_back(self.core.fbo, size)
     }
 
-    /// The frame the core just drew, `size` of it from the bottom left, handed over; the next
-    /// framebuffer is the one it draws into next.
+    /// The frame the core just drew, `size` of it from the bottom left, handed over: copied on
+    /// the GPU into the next of the textures that take turns.
     pub fn finish(&mut self, size: (u32, u32)) -> GpuFrame {
         let size = (size.0.min(self.size.0), size.1.min(self.size.1));
+        if !self.shares {
+            return GpuFrame::Pixels(read_back(self.core.fbo, size), size);
+        }
         let target = &self.targets[self.next];
         self.next = (self.next + 1) % RING;
-        if self.shares {
-            let fence = unsafe {
-                let fence = gl::FenceSync(gl::SYNC_GPU_COMMANDS_COMPLETE, 0);
-                gl::Flush();
-                fence
-            };
-            return GpuFrame::Texture {
-                tex: target.tex,
-                fence: fence as usize,
-                size,
-            };
+        let (w, h) = (size.0 as i32, size.1 as i32);
+        unsafe {
+            gl::BindFramebuffer(gl::READ_FRAMEBUFFER, self.core.fbo);
+            gl::BindFramebuffer(gl::DRAW_FRAMEBUFFER, target.fbo);
+            gl::BlitFramebuffer(0, 0, w, h, 0, 0, w, h, gl::COLOR_BUFFER_BIT, gl::NEAREST);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
         }
-        GpuFrame::Pixels(read_back(target.fbo, size), size)
+        let fence = unsafe {
+            let fence = gl::FenceSync(gl::SYNC_GPU_COMMANDS_COMPLETE, 0);
+            gl::Flush();
+            fence
+        };
+        GpuFrame::Texture {
+            tex: target.tex,
+            fence: fence as usize,
+            size,
+        }
     }
 }
 
 impl Drop for GpuFrames {
     fn drop(&mut self) {
-        for t in &self.targets {
-            unsafe {
-                gl::DeleteFramebuffers(1, &t.fbo);
-                gl::DeleteRenderbuffers(1, &t.depth);
-                gl::DeleteTextures(1, &t.tex);
-            }
-        }
+        self.core.delete();
+        self.targets.iter().for_each(Target::delete);
     }
 }
 
