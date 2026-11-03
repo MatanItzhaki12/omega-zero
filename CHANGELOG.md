@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## omega-zero 2.5.3
+
 - The cart picked on the shelf turns as it comes to the middle, to where its sway reaches on
   the side it came in from (from the right, its right side to the back; from the left, its
   left), eased over a third of a second, and its sway goes on from there rather than starting
