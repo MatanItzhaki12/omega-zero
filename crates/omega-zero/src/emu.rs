@@ -1722,7 +1722,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_handhelds_have_turbo_and_only_the_playstation_has_no_rewind() {
+    fn only_the_handhelds_have_turbo_and_only_the_playstations_have_no_rewind() {
         for platform in Platform::ALL {
             let rules = Rules::of(platform);
             assert_eq!(
@@ -1730,7 +1730,11 @@ mod tests {
                 matches!(platform, Platform::Gba | Platform::Gb | Platform::Gbc),
                 "{platform:?}"
             );
-            assert_eq!(rules.rewinds, platform != Platform::Ps1, "{platform:?}");
+            assert_eq!(
+                rules.rewinds,
+                !matches!(platform, Platform::Ps1 | Platform::Psp),
+                "{platform:?}"
+            );
         }
         assert_eq!(Rules::default(), Rules::of(Platform::Gba));
     }

@@ -415,7 +415,7 @@ fn msf_frames(msf: &str) -> Option<u64> {
 }
 
 /// The ISO 9660 sector size, which is what each sector of a data track holds for a program.
-const USER: usize = 2048;
+pub(crate) const USER: usize = 2048;
 
 /// The serial on the data track laid out as `track` in the image file at `image`: the primary
 /// volume descriptor at sector 16 leads to the root folder, the root folder to SYSTEM.CNF, and
@@ -447,6 +447,12 @@ pub fn image_serial(image: &Path, track: Track) -> Option<String> {
 
 /// The sector and length of the file named `name` in one sector of an ISO 9660 folder.
 fn find_in_folder(dir: &[u8; USER], name: &str) -> Option<(u32, u32)> {
+    find_entry(dir, name, false)
+}
+
+/// The sector and length of the entry named `name` in one sector of an ISO 9660 folder: a
+/// folder where `folder` says, else a file.
+pub(crate) fn find_entry(dir: &[u8; USER], name: &str, folder: bool) -> Option<(u32, u32)> {
     let mut at = 0;
     while at + 33 < USER {
         let len = dir[at] as usize;
@@ -456,7 +462,7 @@ fn find_in_folder(dir: &[u8; USER], name: &str) -> Option<(u32, u32)> {
         let name_len = dir[at + 32] as usize;
         let entry = dir.get(at + 33..at + 33 + name_len)?;
         let entry = entry.split(|&b| b == b';').next().unwrap_or_default();
-        if entry.eq_ignore_ascii_case(name.as_bytes()) && dir[at + 25] & 2 == 0 {
+        if entry.eq_ignore_ascii_case(name.as_bytes()) && (dir[at + 25] & 2 != 0) == folder {
             return Some((le32(&dir[at + 2..]), le32(&dir[at + 10..])));
         }
         at += len;

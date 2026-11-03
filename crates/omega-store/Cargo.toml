@@ -7,6 +7,8 @@ license.workspace = true
 
 [dependencies]
 unicode-normalization.workspace = true
+# a PSP game's .cso: its blocks are deflated
+miniz_oxide = "0.8"
 
 [dev-dependencies]
 tempfile.workspace = true

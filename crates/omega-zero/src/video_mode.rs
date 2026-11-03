@@ -15,6 +15,9 @@ pub enum VideoMode {
     #[default]
     Actual,
     Stretch,
+    /// As big as the canvas holds the picture in its own shape: the PSP's, whose 480x272 is
+    /// small at its actual size.
+    Fit,
 }
 
 impl VideoMode {
@@ -22,6 +25,7 @@ impl VideoMode {
         match self {
             VideoMode::Actual => "actual",
             VideoMode::Stretch => "stretch",
+            VideoMode::Fit => "fit",
         }
     }
 
@@ -29,6 +33,7 @@ impl VideoMode {
         match s.trim().to_ascii_lowercase().as_str() {
             "actual" => Some(VideoMode::Actual),
             "stretch" => Some(VideoMode::Stretch),
+            "fit" => Some(VideoMode::Fit),
             _ => None,
         }
     }
@@ -89,7 +94,7 @@ pub fn screen_for(platform: Platform, mode: VideoMode, frame: (u32, u32)) -> Scr
 /// Whether `platform` is a console played on a television, whose pictures come in every size
 /// and are laid out by their own, rather than a handheld drawn for the GBA's screen.
 fn is_console(platform: Platform) -> bool {
-    matches!(platform, Platform::Snes | Platform::Ps1)
+    matches!(platform, Platform::Snes | Platform::Ps1 | Platform::Psp)
 }
 
 /// The GBA frame at three panel pixels to a game pixel, which every canvas but 640x480 holds.
@@ -133,7 +138,7 @@ pub fn screen_on_frame(
         };
     }
     match platform {
-        Platform::Gba | Platform::Snes | Platform::Ps1 => {
+        Platform::Gba | Platform::Snes | Platform::Ps1 | Platform::Psp => {
             let h = (cw * SRC_H as f32 / SRC_W as f32).round();
             let view = GameView {
                 rect: [0.0, 0.0, cw, h],
@@ -150,7 +155,7 @@ pub fn screen_on_frame(
             let whole = [(cw - FRAME.0) / 2.0, (ch - FRAME.1) / 2.0, FRAME.0, FRAME.1];
             let view = match mode {
                 VideoMode::Actual => lcd(whole, actual),
-                VideoMode::Stretch => lcd([0.0, 0.0, cw, ch], uv),
+                VideoMode::Stretch | VideoMode::Fit => lcd([0.0, 0.0, cw, ch], uv),
             };
             Screen {
                 view,
@@ -187,7 +192,13 @@ fn console_screen(c: Canvas, platform: Platform, mode: VideoMode, frame: (u32, u
     let (cw, ch) = (c.w as f32, c.h as f32);
     let (w, h) = match (platform, mode) {
         (Platform::Snes, VideoMode::Actual) => snes_whole(cw, ch, frame.1),
-        (Platform::Ps1, VideoMode::Stretch) => (cw, ch),
+        (Platform::Ps1 | Platform::Psp, VideoMode::Stretch) => (cw, ch),
+        // the PSP at its own 480x272, whatever size the core draws at, or as big as fits
+        (Platform::Psp, VideoMode::Actual) => {
+            let (pw, ph) = platform.picture();
+            (pw as f32, ph as f32)
+        }
+        (Platform::Psp, VideoMode::Fit) => fit(cw, ch, platform.picture()),
         _ => four_three(cw, ch),
     };
     let rect = [((cw - w) / 2.0).round(), ((ch - h) / 2.0).round(), w, h];
@@ -201,6 +212,13 @@ fn console_screen(c: Canvas, platform: Platform, mode: VideoMode, frame: (u32, u
         still: view,
         bands: around(c, rect),
     }
+}
+
+/// A `picture` as big as a canvas `cw` by `ch` holds it, in its own shape, to whole pixels.
+fn fit(cw: f32, ch: f32, picture: (u32, u32)) -> (f32, f32) {
+    let (pw, ph) = (picture.0 as f32, picture.1 as f32);
+    let scale = (cw / pw).min(ch / ph);
+    ((pw * scale).round(), (ph * scale).round())
 }
 
 /// The SNES picture at the largest whole scale the canvas holds, for a frame `lines` high: an

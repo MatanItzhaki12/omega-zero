@@ -18,6 +18,12 @@ pub struct Shell {
     pub finish: Finish,
 }
 
+/// A UMD's shell: smoky clear plastic, the disc showing through it.
+pub const UMD_SHELL: Shell = Shell {
+    colour: [0x3a, 0x3e, 0x48],
+    finish: Finish::Translucent,
+};
+
 pub const DEFAULT_SHELL: Shell = Shell {
     colour: [0x35, 0x35, 0x3a],
     finish: Finish::Solid,
@@ -101,6 +107,7 @@ pub fn shell_for(cart: &Cart) -> Shell {
             SnesShell::Famicom => SFC_SHELL,
         },
         Platform::Ps1 => DEFAULT_SHELL,
+        Platform::Psp => UMD_SHELL,
     }
 }
 

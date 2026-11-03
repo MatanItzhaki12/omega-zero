@@ -17,15 +17,17 @@ pub enum Core {
     Snes9x,
     Supafaust,
     PcsxRearmed,
+    Ppsspp,
 }
 
 impl Core {
-    pub const ALL: [Core; 5] = [
+    pub const ALL: [Core; 6] = [
         Core::Mgba,
         Core::Gpsp,
         Core::Snes9x,
         Core::Supafaust,
         Core::PcsxRearmed,
+        Core::Ppsspp,
     ];
 
     pub fn as_str(&self) -> &'static str {
@@ -35,6 +37,7 @@ impl Core {
             Core::Snes9x => "snes9x",
             Core::Supafaust => "supafaust",
             Core::PcsxRearmed => "pcsx_rearmed",
+            Core::Ppsspp => "ppsspp",
         }
     }
 
@@ -59,6 +62,7 @@ impl Core {
             Core::Snes9x => "Snes9x",
             Core::Supafaust => "Faust",
             Core::PcsxRearmed => "PCSX",
+            Core::Ppsspp => "PPSSPP",
         }
     }
 
@@ -70,6 +74,7 @@ impl Core {
             Core::Snes9x => "Snes9x",
             Core::Supafaust => "Supafaust",
             Core::PcsxRearmed => "PCSX-ReARMed",
+            Core::Ppsspp => "PPSSPP",
         }
     }
 
@@ -80,6 +85,7 @@ impl Core {
             "snes9x" => Some(Core::Snes9x),
             "supafaust" => Some(Core::Supafaust),
             "pcsx_rearmed" => Some(Core::PcsxRearmed),
+            "ppsspp" => Some(Core::Ppsspp),
             _ => None,
         }
     }
@@ -96,6 +102,7 @@ impl Core {
             Platform::Gb | Platform::Gbc => &[Core::Mgba],
             Platform::Snes => &[Core::Snes9x, Core::Supafaust],
             Platform::Ps1 => &[Core::PcsxRearmed],
+            Platform::Psp => &[Core::Ppsspp],
         }
     }
 

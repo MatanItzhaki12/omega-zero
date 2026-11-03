@@ -8,15 +8,18 @@ pub enum Platform {
     Gbc,
     Snes,
     Ps1,
+    /// The PlayStation Portable, on PPSSPP, which draws on the GPU.
+    Psp,
 }
 
 impl Platform {
-    pub const ALL: [Platform; 5] = [
+    pub const ALL: [Platform; 6] = [
         Platform::Gba,
         Platform::Gb,
         Platform::Gbc,
         Platform::Snes,
         Platform::Ps1,
+        Platform::Psp,
     ];
 
     pub fn name(self) -> &'static str {
@@ -26,6 +29,7 @@ impl Platform {
             Platform::Gbc => "Game Boy Color",
             Platform::Snes => "Super Nintendo",
             Platform::Ps1 => "PlayStation",
+            Platform::Psp => "PlayStation Portable",
         }
     }
 
@@ -36,6 +40,7 @@ impl Platform {
             Platform::Gbc => "GBC",
             Platform::Snes => "SNES",
             Platform::Ps1 => "PS1",
+            Platform::Psp => "PSP",
         }
     }
 
@@ -45,6 +50,7 @@ impl Platform {
             Platform::Gb | Platform::Gbc => &["gb", "gbc"],
             Platform::Snes => &["sfc", "smc"],
             Platform::Ps1 => &["cue", "chd", "pbp", "m3u"],
+            Platform::Psp => &["iso", "cso", "chd", "pbp"],
         }
     }
 
@@ -54,6 +60,7 @@ impl Platform {
             Platform::Gb | Platform::Gbc => (160, 144),
             Platform::Snes => (256, 224),
             Platform::Ps1 => (320, 240),
+            Platform::Psp => (480, 272),
         }
     }
 
@@ -73,10 +80,16 @@ impl Platform {
         matches!(self, Platform::Gba | Platform::Gb | Platform::Gbc)
     }
 
-    /// Whether held L2 rewinds: not on the PlayStation, whose games use L2 and whose states
-    /// are too big for the rewind buffer.
+    /// Whether held L2 rewinds: not on the PlayStations, whose states are too big for the
+    /// rewind buffer, and whose L2 is the game's (the PlayStation's) or the stick's (the PSP's).
     pub fn rewinds(self) -> bool {
-        self != Platform::Ps1
+        !matches!(self, Platform::Ps1 | Platform::Psp)
+    }
+
+    /// Whether held L2 turns the D-pad into the analog stick: the PSP's, which the handheld
+    /// has none of.
+    pub fn stick_on_l2(self) -> bool {
+        self == Platform::Psp
     }
 
     /// Whether L2/R2 belong to the game rather than to rewind and fast-forward.

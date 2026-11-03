@@ -24,7 +24,8 @@ pub fn shelf_scale(platform: Platform) -> f32 {
         Platform::Gba => 1.0,
         Platform::Gb | Platform::Gbc => GB_SHELF_SCALE,
         Platform::Snes => snes::SHELF_SCALE,
-        Platform::Ps1 => disc::SHELF_SCALE,
+        // the UMD's own model is to come: until then a PSP game stands as a disc
+        Platform::Ps1 | Platform::Psp => disc::SHELF_SCALE,
     }
 }
 

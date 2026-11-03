@@ -87,6 +87,7 @@ fn stand_in(core: Core) -> MockCore {
         Core::Mgba | Core::Gpsp => MockCore::new(),
         Core::Snes9x | Core::Supafaust => MockCore::sized(256, 224),
         Core::PcsxRearmed => MockCore::sized(320, 240),
+        Core::Ppsspp => MockCore::sized(480, 272),
     }
 }
 
@@ -171,7 +172,7 @@ pub fn colour_option(which: Core, on: bool) -> Option<(&'static str, &'static st
             "gpsp_color_correction",
             if on { "enabled" } else { "disabled" },
         )),
-        Core::Snes9x | Core::Supafaust | Core::PcsxRearmed => None,
+        Core::Snes9x | Core::Supafaust | Core::PcsxRearmed | Core::Ppsspp => None,
     }
 }
 
@@ -241,6 +242,18 @@ pub fn core_options(
             put("pcsx_rearmed_bios", "auto");
             put("pcsx_rearmed_memcard1", "libretro");
             put("pcsx_rearmed_memcard2", "none");
+        }
+        // the H700 runs PSP games at their own 480x272, recompiled, skipping frames it has
+        // no time for; Cross confirms, as on a PSP sold outside Japan
+        Core::Ppsspp => {
+            put("ppsspp_cpu_core", "JIT");
+            put("ppsspp_internal_resolution", "480x272");
+            put("ppsspp_auto_frameskip", "enabled");
+            put("ppsspp_fast_memory", "enabled");
+            put("ppsspp_texture_scaling_level", "disabled");
+            put("ppsspp_lazy_texture_caching", "enabled");
+            put("ppsspp_button_preference", "Cross");
+            put("ppsspp_psp_model", "psp_2000_3000");
         }
     }
     if let Some((key, value)) = colour_option(which, colour) {

@@ -204,6 +204,7 @@ pub fn system_id(platform: Platform) -> u32 {
         Platform::Gbc => 10,
         Platform::Snes => 4,
         Platform::Ps1 => 57,
+        Platform::Psp => 61,
     }
 }
 
@@ -334,8 +335,11 @@ pub fn label_regions(want: &Want) -> Vec<&'static str> {
                 out.extend(AMERICA);
             }
         }
-        Platform::Ps1 => {
-            let region = ps1::serial_region(&want.code);
+        Platform::Ps1 | Platform::Psp => {
+            let region = match want.platform {
+                Platform::Psp => omega_store::psp::id_region(&want.code),
+                _ => ps1::serial_region(&want.code),
+            };
             out.extend(region.and_then(region_code));
             if region == Some(Region::Europe) {
                 out.extend(EUROPE);

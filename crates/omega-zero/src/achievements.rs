@@ -106,7 +106,8 @@ pub fn console_of(platform: Platform) -> Option<u32> {
         Platform::Gbc => Some(omega_cheevos::CONSOLE_GBC),
         Platform::Gba => Some(omega_cheevos::CONSOLE_GBA),
         Platform::Snes => Some(omega_cheevos::CONSOLE_SNES),
-        Platform::Ps1 => None,
+        // the PSP's are to come, with its discs hashed
+        Platform::Ps1 | Platform::Psp => None,
     }
 }
 

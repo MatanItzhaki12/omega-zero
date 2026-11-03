@@ -12,6 +12,7 @@ mod gba;
 pub mod ini;
 mod platform;
 pub mod ps1;
+pub mod psp;
 mod region;
 mod ring;
 mod scan;
