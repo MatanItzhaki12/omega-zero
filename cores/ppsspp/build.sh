@@ -10,6 +10,17 @@ device_cflags="-mcpu=cortex-a53"
 # is the frontend's, through libretro's hardware render interface: no EGL, X11, SDL or Vulkan.
 recipe="cmake -DLIBRETRO=ON -DCMAKE_BUILD_TYPE=Release -DUSING_GLES2=ON -DUSING_EGL=OFF -DUSING_X11_VULKAN=OFF -DUSE_DISCORD=OFF -DUSE_MINIUPNPC=OFF -DUSE_WAYLAND_WSI=OFF -DUSE_VULKAN_DISPLAY_KHR=OFF -DHEADLESS=OFF -DUNITTEST=OFF"
 
+# The release's tarball keeps ffmpeg/linux/aarch64's headers but not its libraries: they are the
+# ppsspp-ffmpeg submodule's, at the commit the release pins, fetched by name and checked by sum.
+ffmpeg_commit=1e3b4965632f60b1d85360261d1b9dd45444bc71
+ffmpeg_libs="
+libavcodec 1340e86c8a5606937ca79db23058bb081373c7fb04bd262ea5cdeca85b267746
+libavformat 4ba790a77ed37db6f1799b690f6545990ef6de25cfa69bb9a4ef717287f457ab
+libavutil 2b1f0845fc744831dba4bd357a0e8ead9d5fdcabd92ea59e7eabf893e9e305f7
+libswresample 6502026eab9a3971b4f29ee6f61f90a52ffc025d1290013320a95e3214ddae0f
+libswscale 1116625f8d869d4498a1d469b4da88412c79cd8b6f44da829a67faaad1301582
+"
+
 usage() {
 	echo "usage: $0 stamp VERSION | build VERSION TARBALL WORKDIR OUT" >&2
 	exit 2
@@ -25,6 +36,7 @@ stamp() {
 	echo "source=https://github.com/hrydgard/ppsspp/releases/download/v$1/ppsspp-$1.tar.xz"
 	echo "recipe=$recipe"
 	echo "device_cflags=$device_cflags"
+	echo "ffmpeg=https://github.com/hrydgard/ppsspp-ffmpeg/tree/$ffmpeg_commit/linux/aarch64/lib"
 	for p in "$here"/*.patch; do
 		[ -f "$p" ] || continue
 		echo "patch=$(basename "$p") sha256:$(sha256 "$p")"
@@ -37,6 +49,21 @@ apply_patches() {
 	for p in "$here"/*.patch; do
 		[ -f "$p" ] || continue
 		GIT_CEILING_DIRECTORIES="$ceiling" git -C "$1" apply -p1 "$p"
+	done
+}
+
+# Puts the prebuilt aarch64 FFmpeg PPSSPP links into the source tree at $1, each checked.
+fetch_ffmpeg() {
+	lib_dir="$1/ffmpeg/linux/aarch64/lib"
+	mkdir -p "$lib_dir"
+	echo "$ffmpeg_libs" | while read -r name sum; do
+		[ -n "$name" ] || continue
+		curl -fsSL -o "$lib_dir/$name.a" \
+			"https://raw.githubusercontent.com/hrydgard/ppsspp-ffmpeg/$ffmpeg_commit/linux/aarch64/lib/$name.a"
+		if [ "$(sha256 "$lib_dir/$name.a")" != "$sum" ]; then
+			echo "$name.a is not the one ppsspp-ffmpeg $ffmpeg_commit holds" >&2
+			exit 1
+		fi
 	done
 }
 
@@ -55,6 +82,7 @@ build() {
 	fi
 
 	apply_patches "$src"
+	fetch_ffmpeg "$src"
 
 	mkdir -p "$src/build"
 	(cd "$src/build" &&
