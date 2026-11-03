@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased: Save Backup
+## Unreleased
+
+## omega-zero 2.5.0: Save Backup
 
 - Settings > Save Backup copies every save on the card to a folder on a NAS over Samba (SMB 2
   and 3), as each is made. FIND NAS lists the NASes answering on the Wi-Fi by name, with a row
