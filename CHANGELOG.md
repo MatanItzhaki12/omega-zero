@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## omega-zero 2.5.1
+
 - Settings > Save Backup has Sync From Backup, under Back Up Now: FROM BACKUP lists the saves on
   the NAS unlike the handheld's, or not on it, by game. A on one asks, A again copies it onto
   the handheld. The handheld's own is kept first in `Config/save_backup_undo/`, and the game's
