@@ -21,7 +21,10 @@ const EGL_RENDERABLE_TYPE: i32 = 0x3040;
 const EGL_CONTEXT_CLIENT_VERSION: i32 = 0x3098;
 const EGL_OPENGL_ES_API: u32 = 0x30A0;
 const EGL_WINDOW_BIT: i32 = 0x0004;
+const EGL_PBUFFER_BIT: i32 = 0x0001;
 const EGL_OPENGL_ES2_BIT: i32 = 0x0004;
+/// EGL_KHR_create_context's bit for a config that makes OpenGL ES 3 contexts.
+const EGL_OPENGL_ES3_BIT: i32 = 0x0040;
 
 type Ptr = *mut c_void;
 type GetDisplay = unsafe extern "C" fn(Ptr) -> Ptr;
@@ -37,6 +40,9 @@ type SwapInterval = unsafe extern "C" fn(Ptr, i32) -> u32;
 type GetProcAddress = unsafe extern "C" fn(*const c_char) -> *const c_void;
 type GetError = unsafe extern "C" fn() -> i32;
 type Terminate = unsafe extern "C" fn(Ptr) -> u32;
+type CreatePbufferSurface = unsafe extern "C" fn(Ptr, Ptr, *const i32) -> Ptr;
+type DestroySurface = unsafe extern "C" fn(Ptr, Ptr) -> u32;
+type DestroyContext = unsafe extern "C" fn(Ptr, Ptr) -> u32;
 
 struct Egl {
     get_display: GetDisplay,
@@ -52,6 +58,9 @@ struct Egl {
     get_proc_address: GetProcAddress,
     get_error: GetError,
     terminate: Terminate,
+    create_pbuffer_surface: CreatePbufferSurface,
+    destroy_surface: DestroySurface,
+    destroy_context: DestroyContext,
     _lib: Library,
 }
 
@@ -67,6 +76,8 @@ pub struct FbdevSurface {
     display: Ptr,
     surface: Ptr,
     context: Ptr,
+    /// Whether the context is OpenGL ES 3, which a core that draws on the GPU needs.
+    es3: bool,
     size: (u32, u32),
     _window: Box<FbdevWindow>,
 }
@@ -120,6 +131,9 @@ impl Egl {
                 get_proc_address: sym(&lib, "eglGetProcAddress")?,
                 get_error: sym(&lib, "eglGetError")?,
                 terminate: sym(&lib, "eglTerminate")?,
+                create_pbuffer_surface: sym(&lib, "eglCreatePbufferSurface")?,
+                destroy_surface: sym(&lib, "eglDestroySurface")?,
+                destroy_context: sym(&lib, "eglDestroyContext")?,
                 _lib: lib,
             })
         }
@@ -156,31 +170,40 @@ impl FbdevSurface {
             if (egl.bind_api)(EGL_OPENGL_ES_API) == 0 {
                 return Err(egl.fail("eglBindAPI"));
             }
-            let attrs = [
-                EGL_SURFACE_TYPE,
-                EGL_WINDOW_BIT,
-                EGL_RED_SIZE,
-                8,
-                EGL_GREEN_SIZE,
-                8,
-                EGL_BLUE_SIZE,
-                8,
-                EGL_ALPHA_SIZE,
-                0,
-                EGL_RENDERABLE_TYPE,
-                EGL_OPENGL_ES2_BIT,
-                EGL_NONE,
-            ];
-            let mut config: Ptr = std::ptr::null_mut();
-            let mut found = 0;
-            if (egl.choose_config)(display, attrs.as_ptr(), &mut config, 1, &mut found) == 0 {
-                return Err(egl.fail("eglChooseConfig"));
-            }
-            if found == 0 {
-                return Err(GfxError::Context(
-                    "eglChooseConfig: no es2 window config with 8/8/8 colour".into(),
-                ));
-            }
+            // OpenGL ES 3 where the driver makes it, for a core that draws on the GPU; omega-zero's
+            // own drawing is ES 2's, which an ES 3 context runs as it is
+            let window_config = |renderable: i32| {
+                let attrs = [
+                    EGL_SURFACE_TYPE,
+                    EGL_WINDOW_BIT,
+                    EGL_RED_SIZE,
+                    8,
+                    EGL_GREEN_SIZE,
+                    8,
+                    EGL_BLUE_SIZE,
+                    8,
+                    EGL_ALPHA_SIZE,
+                    0,
+                    EGL_RENDERABLE_TYPE,
+                    renderable,
+                    EGL_NONE,
+                ];
+                let mut config: Ptr = std::ptr::null_mut();
+                let mut found = 0;
+                let ok = (egl.choose_config)(display, attrs.as_ptr(), &mut config, 1, &mut found);
+                (ok != 0 && found > 0).then_some(config)
+            };
+            let (config, es3) = match window_config(EGL_OPENGL_ES3_BIT) {
+                Some(config) => (config, true),
+                None => match window_config(EGL_OPENGL_ES2_BIT) {
+                    Some(config) => (config, false),
+                    None => {
+                        return Err(GfxError::Context(
+                            "eglChooseConfig: no es2 window config with 8/8/8 colour".into(),
+                        ))
+                    }
+                },
+            };
             let mut window = Box::new(FbdevWindow {
                 width: hint.0 as u16,
                 height: hint.1 as u16,
@@ -199,13 +222,17 @@ impl FbdevSurface {
             if surface.is_null() {
                 return Err(egl.fail("eglCreateWindowSurface"));
             }
-            let context_attrs = [EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE];
-            let context = (egl.create_context)(
-                display,
-                config,
-                std::ptr::null_mut(),
-                context_attrs.as_ptr(),
-            );
+            let make = |version: i32| {
+                let attrs = [EGL_CONTEXT_CLIENT_VERSION, version, EGL_NONE];
+                (egl.create_context)(display, config, std::ptr::null_mut(), attrs.as_ptr())
+            };
+            let (context, es3) = match es3 {
+                true => match make(3) {
+                    c if !c.is_null() => (c, true),
+                    _ => (make(2), false),
+                },
+                false => (make(2), false),
+            };
             if context.is_null() {
                 return Err(egl.fail("eglCreateContext"));
             }
@@ -220,6 +247,7 @@ impl FbdevSurface {
                 display,
                 surface,
                 context,
+                es3,
                 size,
                 _window: window,
             })
@@ -262,13 +290,115 @@ impl Surface for FbdevSurface {
     }
 
     fn proc_address(&self, name: &str) -> *const c_void {
-        let Ok(c) = CString::new(name) else {
-            return std::ptr::null();
+        gl_proc(&self.egl, &self.gles, name)
+    }
+
+    /// An OpenGL ES 3 context sharing this one's objects, on a pbuffer of its own: a frame the
+    /// core draws is a texture the compositor draws straight from.
+    fn gpu_thread(&self) -> Result<Box<dyn crate::gpu::GpuThread>, GfxError> {
+        if !self.es3 {
+            return Err(GfxError::Context(
+                "the driver makes no OpenGL ES 3 context".into(),
+            ));
+        }
+        let egl = Egl::load()?;
+        let gles = open("libGLESv2.so.2").or_else(|_| open("libGLESv2.so"))?;
+        unsafe {
+            let attrs = [
+                EGL_SURFACE_TYPE,
+                EGL_PBUFFER_BIT,
+                EGL_RENDERABLE_TYPE,
+                EGL_OPENGL_ES3_BIT,
+                EGL_RED_SIZE,
+                8,
+                EGL_GREEN_SIZE,
+                8,
+                EGL_BLUE_SIZE,
+                8,
+                EGL_NONE,
+            ];
+            let mut config: Ptr = std::ptr::null_mut();
+            let mut found = 0;
+            if (egl.choose_config)(self.display, attrs.as_ptr(), &mut config, 1, &mut found) == 0
+                || found == 0
+            {
+                return Err(egl.fail("eglChooseConfig (es3 pbuffer)"));
+            }
+            let pbuffer_attrs = [EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE];
+            let surface =
+                (egl.create_pbuffer_surface)(self.display, config, pbuffer_attrs.as_ptr());
+            if surface.is_null() {
+                return Err(egl.fail("eglCreatePbufferSurface"));
+            }
+            let context_attrs = [EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE];
+            let context =
+                (egl.create_context)(self.display, config, self.context, context_attrs.as_ptr());
+            if context.is_null() {
+                (egl.destroy_surface)(self.display, surface);
+                return Err(egl.fail("eglCreateContext (shared es3)"));
+            }
+            Ok(Box::new(FbdevGpu {
+                egl,
+                gles,
+                display: self.display,
+                surface,
+                context,
+            }))
+        }
+    }
+}
+
+/// GL function `name`: the library's own export, else what EGL hands out.
+fn gl_proc(egl: &Egl, gles: &Library, name: &str) -> *const c_void {
+    let Ok(c) = CString::new(name) else {
+        return std::ptr::null();
+    };
+    let exported = unsafe { gles.get::<unsafe extern "C" fn()>(name.as_bytes()) };
+    match exported {
+        Ok(f) => *f as *const c_void,
+        Err(_) => unsafe { (egl.get_proc_address)(c.as_ptr()) },
+    }
+}
+
+/// The emulator thread's OpenGL ES 3 context, sharing the compositor's objects.
+struct FbdevGpu {
+    egl: Egl,
+    gles: Library,
+    display: Ptr,
+    surface: Ptr,
+    context: Ptr,
+}
+
+// SAFETY: EGL handles may be used from any thread; the context is current on one at a time
+unsafe impl Send for FbdevGpu {}
+
+impl crate::gpu::GpuThread for FbdevGpu {
+    fn make_current(&self) -> Result<(), GfxError> {
+        let ok = unsafe {
+            (self.egl.make_current)(self.display, self.surface, self.surface, self.context)
         };
-        let exported = unsafe { self.gles.get::<unsafe extern "C" fn()>(name.as_bytes()) };
-        match exported {
-            Ok(f) => *f as *const c_void,
-            Err(_) => unsafe { (self.egl.get_proc_address)(c.as_ptr()) },
+        match ok {
+            0 => Err(self.egl.fail("eglMakeCurrent (shared es3)")),
+            _ => Ok(()),
+        }
+    }
+
+    fn proc_address(&self, name: &str) -> *const c_void {
+        gl_proc(&self.egl, &self.gles, name)
+    }
+
+    fn shares(&self) -> bool {
+        true
+    }
+}
+
+impl Drop for FbdevGpu {
+    fn drop(&mut self) {
+        let none = std::ptr::null_mut();
+        unsafe {
+            (self.egl.make_current)(self.display, none, none, none);
+            (self.egl.destroy_context)(self.display, self.context);
+            (self.egl.destroy_surface)(self.display, self.surface);
         }
     }
 }

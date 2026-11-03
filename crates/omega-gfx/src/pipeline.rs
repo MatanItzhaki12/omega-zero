@@ -227,6 +227,57 @@ impl GamePass {
         self.size
     }
 
+    /// Takes `size` of texture `tex`, drawn by a core on the GPU with GL's origin at the bottom
+    /// left, as the game: copied on the GPU into the game texture the right way up, so the views,
+    /// the filters and the stills treat it as any other core's picture.
+    pub fn copy_flipped(&mut self, tex: gl::types::GLuint, size: (u32, u32)) {
+        let (w, h) = (size.0 as i32, size.1 as i32);
+        if w == 0 || h == 0 {
+            return;
+        }
+        unsafe {
+            if size != self.size {
+                gl::BindTexture(gl::TEXTURE_2D, self.game);
+                gl::TexImage2D(
+                    gl::TEXTURE_2D,
+                    0,
+                    crate::gl::internal_format(gl::BGRA),
+                    w,
+                    h,
+                    0,
+                    gl::BGRA,
+                    gl::UNSIGNED_BYTE,
+                    std::ptr::null(),
+                );
+                self.size = size;
+            }
+            let mut was: gl::types::GLint = 0;
+            gl::GetIntegerv(gl::FRAMEBUFFER_BINDING, &mut was);
+            let mut fbos = [0; 2];
+            gl::GenFramebuffers(2, fbos.as_mut_ptr());
+            gl::BindFramebuffer(gl::READ_FRAMEBUFFER, fbos[0]);
+            gl::FramebufferTexture2D(
+                gl::READ_FRAMEBUFFER,
+                gl::COLOR_ATTACHMENT0,
+                gl::TEXTURE_2D,
+                tex,
+                0,
+            );
+            gl::BindFramebuffer(gl::DRAW_FRAMEBUFFER, fbos[1]);
+            gl::FramebufferTexture2D(
+                gl::DRAW_FRAMEBUFFER,
+                gl::COLOR_ATTACHMENT0,
+                gl::TEXTURE_2D,
+                self.game,
+                0,
+            );
+            // the destination's rows the other way round: the top of the core's is the top
+            gl::BlitFramebuffer(0, 0, w, h, 0, h, w, 0, gl::COLOR_BUFFER_BIT, gl::NEAREST);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, was as gl::types::GLuint);
+            gl::DeleteFramebuffers(2, fbos.as_ptr());
+        }
+    }
+
     pub fn draw(&self, quad: &Quad) {
         let view = self.view.unwrap_or_else(|| GameView::canvas(WHOLE_TEXTURE));
         self.draw_source(self.game, self.size, quad, view);

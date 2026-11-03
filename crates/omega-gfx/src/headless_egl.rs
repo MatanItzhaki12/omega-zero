@@ -22,6 +22,8 @@ const EGL_RENDERABLE_TYPE: i32 = 0x3040;
 const EGL_PBUFFER_BIT: i32 = 0x0001;
 const EGL_OPENGL_BIT: i32 = 0x0008;
 const EGL_OPENGL_API: u32 = 0x30A2;
+const EGL_OPENGL_ES_API: u32 = 0x30A0;
+const EGL_OPENGL_ES3_BIT: i32 = 0x0040;
 const EGL_CONTEXT_MAJOR_VERSION: i32 = 0x3098;
 const EGL_CONTEXT_MINOR_VERSION: i32 = 0x30FB;
 const EGL_CONTEXT_OPENGL_PROFILE_MASK: i32 = 0x30FD;
@@ -175,6 +177,115 @@ impl Surface for HeadlessSurface {
             return std::ptr::null();
         };
         unsafe { (self.get_proc_address)(sym.as_ptr()) }
+    }
+
+    /// An OpenGL ES 3 context on the same display. This surface's own context is desktop
+    /// OpenGL, which EGL will not share objects with: the frames are read back.
+    fn gpu_thread(&self) -> Result<Box<dyn crate::gpu::GpuThread>, GfxError> {
+        let lib = egl()?;
+        unsafe {
+            let bind_api: BindApi = sym(lib, "eglBindAPI")?;
+            let choose_config: ChooseConfig = sym(lib, "eglChooseConfig")?;
+            let create_context: CreateContext = sym(lib, "eglCreateContext")?;
+            let fail = |what: &str| crate::fbdev::egl_error(what, (self.get_error)());
+            let attrs = [
+                EGL_SURFACE_TYPE,
+                EGL_PBUFFER_BIT,
+                EGL_RENDERABLE_TYPE,
+                EGL_OPENGL_ES3_BIT,
+                EGL_RED_SIZE,
+                8,
+                EGL_GREEN_SIZE,
+                8,
+                EGL_BLUE_SIZE,
+                8,
+                EGL_ALPHA_SIZE,
+                8,
+                EGL_NONE,
+            ];
+            let mut config: Config = std::ptr::null_mut();
+            let mut count = 0;
+            if choose_config(self.display, attrs.as_ptr(), &mut config, 1, &mut count) == 0
+                || count == 0
+            {
+                return Err(fail("eglChooseConfig (es3)"));
+            }
+            // the API a context is made for is the calling thread's: ES for this one, and back
+            if bind_api(EGL_OPENGL_ES_API) == 0 {
+                return Err(fail("eglBindAPI (es)"));
+            }
+            let context_attrs = [EGL_CONTEXT_MAJOR_VERSION, 3, EGL_NONE];
+            let context = create_context(
+                self.display,
+                config,
+                std::ptr::null_mut(),
+                context_attrs.as_ptr(),
+            );
+            bind_api(EGL_OPENGL_API);
+            if context.is_null() {
+                return Err(fail("eglCreateContext (es3)"));
+            }
+            Ok(Box::new(HeadlessGpu {
+                display: self.display,
+                context,
+                bind_api,
+                make_current: self.make_current,
+                get_proc_address: self.get_proc_address,
+                get_error: self.get_error,
+                destroy_context: self.destroy_context,
+            }))
+        }
+    }
+}
+
+/// The emulator thread's OpenGL ES 3 context on the surfaceless display.
+struct HeadlessGpu {
+    display: Display,
+    context: Context,
+    bind_api: BindApi,
+    make_current: MakeCurrent,
+    get_proc_address: GetProcAddress,
+    get_error: GetError,
+    destroy_context: DestroyContext,
+}
+
+// SAFETY: EGL handles may be used from any thread; the context is current on one at a time
+unsafe impl Send for HeadlessGpu {}
+
+impl crate::gpu::GpuThread for HeadlessGpu {
+    fn make_current(&self) -> Result<(), GfxError> {
+        let none = std::ptr::null_mut();
+        unsafe {
+            (self.bind_api)(EGL_OPENGL_ES_API);
+            match (self.make_current)(self.display, none, none, self.context) {
+                0 => Err(crate::fbdev::egl_error(
+                    "eglMakeCurrent (es3)",
+                    (self.get_error)(),
+                )),
+                _ => Ok(()),
+            }
+        }
+    }
+
+    fn proc_address(&self, name: &str) -> *const c_void {
+        let Ok(sym) = CString::new(name) else {
+            return std::ptr::null();
+        };
+        unsafe { (self.get_proc_address)(sym.as_ptr()) }
+    }
+
+    fn shares(&self) -> bool {
+        false
+    }
+}
+
+impl Drop for HeadlessGpu {
+    fn drop(&mut self) {
+        let none = std::ptr::null_mut();
+        unsafe {
+            (self.make_current)(self.display, none, none, std::ptr::null_mut());
+            (self.destroy_context)(self.display, self.context);
+        }
     }
 }
 

@@ -1018,3 +1018,58 @@ fn a_console_still_is_drawn_whole_through_its_view() {
     c.draw_list(&[Draw::Shot { tex }]);
     assert_at_2x(&c.read_frame(), w, h, &at);
 }
+
+/// A frame a core drew on the GPU, in the bottom left of its framebuffer's texture, GL's way up,
+/// is the game the right way up, and only that much of the texture.
+#[test]
+fn a_frame_drawn_on_the_gpu_is_the_game_the_right_way_up() {
+    let Some((_g, _s, mut c)) = compositor() else {
+        return;
+    };
+    // a 16x8 texture: the frame 8x4 in its bottom left, green in GL's first two rows (the
+    // picture's bottom) and red in the two above; blue round it, which must not show
+    let (tw, th) = (16usize, 8usize);
+    let mut rgba = vec![0u8; tw * th * 4];
+    for y in 0..th {
+        for x in 0..tw {
+            let colour = match (x < 8, y) {
+                (true, 0 | 1) => [0, 255, 0, 255],
+                (true, 2 | 3) => [255, 0, 0, 255],
+                _ => [0, 0, 255, 255],
+            };
+            rgba[(y * tw + x) * 4..][..4].copy_from_slice(&colour);
+        }
+    }
+    let mut tex = 0;
+    unsafe {
+        gl::GenTextures(1, &mut tex);
+        gl::BindTexture(gl::TEXTURE_2D, tex);
+        gl::TexImage2D(
+            gl::TEXTURE_2D,
+            0,
+            gl::RGBA8 as i32,
+            tw as i32,
+            th as i32,
+            0,
+            gl::RGBA,
+            gl::UNSIGNED_BYTE,
+            rgba.as_ptr() as *const std::ffi::c_void,
+        );
+    }
+    c.set_screen_power(1.0);
+    c.set_game_view(sharp([0.0, 0.0, 16.0, 8.0]));
+    c.begin_frame();
+    c.show_gpu_frame(&omega_gfx::GpuFrame::Texture {
+        tex,
+        fence: 0,
+        size: (8, 4),
+    });
+    assert_eq!(c.game_size(), (8, 4));
+    c.draw_game();
+    let frame = c.read_frame();
+    assert_eq!(px(&frame, 3, 1), [255, 0, 0], "the top of the picture");
+    assert_eq!(px(&frame, 12, 2), [255, 0, 0]);
+    assert_eq!(px(&frame, 3, 6), [0, 255, 0], "the bottom of the picture");
+    assert_eq!(px(&frame, 14, 7), [0, 255, 0]);
+    unsafe { gl::DeleteTextures(1, &tex) };
+}

@@ -27,6 +27,13 @@ pub trait Surface {
     fn window_size(&self) -> (u32, u32);
     fn swap(&mut self) -> Result<(), GfxError>;
     fn proc_address(&self, name: &str) -> *const c_void;
+    /// A context for the emulator's thread, OpenGL ES 3, for a core that draws on the GPU:
+    /// sharing this one's objects where it can. None where there is no such context to be had.
+    fn gpu_thread(&self) -> Result<Box<dyn crate::gpu::GpuThread>, GfxError> {
+        Err(GfxError::Context(
+            "no context for a core that draws on the GPU".into(),
+        ))
+    }
 }
 
 pub fn fit_scale(win_w: u32, win_h: u32) -> u32 {

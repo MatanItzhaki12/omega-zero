@@ -6,6 +6,7 @@ mod bezel;
 mod blit;
 mod canvas;
 mod fbdev;
+mod gpu;
 mod lcd3x;
 mod nearest;
 mod pipeline;

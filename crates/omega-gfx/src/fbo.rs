@@ -105,6 +105,18 @@ impl Compositor {
         self.game.upload_sized(xrgb8888, size);
     }
 
+    /// A frame a core drew on the GPU, as the game: a texture shared with this context, waited on
+    /// and copied the right way up, or pixels read back, uploaded as any core's.
+    pub fn show_gpu_frame(&mut self, frame: &crate::gpu::GpuFrame) {
+        match frame {
+            crate::gpu::GpuFrame::Texture { tex, fence, size } => {
+                crate::gpu::wait_and_free(*fence);
+                self.game.copy_flipped(*tex, *size);
+            }
+            crate::gpu::GpuFrame::Pixels(px, size) => self.game.upload_sized(px, *size),
+        }
+    }
+
     /// The size of the picture last uploaded as the game.
     pub fn game_size(&self) -> (u32, u32) {
         self.game.size()
