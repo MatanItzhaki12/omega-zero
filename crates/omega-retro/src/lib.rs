@@ -6,7 +6,8 @@ mod mock;
 mod rumble;
 
 pub use core::{
-    AvInfo, ButtonMask, CoreError, CoreMemory, RetroCore, GBA_H, GBA_W, MAX_FRAME_H, MAX_FRAME_W,
+    AvInfo, ButtonMask, CoreError, CoreMemory, GlHost, GpuRequest, RetroCore, GBA_H, GBA_W,
+    MAX_FRAME_H, MAX_FRAME_W,
 };
 pub use ffi::MemoryDescriptor;
 pub use ffi::{

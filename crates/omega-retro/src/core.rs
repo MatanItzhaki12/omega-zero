@@ -83,6 +83,27 @@ impl From<std::io::Error> for CoreError {
     }
 }
 
+/// The frontend's side of a core that draws on the GPU: the framebuffer the core draws the next
+/// frame into, and the GL functions it looks up. The frontend makes the context current on the
+/// core's thread before the core runs.
+pub trait GlHost: Send {
+    /// The framebuffer object the core draws the frame about to run into.
+    fn framebuffer(&self) -> usize;
+    /// The address of GL function `name`, or null.
+    fn proc_address(&self, name: &std::ffi::CStr) -> *const std::ffi::c_void;
+}
+
+/// What a core that draws on the GPU asked for as its game loaded.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct GpuRequest {
+    /// The OpenGL ES version: (2, 0), (3, 0) and on.
+    pub version: (u32, u32),
+    pub depth: bool,
+    pub stencil: bool,
+    /// It draws with GL's origin at the bottom left, as GL does: its frames are upside down.
+    pub bottom_left: bool,
+}
+
 pub trait RetroCore: Send {
     fn load(&mut self, rom: &Path) -> Result<(), CoreError>;
     fn run_frame(&mut self, input: ButtonMask);
@@ -150,6 +171,24 @@ pub trait RetroCore: Send {
     /// as it was when the game was last put away; called before `load`. A core that checks finds
     /// `path` at that index or starts from the first disc.
     fn set_initial_disc(&mut self, _index: usize, _path: &str) {}
+    /// Offers the core a GPU to draw on, before `load`: a core that asks for one gets it. A core
+    /// never offered one draws in memory, as every core did before.
+    fn offer_gpu(&mut self, _host: Box<dyn GlHost>) {}
+    /// What the core asked for, once its game is loaded, if it draws on the GPU.
+    fn gpu_request(&self) -> Option<GpuRequest> {
+        None
+    }
+    /// Tells the core its context is ready, or has been made again: it makes its GL objects.
+    fn gpu_context_reset(&mut self) {}
+    /// Tells the core its context is going: it lets go of its GL objects.
+    fn gpu_context_destroy(&mut self) {}
+    /// The size of the frame the core drew on the GPU in the last `run_frame`; none when it drew
+    /// none, a frame it repeats.
+    fn gpu_frame(&self) -> Option<(u32, u32)> {
+        None
+    }
+    /// The left analog stick of `port`, each axis -32768 to 32767, right and down positive.
+    fn set_analog(&mut self, _port: usize, _x: i16, _y: i16) {}
 }
 
 /// A loaded game's memory as RetroAchievements reads it: the map the core declared, and the

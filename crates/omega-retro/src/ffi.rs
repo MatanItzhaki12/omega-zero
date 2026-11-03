@@ -25,6 +25,21 @@ pub const GET_AUDIO_VIDEO_ENABLE: c_uint = 47 | EXPERIMENTAL;
 pub const SET_AUDIO_BUFFER_STATUS_CALLBACK: c_uint = 62;
 pub const SET_NETPACKET_INTERFACE: c_uint = 78;
 pub const SET_MEMORY_MAPS: c_uint = 36 | EXPERIMENTAL;
+/// A core that draws on the GPU asks for a context and a framebuffer to draw into.
+pub const SET_HW_RENDER: c_uint = 14;
+/// A core asks which kind of context the frontend would rather give it.
+pub const GET_PREFERRED_HW_RENDER: c_uint = 56;
+/// A core says it shares its context with the frontend's, as PPSSPP does.
+pub const SET_HW_SHARED_CONTEXT: c_uint = 44 | EXPERIMENTAL;
+pub const HW_CONTEXT_OPENGLES2: c_uint = 3;
+pub const HW_CONTEXT_OPENGLES3: c_uint = 4;
+/// OpenGL ES of the version the callback's `version_major` and `version_minor` name.
+pub const HW_CONTEXT_OPENGLES_VERSION: c_uint = 5;
+/// The picture a GPU core hands `video_refresh` in place of pixels: it drew the frame into the
+/// framebuffer the frontend gave it.
+pub const HW_FRAME_BUFFER_VALID: *const c_void = usize::MAX as *const c_void;
+pub const DEVICE_ANALOG: c_uint = 5;
+pub const DEVICE_INDEX_ANALOG_LEFT: c_uint = 0;
 
 pub const RUMBLE_STRONG: c_uint = 0;
 pub const RUMBLE_WEAK: c_uint = 1;
@@ -301,4 +316,28 @@ unsafe impl Send for MemoryDescriptor {}
 pub struct MemoryMap {
     pub descriptors: *const MemoryDescriptor,
     pub num_descriptors: c_uint,
+}
+
+pub type HwContextReset = unsafe extern "C" fn();
+pub type HwGetFramebuffer = unsafe extern "C" fn() -> usize;
+pub type HwProc = unsafe extern "C" fn();
+pub type HwGetProcAddress = unsafe extern "C" fn(sym: *const c_char) -> Option<HwProc>;
+
+/// libretro's `retro_hw_render_callback`: what a core that draws on the GPU asks for, and the
+/// frontend's functions it draws through, which the frontend fills in.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct HwRenderCallback {
+    pub context_type: c_uint,
+    pub context_reset: Option<HwContextReset>,
+    pub get_current_framebuffer: Option<HwGetFramebuffer>,
+    pub get_proc_address: Option<HwGetProcAddress>,
+    pub depth: bool,
+    pub stencil: bool,
+    pub bottom_left_origin: bool,
+    pub version_major: c_uint,
+    pub version_minor: c_uint,
+    pub cache_context: bool,
+    pub context_destroy: Option<HwContextReset>,
+    pub debug_context: bool,
 }

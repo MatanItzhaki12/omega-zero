@@ -54,6 +54,14 @@ struct Host {
     defaults: std::collections::HashMap<String, std::ffi::CString>,
     /// The memory map the core declared, for RetroAchievements to read the game's memory by.
     memory_map: Vec<MemoryDescriptor>,
+    /// The GPU the frontend offered, and what a core that draws on it asked for: none for a
+    /// core that draws in memory.
+    gl: Option<Box<dyn crate::core::GlHost>>,
+    hw: Option<HwRenderCallback>,
+    /// The size of the frame drawn on the GPU in the frame that last ran.
+    hw_frame: Option<(u32, u32)>,
+    /// Each port's left stick, x and y.
+    analog: [[i16; 2]; 2],
 }
 
 impl Host {
@@ -84,6 +92,10 @@ impl Host {
             declared: std::collections::HashMap::new(),
             defaults: std::collections::HashMap::new(),
             memory_map: Vec::new(),
+            gl: None,
+            hw: None,
+            hw_frame: None,
+            analog: [[0; 2]; 2],
         }
     }
 
@@ -227,6 +239,32 @@ unsafe extern "C" fn environment(cmd: c_uint, data: *mut c_void) -> bool {
             })
             .is_some()
         }
+        SET_HW_RENDER => {
+            if data.is_null() {
+                return false;
+            }
+            let cb = &mut *(data as *mut HwRenderCallback);
+            let es = matches!(
+                cb.context_type,
+                HW_CONTEXT_OPENGLES2 | HW_CONTEXT_OPENGLES3 | HW_CONTEXT_OPENGLES_VERSION
+            );
+            // only OpenGL ES, and only for a frontend that offered a GPU
+            if !es || with_host(|h| h.gl.is_some()) != Some(true) {
+                return false;
+            }
+            cb.get_current_framebuffer = Some(hw_framebuffer);
+            cb.get_proc_address = Some(hw_proc_address);
+            let kept = *cb;
+            with_host(|h| h.hw = Some(kept)).is_some()
+        }
+        GET_PREFERRED_HW_RENDER => {
+            if data.is_null() || with_host(|h| h.gl.is_some()) != Some(true) {
+                return false;
+            }
+            *(data as *mut c_uint) = HW_CONTEXT_OPENGLES3;
+            true
+        }
+        SET_HW_SHARED_CONTEXT => with_host(|h| h.gl.is_some()).unwrap_or(false),
         GET_DISK_CONTROL_INTERFACE_VERSION => {
             if data.is_null() {
                 return false;
@@ -496,6 +534,11 @@ unsafe extern "C" fn video_refresh(
     height: c_uint,
     pitch: usize,
 ) {
+    // drawn on the GPU, into the framebuffer the frontend gave
+    if data == HW_FRAME_BUFFER_VALID {
+        with_host(|h| h.hw_frame = Some((width, height)));
+        return;
+    }
     // a null frame is a duplicate: the last picture stands
     if data.is_null() || width == 0 || height == 0 {
         return;
@@ -519,7 +562,41 @@ unsafe extern "C" fn audio_batch(data: *const i16, frames: usize) -> usize {
 
 unsafe extern "C" fn input_poll() {}
 
-unsafe extern "C" fn input_state(port: c_uint, device: c_uint, _index: c_uint, id: c_uint) -> i16 {
+/// The framebuffer a core that draws on the GPU draws the frame into.
+unsafe extern "C" fn hw_framebuffer() -> usize {
+    with_host(|h| h.gl.as_ref().map_or(0, |gl| gl.framebuffer())).unwrap_or(0)
+}
+
+/// A GL function a core that draws on the GPU looks up.
+unsafe extern "C" fn hw_proc_address(sym: *const c_char) -> Option<HwProc> {
+    if sym.is_null() {
+        return None;
+    }
+    let name = std::ffi::CStr::from_ptr(sym);
+    let at = with_host(|h| {
+        h.gl.as_ref()
+            .map_or(ptr::null(), |gl| gl.proc_address(name))
+    })
+    .unwrap_or(ptr::null());
+    // SAFETY: a non-null address the GL loader gave for `name`, a function of no arguments as
+    // libretro types every GL function it hands over
+    (!at.is_null()).then(|| std::mem::transmute::<*const c_void, HwProc>(at))
+}
+
+unsafe extern "C" fn input_state(port: c_uint, device: c_uint, index: c_uint, id: c_uint) -> i16 {
+    if device == DEVICE_ANALOG {
+        if index != DEVICE_INDEX_ANALOG_LEFT {
+            return 0;
+        }
+        return with_host(|h| {
+            h.analog
+                .get(port as usize)
+                .and_then(|stick| stick.get(id as usize))
+                .copied()
+                .unwrap_or(0)
+        })
+        .unwrap_or(0);
+    }
     if device != DEVICE_JOYPAD {
         return 0;
     }
@@ -841,6 +918,7 @@ impl RetroCore for LibretroCore {
             return;
         }
         self.host.inputs = [p1.0, p2.0];
+        self.host.hw_frame = None;
         let _a = Active::bind(&mut self.host);
         unsafe { (self.api.run)() };
     }
@@ -856,6 +934,51 @@ impl RetroCore for LibretroCore {
 
     fn video_xrgb8888(&self) -> &[u8] {
         &self.host.video
+    }
+
+    fn offer_gpu(&mut self, host: Box<dyn crate::core::GlHost>) {
+        self.host.gl = Some(host);
+    }
+
+    fn gpu_request(&self) -> Option<crate::core::GpuRequest> {
+        let hw = self.host.hw?;
+        let version = match hw.context_type {
+            HW_CONTEXT_OPENGLES2 => (2, 0),
+            HW_CONTEXT_OPENGLES3 => (3, 0),
+            _ => (hw.version_major.max(2), hw.version_minor),
+        };
+        Some(crate::core::GpuRequest {
+            version,
+            depth: hw.depth,
+            stencil: hw.stencil,
+            bottom_left: hw.bottom_left_origin,
+        })
+    }
+
+    fn gpu_context_reset(&mut self) {
+        let Some(reset) = self.host.hw.and_then(|hw| hw.context_reset) else {
+            return;
+        };
+        let _a = Active::bind(&mut self.host);
+        unsafe { reset() };
+    }
+
+    fn gpu_context_destroy(&mut self) {
+        let Some(destroy) = self.host.hw.and_then(|hw| hw.context_destroy) else {
+            return;
+        };
+        let _a = Active::bind(&mut self.host);
+        unsafe { destroy() };
+    }
+
+    fn gpu_frame(&self) -> Option<(u32, u32)> {
+        self.host.hw_frame
+    }
+
+    fn set_analog(&mut self, port: usize, x: i16, y: i16) {
+        if let Some(stick) = self.host.analog.get_mut(port) {
+            *stick = [x, y];
+        }
     }
 
     fn video_size(&self) -> (u32, u32) {
@@ -1035,6 +1158,120 @@ mod tests {
         host.options = options;
         host.options_dirty = options_dirty;
         Box::new(host)
+    }
+
+    /// A GPU that hands out framebuffer 7, and `glClear` at a made-up address.
+    struct FakeGpu;
+
+    impl crate::core::GlHost for FakeGpu {
+        fn framebuffer(&self) -> usize {
+            7
+        }
+        fn proc_address(&self, name: &std::ffi::CStr) -> *const c_void {
+            match name.to_bytes() {
+                b"glClear" => 0x1234 as *const c_void,
+                _ => ptr::null(),
+            }
+        }
+    }
+
+    fn hw_request(context_type: c_uint) -> HwRenderCallback {
+        HwRenderCallback {
+            context_type,
+            context_reset: None,
+            get_current_framebuffer: None,
+            get_proc_address: None,
+            depth: true,
+            stencil: true,
+            bottom_left_origin: true,
+            version_major: 3,
+            version_minor: 0,
+            cache_context: false,
+            context_destroy: None,
+            debug_context: false,
+        }
+    }
+
+    #[test]
+    fn a_gpu_core_is_given_a_context_only_where_one_was_offered() {
+        let mut host = host_with(HashMap::new(), false);
+        let mut cb = hw_request(HW_CONTEXT_OPENGLES3);
+        {
+            let _a = Active::bind(&mut host);
+            assert!(
+                !unsafe { environment(SET_HW_RENDER, &mut cb as *mut _ as *mut c_void) },
+                "a frontend that offered no GPU took a GPU core"
+            );
+        }
+        host.gl = Some(Box::new(FakeGpu));
+        let _a = Active::bind(&mut host);
+        assert!(unsafe { environment(SET_HW_RENDER, &mut cb as *mut _ as *mut c_void) });
+        let fb = cb
+            .get_current_framebuffer
+            .expect("the framebuffer callback");
+        assert_eq!(unsafe { fb() }, 7);
+        let lookup = cb.get_proc_address.expect("the lookup callback");
+        let clear = CString::new("glClear").unwrap();
+        let none = CString::new("glNotAThing").unwrap();
+        assert!(unsafe { lookup(clear.as_ptr()) }.is_some());
+        assert!(unsafe { lookup(none.as_ptr()) }.is_none());
+        let mut preferred: c_uint = 0;
+        assert!(unsafe {
+            environment(
+                GET_PREFERRED_HW_RENDER,
+                &mut preferred as *mut _ as *mut c_void,
+            )
+        });
+        assert_eq!(preferred, HW_CONTEXT_OPENGLES3);
+    }
+
+    #[test]
+    fn only_opengl_es_is_taken() {
+        let mut host = host_with(HashMap::new(), false);
+        host.gl = Some(Box::new(FakeGpu));
+        let _a = Active::bind(&mut host);
+        // RETRO_HW_CONTEXT_OPENGL_CORE and Vulkan: neither is the handheld's
+        for kind in [1, 6] {
+            let mut cb = hw_request(kind);
+            assert!(!unsafe { environment(SET_HW_RENDER, &mut cb as *mut _ as *mut c_void) });
+        }
+    }
+
+    #[test]
+    fn a_frame_drawn_on_the_gpu_is_its_size_and_leaves_the_pixels_alone() {
+        let mut host = host_with(HashMap::new(), false);
+        let before = host.video.clone();
+        let _a = Active::bind(&mut host);
+        unsafe { video_refresh(HW_FRAME_BUFFER_VALID, 480, 272, 0) };
+        drop(_a);
+        assert_eq!(host.hw_frame, Some((480, 272)));
+        assert_eq!(host.video, before);
+    }
+
+    #[test]
+    fn the_left_stick_is_read_as_the_core_asks_for_it() {
+        let mut host = host_with(HashMap::new(), false);
+        host.analog[0] = [-32768, 12000];
+        let _a = Active::bind(&mut host);
+        unsafe {
+            assert_eq!(
+                input_state(0, DEVICE_ANALOG, DEVICE_INDEX_ANALOG_LEFT, 0),
+                -32768
+            );
+            assert_eq!(
+                input_state(0, DEVICE_ANALOG, DEVICE_INDEX_ANALOG_LEFT, 1),
+                12000
+            );
+            assert_eq!(
+                input_state(0, DEVICE_ANALOG, 1, 0),
+                0,
+                "the right stick is not there"
+            );
+            assert_eq!(
+                input_state(1, DEVICE_ANALOG, DEVICE_INDEX_ANALOG_LEFT, 0),
+                0
+            );
+        }
     }
 
     fn declaration(key: &str, value: &str) -> (Variable, CString, CString) {
