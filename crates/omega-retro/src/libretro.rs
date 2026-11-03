@@ -3,7 +3,7 @@ use std::ffi::{c_char, c_int, c_uint, c_void, CString};
 use std::marker::PhantomData;
 use std::path::Path;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use libloading::Library;
 
@@ -15,6 +15,11 @@ use crate::link::Link;
 use crate::rumble::Rumble;
 
 static LIVE: AtomicBool = AtomicBool::new(false);
+
+/// The framebuffer a core that draws on the GPU draws into, as each call into the core last saw
+/// it: for a core that asks from a thread of its own, as PPSSPP's emulation thread does, where no
+/// host is bound. Answering it 0 there sent PPSSPP's every frame to the context's own surface.
+static HW_FRAMEBUFFER: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 enum PixelFormat {
@@ -159,6 +164,9 @@ struct Active<'a>(PhantomData<&'a mut Host>);
 
 impl Active<'_> {
     fn bind(host: &mut Host) -> Active<'_> {
+        if let Some(gl) = host.gl.as_ref() {
+            HW_FRAMEBUFFER.store(gl.framebuffer(), Ordering::Relaxed);
+        }
         ACTIVE.with(|a| a.set(host as *mut Host));
         Active(PhantomData)
     }
@@ -564,7 +572,8 @@ unsafe extern "C" fn input_poll() {}
 
 /// The framebuffer a core that draws on the GPU draws the frame into.
 unsafe extern "C" fn hw_framebuffer() -> usize {
-    with_host(|h| h.gl.as_ref().map_or(0, |gl| gl.framebuffer())).unwrap_or(0)
+    with_host(|h| h.gl.as_ref().map_or(0, |gl| gl.framebuffer()))
+        .unwrap_or_else(|| HW_FRAMEBUFFER.load(Ordering::Relaxed))
 }
 
 /// A GL function a core that draws on the GPU looks up.
@@ -1235,6 +1244,24 @@ mod tests {
             let mut cb = hw_request(kind);
             assert!(!unsafe { environment(SET_HW_RENDER, &mut cb as *mut _ as *mut c_void) });
         }
+    }
+
+    /// PPSSPP asks for the framebuffer from its own emulation thread, where no host is bound:
+    /// it is told the one the call into the core was given, not 0.
+    #[test]
+    fn the_framebuffer_is_told_to_a_core_s_own_thread_too() {
+        let mut host = host_with(HashMap::new(), false);
+        host.gl = Some(Box::new(FakeGpu));
+        let _a = Active::bind(&mut host);
+        let here = unsafe { hw_framebuffer() };
+        assert_ne!(here, 0);
+        let there = std::thread::spawn(|| unsafe { hw_framebuffer() })
+            .join()
+            .unwrap();
+        assert_eq!(
+            there, here,
+            "the core's own thread was told another framebuffer"
+        );
     }
 
     /// PPSSPP built for OpenGL ES asks for RETRO_HW_CONTEXT_OPENGLES2, 2 in libretro.h: refusing it
