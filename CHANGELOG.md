@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- A save made in a game is backed up: the backup waited for nothing as it was asked, so it looked
+  at the Saves folder before the game's save was written there, called everything copied, and
+  looked again only minutes later. It now waits 3 seconds for the save being written, even when
+  the ask comes with a change of NAS or folder.
+- Save Backup's toasts have a SAVE BACKUP title of their own, and the log says how many saves
+  each backup copied.
+
 ## omega-zero 2.5.1
 
 - Settings > Save Backup has Sync From Backup, under Back Up Now: FROM BACKUP lists the saves on

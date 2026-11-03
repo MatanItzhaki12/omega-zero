@@ -34,6 +34,11 @@ const RETRY_FIRST: Duration = Duration::from_secs(5);
 const RETRY_MOST: Duration = Duration::from_secs(60);
 const LOOK_AGAIN: Duration = Duration::from_secs(300);
 
+/// How long a pass asked for waits before it looks: a game's save is written on a thread of its
+/// own as the pass is asked for, and a pass that looked at once would find the save before it,
+/// call everything copied, and not look again for minutes.
+pub const SETTLE: Duration = Duration::from_secs(3);
+
 /// How long to wait after the `failed`th pass in a row that left saves waiting.
 pub fn retry_after(failed: u32) -> Duration {
     RETRY_FIRST
@@ -240,20 +245,28 @@ fn run(root: &Path, mut target: Option<Target>, rx: &Receiver<Ask>, status: &Mut
     let mut wait = Duration::ZERO;
     let mut failed = 0;
     loop {
-        match rx.recv_timeout(wait) {
-            Ok(Ask::Pass) | Err(RecvTimeoutError::Timeout) => {}
-            Ok(Ask::Target(t)) => {
-                target = t;
-                if let Ok(mut s) = status.lock() {
-                    *s = Status::default();
-                }
-            }
+        let mut asked = match rx.recv_timeout(wait) {
+            Ok(ask) => vec![ask],
+            Err(RecvTimeoutError::Timeout) => Vec::new(),
             Err(RecvTimeoutError::Disconnected) => return,
+        };
+        // asks that came together make one pass; one for a pass waits for the save being
+        // written as it was asked, and takes what came in the while
+        asked.extend(rx.try_iter());
+        if asked.iter().any(|a| matches!(a, Ask::Pass)) {
+            std::thread::sleep(SETTLE);
+            asked.extend(rx.try_iter());
         }
-        // asks that came together make one pass
-        while let Ok(ask) = rx.try_recv() {
+        for ask in asked {
             if let Ask::Target(t) = ask {
                 target = t;
+                if let Ok(mut s) = status.lock() {
+                    *s = Status {
+                        copied: s.copied,
+                        failed: s.failed,
+                        ..Status::default()
+                    };
+                }
             }
         }
         let Some(to) = &target else {
@@ -352,6 +365,10 @@ fn copy(
     if let Err(e) = list.write(root) {
         eprintln!("omega-zero: save backup: {LIST}: {e}");
     }
+    eprintln!(
+        "omega-zero: save backup: {total} copied to {}",
+        to.login.host
+    );
     Ok(())
 }
 

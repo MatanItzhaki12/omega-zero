@@ -354,7 +354,7 @@ fn a_folder_is_picked_on_the_nas_and_the_saves_go_there() {
         std::fs::read(served.join(&name).join("GBA/Emerald.sav")).unwrap(),
         b"emerald"
     );
-    let told = Some(omega_ui::Toast::Emulator("Saves backed up to the NAS"));
+    let told = Some(omega_ui::Toast::Backup("Saves backed up to the NAS"));
     while a.toast() != told {
         assert!(
             std::time::Instant::now() < deadline,
@@ -473,7 +473,7 @@ fn a_failed_backup_is_told_of_once_until_saves_copy_again() {
     failed_twice(&mut a, 1);
     assert_eq!(
         a.toast(),
-        Some(Toast::Emulator("Save backup failed: NAS away, will retry"))
+        Some(Toast::Backup("Save backup failed: NAS away, will retry"))
     );
     // the toast goes, and the next try fails too: no toast again
     a.update(10.0);
@@ -481,4 +481,38 @@ fn a_failed_backup_is_told_of_once_until_saves_copy_again() {
     open_backup(&mut a);
     failed_twice(&mut a, 2);
     assert_eq!(a.toast(), None, "a NAS still away was told of again");
+}
+
+/// A pass asked for as a game's save is being written looks once the write is done: the save
+/// written just after the ask is the one the pass finds, not the Saves folder before it.
+#[test]
+fn a_pass_asked_for_as_a_save_is_written_finds_that_save() {
+    use omega_zero::save_backup::{SaveBackup, SETTLE};
+    let d = tempfile::tempdir().unwrap();
+    let saves = d.path().join("Saves/GBA");
+    std::fs::create_dir_all(&saves).unwrap();
+    // nothing listens on port 9 here: the save waits, and the count says it was seen
+    let to = Target {
+        login: Login {
+            host: "127.0.0.1:9".into(),
+            ..Login::default()
+        },
+        share: "Backups".into(),
+        dir: String::new(),
+    };
+    let backup = SaveBackup::start(d.path().to_path_buf(), None);
+    backup.set_target(Some(to));
+    backup.pass();
+    std::thread::sleep(SETTLE / 4);
+    std::fs::write(saves.join("Emerald.sav"), b"saved in the game").unwrap();
+    let deadline = std::time::Instant::now() + SETTLE * 3;
+    while backup.status().failed == 0 {
+        assert!(std::time::Instant::now() < deadline, "no pass ran");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(
+        backup.status().waiting,
+        1,
+        "the pass looked before the game's save was written"
+    );
 }

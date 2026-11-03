@@ -225,7 +225,7 @@ impl App {
         if status.copied > copied {
             self.backup_fail_told = false;
             self.hud
-                .toast(Toast::Emulator("Saves backed up to the NAS"), self.now());
+                .toast(Toast::Backup("Saves backed up to the NAS"), self.now());
         } else if status.failed > failed && !self.backup_fail_told {
             self.backup_fail_told = true;
             let text = match status.fail {
@@ -233,7 +233,7 @@ impl App {
                 Some(NasFail::Denied) => "Save backup failed: folder refused",
                 _ => "Save backup failed: NAS away, will retry",
             };
-            self.hud.toast(Toast::Emulator(text), self.now());
+            self.hud.toast(Toast::Backup(text), self.now());
         }
     }
 
@@ -592,7 +592,7 @@ impl App {
             Ok(()) => {
                 self.backup_ui.restoring.found.remove(i as usize);
                 self.hud
-                    .toast(Toast::Emulator("Save copied from the NAS"), self.now());
+                    .toast(Toast::Backup("Save copied from the NAS"), self.now());
             }
             Err(e) => {
                 eprintln!("omega-zero: sync from backup: {}: {e}", from.rel);
