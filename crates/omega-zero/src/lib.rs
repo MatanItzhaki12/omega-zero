@@ -32,6 +32,7 @@ pub mod link_state;
 pub mod list_view;
 pub mod nav;
 pub mod netplay;
+pub mod netplay_lan;
 pub mod netplay_lobby;
 pub mod opening;
 pub mod options;

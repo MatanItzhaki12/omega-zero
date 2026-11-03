@@ -315,6 +315,8 @@ pub fn panel_at(panel: &Lone) -> [i32; 2] {
 pub enum LinkField {
     /// Local or online, for a game that can link online.
     Play,
+    /// Local: another handheld on omega-zero, or RetroArch on this network.
+    With,
     Role,
     /// The cable or the wireless adapter, for a game that has both.
     Mode,
@@ -324,23 +326,36 @@ pub enum LinkField {
     Password,
     /// Online: the relay a room is opened through.
     Server,
+    /// Online, joining: the rows few need, shown or not.
+    Advanced,
+    /// Under ADVANCED: an address to join at, past the lobby, typed on the keyboard.
+    Address,
+    /// No row: the keyboard asking for the password of the room being joined.
+    RoomPassword,
 }
 
 impl LinkField {
     pub fn label(self) -> &'static str {
         match self {
             LinkField::Play => "PLAY",
+            LinkField::With => "WITH",
             LinkField::Role => "ROLE",
             LinkField::Mode => "MODE",
             LinkField::Name => "NAME",
             LinkField::Password => "PASSWORD",
             LinkField::Server => "SERVER",
+            LinkField::Advanced => "ADVANCED",
+            LinkField::Address => "ADDRESS",
+            LinkField::RoomPassword => "PASSWORD",
         }
     }
 
     /// A opens the keyboard on the row rather than linking.
     pub fn typed(self) -> bool {
-        matches!(self, LinkField::Name | LinkField::Password)
+        matches!(
+            self,
+            LinkField::Name | LinkField::Password | LinkField::Address | LinkField::RoomPassword
+        )
     }
 }
 
@@ -613,18 +628,21 @@ impl App {
     pub fn link_view(&self) -> Option<LinkView> {
         let menu = self.game_menu?;
         let online = self.online_available().then_some(self.link_online);
-        let going_online = online == Some(true);
+        let netplay = self.via_netplay();
         let status = match menu {
-            GameMenu::Working { step, .. } if going_online => Some(step.line()),
+            GameMenu::Working { step, .. } if netplay => Some(step.line()),
             GameMenu::Working { step, .. } => Some(step.shown(self.radio.warmed()).line()),
             GameMenu::Linked { .. } => Some("Linked"),
             GameMenu::Failed { fail, .. } => fail.shown().map(|_| fail.line()),
-            GameMenu::Rooms { .. } => self.rooms_status(),
+            GameMenu::Rooms { lit } => self.rooms_status(lit),
             GameMenu::Pick(_) | GameMenu::Unplug { .. } => None,
         };
         let detail = match menu {
             GameMenu::Linked { .. } => self.link_peer.as_ref().map(|p| format!("With {p}")),
-            GameMenu::Working { role, .. } if going_online => Some(match role {
+            GameMenu::Working { role, .. } if netplay => Some(match role {
+                LinkRow::Host if self.going_lan() => {
+                    format!("As {} on this Wi-Fi", self.online_name())
+                }
                 LinkRow::Host => format!(
                     "As {} through {}",
                     self.online_name(),
@@ -632,6 +650,9 @@ impl App {
                 ),
                 LinkRow::Join => format!("As {}", self.online_name()),
             }),
+            // what the link goes through, while it is picked
+            GameMenu::Pick(_) if self.going_online() => Some("Uses RetroArch netplay".into()),
+            GameMenu::Pick(_) if self.going_lan() => Some("RetroArch netplay over Wi-Fi".into()),
             _ => None,
         };
         let fields = self.link_field_values();
@@ -664,17 +685,37 @@ impl App {
         })
     }
 
-    /// The LINK panel's rows: PLAY on top where the game can go online, then ROLE; nearby,
-    /// MODE; online, NAME, PASSWORD and SERVER.
+    /// The LINK panel's rows: PLAY on top where the game can go online; local, WITH, whom the
+    /// link is with; ROLE; then, through RetroArch's netplay, NAME, and PASSWORD for a host, and
+    /// online SERVER for a host and ADVANCED for whoever joins; else MODE.
     pub(crate) fn link_shown_fields(&self) -> Vec<LinkField> {
+        let role = match self.game_menu {
+            Some(menu) => role_of(menu),
+            None => self.last_role,
+        };
         let mut fields = Vec::new();
         if self.online_possible() {
             fields.push(LinkField::Play);
+            if !self.going_online() {
+                fields.push(LinkField::With);
+            }
         }
         fields.push(LinkField::Role);
-        match self.going_online() {
-            true => fields.extend([LinkField::Name, LinkField::Password, LinkField::Server]),
-            false => fields.push(LinkField::Mode),
+        if !self.via_netplay() {
+            fields.push(LinkField::Mode);
+            return fields;
+        }
+        fields.push(LinkField::Name);
+        match (role, self.going_online()) {
+            (LinkRow::Host, true) => fields.extend([LinkField::Password, LinkField::Server]),
+            (LinkRow::Host, false) => fields.push(LinkField::Password),
+            (LinkRow::Join, true) => {
+                fields.push(LinkField::Advanced);
+                if self.link_advanced {
+                    fields.push(LinkField::Address);
+                }
+            }
+            (LinkRow::Join, false) => {}
         }
         fields
     }
@@ -713,6 +754,10 @@ impl App {
                     } else {
                         "Local"
                     }),
+                    LinkField::With => RowValue::Choice(match self.going_lan() {
+                        true => "RetroArch",
+                        false => "omega-zero",
+                    }),
                     LinkField::Role => RowValue::Choice(role.text()),
                     LinkField::Mode if switchable => {
                         RowValue::Choice(kind_word(self.link_hardware))
@@ -726,6 +771,15 @@ impl App {
                     LinkField::Server => {
                         RowValue::Choice(crate::options::relay_word(self.state.relay))
                     }
+                    LinkField::Advanced => RowValue::Setting(self.link_advanced),
+                    LinkField::Address | LinkField::RoomPassword
+                        if self.state.online_address.is_empty() =>
+                    {
+                        RowValue::Said("None")
+                    }
+                    LinkField::Address | LinkField::RoomPassword => {
+                        RowValue::Name(self.state.online_address.clone())
+                    }
                 };
                 (f, value)
             })
@@ -737,11 +791,19 @@ impl App {
         let (field, keys) = self.link_typing.as_ref()?;
         Some(TypingView {
             prompt: match field {
-                LinkField::Name => "Your name in online rooms".to_string(),
-                _ => "The room's password, or none".to_string(),
+                LinkField::Name => "Your name in rooms".to_string(),
+                LinkField::Address => "Host address, and :port if not 55435".to_string(),
+                LinkField::RoomPassword if self.link_refused => {
+                    "Wrong password: try again".to_string()
+                }
+                LinkField::RoomPassword => match &self.pending_join {
+                    Some(room) => format!("Password for {}'s room", room.username),
+                    None => "The room's password".to_string(),
+                },
+                _ => "Your room's password, or none".to_string(),
             },
             keys,
-            refused: false,
+            refused: self.link_refused,
         })
     }
 

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- LAN play with RetroArch: Local has WITH, omega-zero or RetroArch. With RetroArch, a GBA game
+  on gpSP links over the cable with RetroArch on the same Wi-Fi through its netplay, straight,
+  with no relay or lobby: HOST opens a room RetroArch finds in its own room list, and JOIN lists
+  the rooms on the Wi-Fi, as RetroArch looks for them. RetroArch answers only while it hosts
+  with its relay off.
+- Joining online no longer shows PASSWORD and SERVER, which are the host's: a room with a
+  password says so when lit, and A asks for it, naming whose room it is, as RetroArch does. A
+  wrong one asks again.
+- Online, JOIN has ADVANCED, and under it ADDRESS: an address to join at past the lobby, such
+  as a friend's RetroArch hosting with its port open, or over a VPN.
+- The LINK panel says when a link goes through RetroArch's netplay. The rooms playing your
+  game come first in the list, then those with no password.
+
 ## omega-zero 2.4.2
 
 - The LINK panel's values end in one line: NAME's and PASSWORD's, which have no arrows, stood

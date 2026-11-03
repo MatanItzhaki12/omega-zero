@@ -496,11 +496,12 @@ fn the_link_screen_draws_its_panel_over_the_backdrop_in_place_of_the_game() {
             rooms: None,
             fields: vec![
                 (LinkField::Play, RowValue::Choice("Local")),
+                (LinkField::With, RowValue::Choice("omega-zero")),
                 (LinkField::Role, RowValue::Choice("Host")),
                 (LinkField::Mode, RowValue::Choice("Cable")),
             ],
             // the cursor starts on ROLE, the row most often changed
-            lit: Some(1),
+            lit: Some(2),
         })
     );
     let mut out = Vec::new();
@@ -1751,6 +1752,7 @@ fn the_link_rows_move_and_change_as_settings_do() {
     let (mut app, _d) = playing_on(Core::Gpsp);
     app.apply(Action::GameMenu);
     app.apply(Action::GbaDown(Btn::Up));
+    app.apply(Action::GbaDown(Btn::Up));
     app.apply(Action::GbaDown(Btn::Right));
     let view = app.link_view().unwrap();
     assert_eq!(view.online, Some(true), "PLAY did not go online");
@@ -1823,7 +1825,201 @@ fn the_link_rows_move_and_change_as_settings_do() {
         .iter()
         .map(|(f, _)| *f)
         .collect();
-    assert_eq!(rows, [LinkField::Play, LinkField::Role, LinkField::Mode]);
+    assert_eq!(
+        rows,
+        [
+            LinkField::Play,
+            LinkField::With,
+            LinkField::Role,
+            LinkField::Mode
+        ]
+    );
+}
+
+fn rows(app: &App) -> Vec<LinkField> {
+    app.link_view()
+        .unwrap()
+        .fields
+        .iter()
+        .map(|(f, _)| *f)
+        .collect()
+}
+
+fn value(app: &App, field: LinkField) -> Option<RowValue> {
+    app.link_view()
+        .unwrap()
+        .fields
+        .into_iter()
+        .find(|(f, _)| *f == field)
+        .map(|(_, v)| v)
+}
+
+/// Joining online, the room's PASSWORD and SERVER are the host's to set, not the joiner's: the
+/// rows are ROLE and NAME, and ADDRESS waits under ADVANCED for joining past the lobby.
+#[test]
+fn joining_online_asks_for_no_password_and_keeps_the_address_under_advanced() {
+    let (mut app, _d) = playing_on(Core::Gpsp);
+    app.apply(Action::GameMenu);
+    app.apply(Action::GbaDown(Btn::Right));
+    app.apply(Action::GbaDown(Btn::Y));
+    assert_eq!(app.game_menu(), Some(GameMenu::Pick(LinkRow::Join)));
+    assert_eq!(
+        rows(&app),
+        [
+            LinkField::Play,
+            LinkField::Role,
+            LinkField::Name,
+            LinkField::Advanced
+        ]
+    );
+    assert_eq!(
+        app.link_view().unwrap().detail.as_deref(),
+        Some("Uses RetroArch netplay"),
+        "online did not say it goes through RetroArch"
+    );
+
+    // ADVANCED on brings ADDRESS, which types on the keyboard
+    app.apply(Action::GbaDown(Btn::Down));
+    app.apply(Action::GbaDown(Btn::Down));
+    app.apply(Action::GbaDown(Btn::Right));
+    assert_eq!(
+        value(&app, LinkField::Advanced),
+        Some(RowValue::Setting(true))
+    );
+    assert_eq!(
+        value(&app, LinkField::Address),
+        Some(RowValue::Said("None"))
+    );
+    app.apply(Action::GbaDown(Btn::Down));
+    assert_eq!(app.link_bar_shown(), Some((LinkActions::Edit, 0)));
+    app.apply(Action::GbaDown(Btn::A));
+    let prompt = app.typing().map(|t| t.prompt);
+    assert!(
+        prompt.as_deref().is_some_and(|p| p.contains("55435")),
+        "{prompt:?}"
+    );
+    app.apply(Action::GbaDown(Btn::A));
+    app.apply(Action::GbaDown(Btn::Start));
+    assert!(matches!(
+        value(&app, LinkField::Address),
+        Some(RowValue::Name(ref a)) if a.len() == 1
+    ));
+
+    // hosting online has the room's PASSWORD and SERVER back, and no ADVANCED
+    for _ in 0..3 {
+        app.apply(Action::GbaDown(Btn::Up));
+    }
+    app.apply(Action::GbaDown(Btn::Left));
+    assert_eq!(
+        rows(&app),
+        [
+            LinkField::Play,
+            LinkField::Role,
+            LinkField::Name,
+            LinkField::Password,
+            LinkField::Server
+        ]
+    );
+}
+
+/// Local, WITH RetroArch links with RetroArch on this Wi-Fi through its netplay: a host has
+/// NAME and PASSWORD, one who joins NAME alone, and MODE goes, the cable being netplay's.
+#[test]
+fn with_retroarch_links_through_its_netplay_on_this_wifi() {
+    let (mut app, _d) = playing_on(Core::Gpsp);
+    app.apply(Action::GameMenu);
+    app.apply(Action::GbaDown(Btn::Up));
+    app.apply(Action::GbaDown(Btn::Right));
+    assert_eq!(
+        value(&app, LinkField::With),
+        Some(RowValue::Choice("RetroArch"))
+    );
+    assert_eq!(
+        rows(&app),
+        [
+            LinkField::Play,
+            LinkField::With,
+            LinkField::Role,
+            LinkField::Name,
+            LinkField::Password
+        ]
+    );
+    assert_eq!(
+        app.link_view().unwrap().online,
+        Some(false),
+        "WITH went online"
+    );
+    assert_eq!(
+        app.link_view().unwrap().detail.as_deref(),
+        Some("RetroArch netplay over Wi-Fi")
+    );
+    app.apply(Action::GbaDown(Btn::Down));
+    app.apply(Action::GbaDown(Btn::Right));
+    assert_eq!(
+        rows(&app),
+        [
+            LinkField::Play,
+            LinkField::With,
+            LinkField::Role,
+            LinkField::Name
+        ]
+    );
+    // SELECT, MODE's own key, cannot take the link off the cable netplay carries
+    app.apply(Action::GbaDown(Btn::Select));
+    assert_eq!(app.link_view().unwrap().kind, LinkKind::Cable);
+    assert!(app.refusal_active(app.now()), "SELECT was not refused");
+}
+
+fn room(name: &str, password: bool) -> omega_zero::netplay_lobby::Room {
+    omega_zero::netplay_lobby::Room {
+        username: name.into(),
+        game_name: "Pokemon - Emerald Version (USA, Europe)".into(),
+        game_crc: 0,
+        core_name: "gpSP".into(),
+        ip: "127.0.0.1".into(),
+        port: 9,
+        has_password: password,
+        mitm_ip: String::new(),
+        mitm_port: 0,
+        mitm_session: String::new(),
+        connectable: true,
+        country: String::new(),
+    }
+}
+
+/// A room with a password says so when lit, and A asks for the password, naming whose room it
+/// is, before it joins; one with none joins straight away.
+#[test]
+fn a_room_with_a_password_asks_for_it_before_joining() {
+    let (mut app, _d) = playing_on(Core::Gpsp);
+    app.apply(Action::GameMenu);
+    app.show_rooms(vec![room("Ash", true), room("Brock", false)]);
+    assert_eq!(
+        app.link_view().unwrap().status,
+        Some("Has a password: A asks for it")
+    );
+    app.apply(Action::GbaDown(Btn::A));
+    let prompt = app.typing().map(|t| t.prompt);
+    assert_eq!(prompt.as_deref(), Some("Password for Ash's room"));
+    // B on the empty keyboard puts it away, the rooms still there
+    app.apply(Action::GbaDown(Btn::B));
+    assert!(app.typing().is_none());
+    assert_eq!(app.game_menu(), Some(GameMenu::Rooms { lit: 0 }));
+
+    app.apply(Action::GbaDown(Btn::Down));
+    assert_eq!(app.link_view().unwrap().status, None);
+    app.apply(Action::GbaDown(Btn::A));
+    assert!(
+        app.typing().is_none(),
+        "a room with no password asked for one"
+    );
+    assert!(
+        matches!(app.game_menu(), Some(GameMenu::Working { .. })),
+        "{:?}",
+        app.game_menu()
+    );
+    app.apply(Action::GbaDown(Btn::B));
+    settle(&mut app);
 }
 
 /// Online with no Wi-Fi joined, A says so rather than reaching for the lobby.

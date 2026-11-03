@@ -349,6 +349,15 @@ pub struct App {
     /// The LINK panel's row under the cursor, and the keyboard up over it for NAME or PASSWORD.
     pub(crate) link_field: crate::link_screen::LinkField,
     pub(crate) link_typing: Option<(crate::link_screen::LinkField, omega_ui::Keyboard)>,
+    /// The keyboard asks again for a room's password, the one given having been turned away.
+    pub(crate) link_refused: bool,
+    /// Local, the link goes to RetroArch on this network rather than to another handheld.
+    pub(crate) link_retroarch: bool,
+    /// The LINK panel shows its ADVANCED rows.
+    pub(crate) link_advanced: bool,
+    /// The room being joined, kept to ask for its password again, and the password given.
+    pub(crate) pending_join: Option<crate::netplay_lobby::Room>,
+    pub(crate) join_password: String,
     pub(crate) restarting: bool,
     pub(crate) act_at: Millis,
     pub(crate) root: Option<PathBuf>,
@@ -562,6 +571,11 @@ impl App {
             online_room: None,
             link_field: crate::link_screen::LinkField::Role,
             link_typing: None,
+            link_refused: false,
+            link_retroarch: false,
+            link_advanced: false,
+            pending_join: None,
+            join_password: String::new(),
             restarting: false,
             act_at: 0,
             root: None,
@@ -2897,7 +2911,10 @@ impl App {
             return;
         };
         match menu {
-            GameMenu::Pick(_) if self.link_typing.is_some() => self.link_typing_input(action),
+            // the keyboard over the link screen, for a row or a room's password
+            GameMenu::Pick(_) | GameMenu::Rooms { .. } if self.link_typing.is_some() => {
+                self.link_typing_input(action)
+            }
             GameMenu::Pick(role) => {
                 use crate::link_screen::LinkField;
                 let field = self.lit_field();
@@ -2906,6 +2923,7 @@ impl App {
                     Action::GbaDown(Btn::Down) => self.move_link_field(true),
                     Action::GbaDown(b @ (Btn::Left | Btn::Right)) => match field {
                         LinkField::Play => self.set_link_online(!self.going_online()),
+                        LinkField::With => self.set_link_retroarch(!self.link_retroarch),
                         LinkField::Role => {
                             self.last_role = role.other();
                             self.game_menu = Some(GameMenu::Pick(role.other()));
@@ -2920,16 +2938,21 @@ impl App {
                             };
                             self.persist();
                         }
-                        LinkField::Name | LinkField::Password => {}
+                        LinkField::Advanced => self.link_advanced = !self.link_advanced,
+                        LinkField::Name
+                        | LinkField::Password
+                        | LinkField::Address
+                        | LinkField::RoomPassword => {}
                     },
                     Action::GbaDown(Btn::A) if field.typed() => self.open_link_typing(field),
                     // the rows' own keys before they were rows: SELECT for MODE, Y for online
+                    Action::GbaDown(Btn::Select) if self.via_netplay() => self.refuse(),
                     Action::GbaDown(Btn::Select) => self.switch_hardware(),
                     Action::GbaDown(Btn::Y) if self.online_possible() => {
                         self.set_link_online(!self.going_online())
                     }
                     Action::GbaDown(Btn::Y) => self.refuse(),
-                    Action::GbaDown(Btn::A) if self.going_online() => self.pick_online(role),
+                    Action::GbaDown(Btn::A) if self.via_netplay() => self.pick_netplay(role),
                     Action::GbaDown(Btn::A) => self.pick_link(role),
                     Action::GbaDown(Btn::B) | Action::GameMenu => self.close_game_menu(),
                     _ => {}
@@ -2949,9 +2972,11 @@ impl App {
                 }
                 Action::GbaDown(Btn::Y) => self.list_rooms(),
                 Action::GbaDown(Btn::A) => match self.online_rooms.get(lit).cloned() {
+                    // a room with a password asks for it first, as RetroArch's lobby does
+                    Some(room) if room.has_password => self.ask_room_password(room, false),
                     Some(room) => {
-                        self.online_room = Some(room);
-                        self.pick_link(LinkRow::Join);
+                        self.join_password.clear();
+                        self.join_room(room);
                     }
                     None => self.refuse(),
                 },
@@ -3024,12 +3049,31 @@ impl App {
         self.online_available() && self.link_online
     }
 
+    /// The link screen is set to link with RetroArch on this network: local, with its netplay.
+    pub(crate) fn going_lan(&self) -> bool {
+        self.online_available() && !self.link_online && self.link_retroarch
+    }
+
+    /// The link goes through RetroArch's netplay: online, or on this network.
+    pub(crate) fn via_netplay(&self) -> bool {
+        self.going_online() || self.going_lan()
+    }
+
     /// PLAY set to Online or Local. Online is the cable's: the adapter's games go back to it.
     fn set_link_online(&mut self, online: bool) {
         if online && self.link_hardware != LinkKind::Cable {
             self.switch_hardware();
         }
         self.link_online = online && self.online_available();
+    }
+
+    /// WITH set to RetroArch or omega-zero. RetroArch's netplay carries the cable alone, as
+    /// online.
+    fn set_link_retroarch(&mut self, retroarch: bool) {
+        if retroarch && self.link_hardware != LinkKind::Cable {
+            self.switch_hardware();
+        }
+        self.link_retroarch = retroarch && self.online_available();
     }
 
     /// Up or down the LINK panel's rows, stopping at either end as a settings list does.
@@ -3048,12 +3092,16 @@ impl App {
         }
     }
 
-    /// The keyboard up for NAME or PASSWORD, holding what is there now.
+    /// The keyboard up for a row, holding what is there now.
     fn open_link_typing(&mut self, field: crate::link_screen::LinkField) {
+        use crate::link_screen::LinkField;
         let text = match field {
-            crate::link_screen::LinkField::Name => self.online_name(),
+            LinkField::Name => self.online_name(),
+            LinkField::Address => self.state.online_address.clone(),
+            LinkField::RoomPassword => String::new(),
             _ => self.state.online_password.clone(),
         };
+        self.link_refused = false;
         self.link_typing = Some((
             field,
             omega_ui::Keyboard {
@@ -3063,9 +3111,25 @@ impl App {
         ));
     }
 
+    /// The keyboard up for the password of `room`, which the link then joins; `refused` when
+    /// the one given before was turned away.
+    fn ask_room_password(&mut self, room: crate::netplay_lobby::Room, refused: bool) {
+        self.pending_join = Some(room);
+        self.open_link_typing(crate::link_screen::LinkField::RoomPassword);
+        self.link_refused = refused;
+    }
+
+    /// The link to `room` started, with the password given for it.
+    fn join_room(&mut self, room: crate::netplay_lobby::Room) {
+        self.pending_join = Some(room.clone());
+        self.online_room = Some(room);
+        self.pick_link(LinkRow::Join);
+    }
+
     /// The keys while the link screen's keyboard is up. What is typed is kept on START or the
     /// keyboard's enter, even nothing: no name is the default one, and no password is none.
     fn link_typing_input(&mut self, action: Action) {
+        use crate::link_screen::LinkField;
         let Some((field, keys)) = &mut self.link_typing else {
             return;
         };
@@ -3093,16 +3157,25 @@ impl App {
             return;
         };
         match field {
-            crate::link_screen::LinkField::Name => {
-                self.state.online_name = omega_store::online_name(&keys.text)
+            LinkField::Name => self.state.online_name = omega_store::online_name(&keys.text),
+            LinkField::Address => {
+                self.state.online_address = omega_store::online_password(&keys.text)
+            }
+            LinkField::RoomPassword => {
+                self.join_password = keys.text;
+                if let Some(room) = self.pending_join.clone() {
+                    self.join_room(room);
+                }
+                return;
             }
             _ => self.state.online_password = omega_store::online_password(&keys.text),
         }
         self.persist();
     }
 
-    /// A online: hosting opens a room straight away; joining lists the rooms open first.
-    fn pick_online(&mut self, role: LinkRow) {
+    /// A on a link through RetroArch's netplay: hosting opens a room straight away; joining
+    /// goes to the address typed, under ADVANCED online, or lists the rooms open first.
+    fn pick_netplay(&mut self, role: LinkRow) {
         if !self.online() {
             let now = self.now();
             self.game_menu = Some(GameMenu::Failed {
@@ -3114,22 +3187,70 @@ impl App {
             return;
         }
         match role {
-            LinkRow::Host => self.pick_link(role),
-            LinkRow::Join => self.list_rooms(),
+            LinkRow::Host => {
+                self.online_room = None;
+                self.pick_link(role)
+            }
+            LinkRow::Join => match self.typed_address() {
+                Some(room) => {
+                    self.join_password.clear();
+                    self.join_room(room);
+                }
+                None => self.list_rooms(),
+            },
         }
     }
 
-    /// The ROOMS panel, the lobby asked for the rooms open.
-    fn list_rooms(&mut self) {
-        self.online_rooms.clear();
+    /// The room at the address typed under ADVANCED, while it is shown: a host, and its port
+    /// after a colon, RetroArch's own when none is given.
+    fn typed_address(&self) -> Option<crate::netplay_lobby::Room> {
+        let typed = self.state.online_address.trim();
+        if !(self.going_online() && self.link_advanced) || typed.is_empty() {
+            return None;
+        }
+        let (host, port) = match typed.rsplit_once(':') {
+            Some((host, port)) if !host.contains(':') => (host, port.parse().ok()?),
+            _ => (typed, crate::netplay_lobby::NETPLAY_PORT),
+        };
+        Some(crate::netplay_lobby::Room {
+            username: typed.to_string(),
+            game_name: String::new(),
+            game_crc: 0,
+            core_name: crate::netplay::CORE_NAME.to_string(),
+            ip: host.to_string(),
+            port,
+            has_password: false,
+            mitm_ip: String::new(),
+            mitm_port: 0,
+            mitm_session: String::new(),
+            connectable: true,
+            country: String::new(),
+        })
+    }
+
+    /// The ROOMS panel holding `rooms`, as though they had been listed: for tests, which reach
+    /// no lobby.
+    #[doc(hidden)]
+    pub fn show_rooms(&mut self, rooms: Vec<crate::netplay_lobby::Room>) {
+        self.rooms_fetch = None;
         self.rooms_failed = false;
-        self.rooms_fetch = Some(crate::link_start::RoomsFetch::spawn(
-            crate::netplay_lobby::LOBBY,
-        ));
+        self.online_rooms = rooms;
         self.game_menu = Some(GameMenu::Rooms { lit: 0 });
     }
 
-    /// The rooms, once the lobby has listed them.
+    /// The ROOMS panel, the lobby or this network asked for the rooms open.
+    fn list_rooms(&mut self) {
+        self.online_rooms.clear();
+        self.rooms_failed = false;
+        self.rooms_fetch = Some(match self.going_lan() {
+            true => crate::link_start::RoomsFetch::spawn_lan(),
+            false => crate::link_start::RoomsFetch::spawn(crate::netplay_lobby::LOBBY),
+        });
+        self.game_menu = Some(GameMenu::Rooms { lit: 0 });
+    }
+
+    /// The rooms, once they have been listed: those playing the game in play first, then those
+    /// with no password.
     fn poll_rooms(&mut self) {
         let Some(fetch) = &self.rooms_fetch else {
             return;
@@ -3137,56 +3258,89 @@ impl App {
         if let Some(rooms) = fetch.poll() {
             self.rooms_fetch = None;
             match rooms {
-                Ok(rooms) => self.online_rooms = rooms,
+                Ok(mut rooms) => {
+                    let ours = self
+                        .seated()
+                        .map(crate::link_screen::short_game)
+                        .unwrap_or_default();
+                    rooms.sort_by_key(|r| {
+                        (
+                            crate::link_screen::short_game(&r.game_name) != ours,
+                            r.has_password,
+                        )
+                    });
+                    self.online_rooms = rooms
+                }
                 Err(()) => self.rooms_failed = true,
             }
         }
     }
 
-    /// The ROOMS panel's note: the lobby being asked, or why no room is listed.
-    pub(crate) fn rooms_status(&self) -> Option<&'static str> {
+    /// The ROOMS panel's note: the rooms being looked for, why none is listed, or that the lit
+    /// one has a password.
+    pub(crate) fn rooms_status(&self, lit: usize) -> Option<&'static str> {
+        let lan = self.going_lan();
         if self.rooms_fetch.is_some() {
-            Some("Finding rooms")
+            Some(match lan {
+                true => "Looking on this Wi-Fi",
+                false => "Finding rooms",
+            })
         } else if self.rooms_failed {
-            Some(LinkFail::Lobby.line())
+            Some(match lan {
+                true => "Could not look on this Wi-Fi",
+                false => LinkFail::Lobby.line(),
+            })
         } else if self.online_rooms.is_empty() {
-            Some("No rooms open right now")
+            Some(match lan {
+                true => "No rooms. Relay must be off",
+                false => "No rooms open right now",
+            })
+        } else if self.online_rooms.get(lit).is_some_and(|r| r.has_password) {
+            Some("Has a password: A asks for it")
         } else {
             None
         }
     }
 
-    /// What starts a link as `role`: online, through RetroArch's lobby, when the link screen
-    /// says so; else nearby, over the handhelds' own radio.
+    /// What starts a link as `role`: through RetroArch's netplay, online or on this network,
+    /// when the link screen says so; else nearby, over the handhelds' own radio.
     fn link_starter(&self, role: LinkRow) -> LinkStarter {
-        if !self.going_online() {
+        use crate::link_start::OnlineJob;
+        if !self.via_netplay() {
             return LinkStarter::spawn(role.role(), link_port());
         }
         let nick = self.online_name();
         let password = self.state.online_password.clone();
+        let cart = self.seated_cart();
+        let game = cart
+            .map(|c| c.stem.clone())
+            .or_else(|| self.seated().map(str::to_string))
+            .unwrap_or_default();
+        let rom = cart.map(|c| c.rom.clone());
         let job = match (role, self.online_room.clone()) {
-            (LinkRow::Join, Some(room)) => crate::link_start::OnlineJob::Join {
+            (LinkRow::Join, Some(room)) => OnlineJob::Join {
                 nick,
                 room,
+                password: self.join_password.clone(),
+            },
+            _ if self.going_lan() => OnlineJob::HostLan {
+                nick,
+                game,
+                crc: 0,
+                rom,
                 password,
             },
-            _ => {
-                let cart = self.seated_cart();
-                crate::link_start::OnlineJob::Host {
-                    nick,
-                    relay: crate::netplay_lobby::RELAYS
-                        .get(self.state.relay as usize)
-                        .unwrap_or(&crate::netplay_lobby::RELAYS[1])
-                        .to_string(),
-                    game: cart
-                        .map(|c| c.stem.clone())
-                        .or_else(|| self.seated().map(str::to_string))
-                        .unwrap_or_default(),
-                    crc: 0,
-                    rom: cart.map(|c| c.rom.clone()),
-                    password,
-                }
-            }
+            _ => OnlineJob::Host {
+                nick,
+                relay: crate::netplay_lobby::RELAYS
+                    .get(self.state.relay as usize)
+                    .unwrap_or(&crate::netplay_lobby::RELAYS[1])
+                    .to_string(),
+                game,
+                crc: 0,
+                rom,
+                password,
+            },
         };
         LinkStarter::spawn_online(job, crate::netplay_lobby::LOBBY)
     }
@@ -3340,6 +3494,14 @@ impl App {
                 self.link_transport = Some((client_id, ready.link));
             }
             Some(LinkProgress::Failed(LinkFail::Cancelled)) => self.game_menu = None,
+            Some(LinkProgress::Failed(LinkFail::Password))
+                if starting.client_id == LinkRow::Join.client_id()
+                    && self.pending_join.is_some() =>
+            {
+                let room = self.pending_join.clone().expect("the room");
+                self.game_menu = Some(GameMenu::Pick(LinkRow::Join));
+                self.ask_room_password(room, true);
+            }
             Some(LinkProgress::Failed(fail)) => {
                 let (role, worked) = self.working_role(starting.client_id);
                 self.game_menu = Some(GameMenu::Failed {

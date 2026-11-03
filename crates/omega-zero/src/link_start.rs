@@ -63,6 +63,8 @@ pub enum LinkFail {
     NoWifi,
     /// Online: the room has a password, and the one given is not it.
     Password,
+    /// On the network: another app holds RetroArch's port, so no room can be opened on it.
+    Port,
 }
 
 impl LinkStep {
@@ -95,7 +97,7 @@ impl LinkStep {
 }
 
 impl LinkFail {
-    pub const SHOWN: [LinkFail; 8] = [
+    pub const SHOWN: [LinkFail; 9] = [
         LinkFail::Radio,
         LinkFail::NobodyCame,
         LinkFail::PeerVanished,
@@ -104,6 +106,7 @@ impl LinkFail {
         LinkFail::OtherCore,
         LinkFail::NoWifi,
         LinkFail::Password,
+        LinkFail::Port,
     ];
 
     pub fn shown(self) -> Option<usize> {
@@ -121,6 +124,7 @@ impl LinkFail {
             LinkFail::OtherCore => "The room runs another emulator",
             LinkFail::NoWifi => "Join a Wi-Fi network first",
             LinkFail::Password => "Wrong or missing password",
+            LinkFail::Port => "Another app holds port 55435",
         }
     }
 }
@@ -282,6 +286,15 @@ pub enum OnlineJob {
         room: Room,
         password: String,
     },
+    /// Open a room on this network, as RetroArch with its relay off opens one, and wait for a
+    /// player: no lobby, and RetroArch's own port.
+    HostLan {
+        nick: String,
+        game: String,
+        crc: u32,
+        rom: Option<std::path::PathBuf>,
+        password: String,
+    },
     /// Join the room at an address, as RetroArch on the same network hosts one.
     JoinAt {
         nick: String,
@@ -370,6 +383,25 @@ impl LinkStarter {
                             country: String::new(),
                         };
                         host_online(&tx, &flag, &lobby, room)
+                    }
+                    OnlineJob::HostLan {
+                        nick,
+                        game,
+                        crc,
+                        rom,
+                        password,
+                    } => {
+                        let crc = rom
+                            .and_then(|rom| std::fs::read(rom).ok())
+                            .map_or(crc, |bytes| crate::label_sync::crc32(&bytes));
+                        let ad = crate::netplay_lan::Ad {
+                            nick,
+                            game,
+                            crc,
+                            port: netplay_lobby::NETPLAY_PORT,
+                            password: !password.is_empty(),
+                        };
+                        host_lan(&tx, &flag, ad, &password)
                     }
                     OnlineJob::Join {
                         nick,
@@ -509,6 +541,55 @@ fn host_online(
     Err(LinkFail::NobodyCame)
 }
 
+/// Opens a room on this network on RetroArch's port, answers whoever looks for rooms there,
+/// and waits for a player until [`ROOM_OPEN`] has passed or the link is cancelled.
+fn host_lan(
+    tx: &Sender<LinkProgress>,
+    cancel: &Cancel,
+    ad: crate::netplay_lan::Ad,
+    password: &str,
+) -> Result<Connected, LinkFail> {
+    let port = ad.port;
+    let held = |e: std::io::Error| {
+        eprintln!("omega-zero: netplay: port {port}: {e}");
+        LinkFail::Port
+    };
+    let listener =
+        std::net::TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, port)).map_err(held)?;
+    listener.set_nonblocking(true).map_err(held)?;
+    let nick = ad.nick.clone();
+    let crc = ad.crc;
+    let _ad = crate::netplay_lan::Advertiser::start(ad).map_err(held)?;
+    let _ = tx.send(LinkProgress::At(LinkStep::Waiting));
+    let until = Instant::now() + ROOM_OPEN;
+    while Instant::now() < until {
+        if cancel.is_cancelled() {
+            return Err(LinkFail::Cancelled);
+        }
+        let player = match listener.accept() {
+            Ok((player, _)) => player,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(100));
+                continue;
+            }
+            Err(e) => {
+                eprintln!("omega-zero: netplay: the room on the network: {e}");
+                return Err(LinkFail::PeerVanished);
+            }
+        };
+        let _ = player.set_nonblocking(false);
+        match netplay::host_with(player, &nick, password, crc, ANSWER) {
+            Ok(joined) => {
+                eprintln!("omega-zero: netplay: {} joined on the network", joined.peer);
+                return Ok(ready(joined, None, None));
+            }
+            Err(NetplayFail::Probe) => {}
+            Err(e) => eprintln!("omega-zero: netplay: a player could not join: {e}"),
+        }
+    }
+    Err(LinkFail::NobodyCame)
+}
+
 /// The joinable rooms in the lobby at `lobby`, fetched on a thread of their own.
 pub struct RoomsFetch {
     rx: Receiver<Result<Vec<Room>, ()>>,
@@ -524,6 +605,21 @@ impl RoomsFetch {
                 let rooms = netplay_lobby::rooms(&lobby)
                     .map(|all| all.into_iter().filter(Room::joinable).collect())
                     .map_err(|e| eprintln!("omega-zero: netplay: the lobby's rooms: {e}"));
+                let _ = tx.send(rooms);
+            });
+        RoomsFetch { rx }
+    }
+
+    /// The joinable rooms on this network, as RetroArch with its relay off and handhelds
+    /// hosting on it answer.
+    pub fn spawn_lan() -> RoomsFetch {
+        let (tx, rx) = channel();
+        let _ = std::thread::Builder::new()
+            .name("omega-lan-rooms".into())
+            .spawn(move || {
+                let rooms = crate::netplay_lan::discover(Duration::from_millis(1500))
+                    .map(|all| all.into_iter().filter(Room::joinable).collect())
+                    .map_err(|e| eprintln!("omega-zero: netplay: the network's rooms: {e}"));
                 let _ = tx.send(rooms);
             });
         RoomsFetch { rx }

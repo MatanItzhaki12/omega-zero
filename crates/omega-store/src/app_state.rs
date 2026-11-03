@@ -92,8 +92,11 @@ pub struct AppState {
     pub online_name: String,
     /// The relay an online room is opened through, by its place in RetroArch's list.
     pub relay: u8,
-    /// The password an online room is hosted with and joined with; none when empty.
+    /// The password an online room is hosted with; none when empty.
     pub online_password: String,
+    /// The address an online room is joined at, under the link screen's ADVANCED: a host, and a
+    /// port after a colon.
+    pub online_address: String,
 }
 
 impl Default for AppState {
@@ -140,6 +143,7 @@ impl Default for AppState {
             // Madrid's, the nearest of RetroArch's relays to most of Europe and the Middle East
             relay: 1,
             online_password: String::new(),
+            online_address: String::new(),
         }
     }
 }
@@ -158,7 +162,7 @@ pub fn read_app_state(root: &Path) -> AppState {
 
 pub fn write_app_state(root: &Path, s: &AppState) -> std::io::Result<()> {
     let text = format!(
-        "cart={}\ncart_platform={}\nbrightness={}\nblue_light={}\nvolume={}\nvolume_hp={}\nmuted={}\nmuted_hp={}\nclock_set={}\nutc_offset_min={}\nrumble={}\nff_speed={}\nff_sound={}\ncolour_correction={}\nscreen_filter={}\nwifi={}\nssh={}\nbluetooth={}\nbackdrop={}\nbackdrop_moving={}\nbackdrop_colour={}\nfont={}\nauto_load={}\neject_save={}\nrewind={}\nturbo={}\nblending={}\ngb_palette={}\nshow_recents={}\nshow_titles={}\nclock_24h={}\nlid_off_min={}\ncheevos={}\ncheevos_hardcore={}\nboot_animation={}\nholo={}\nrun_ahead={}\nonline_name={}\nrelay={}\nonline_password={}\n",
+        "cart={}\ncart_platform={}\nbrightness={}\nblue_light={}\nvolume={}\nvolume_hp={}\nmuted={}\nmuted_hp={}\nclock_set={}\nutc_offset_min={}\nrumble={}\nff_speed={}\nff_sound={}\ncolour_correction={}\nscreen_filter={}\nwifi={}\nssh={}\nbluetooth={}\nbackdrop={}\nbackdrop_moving={}\nbackdrop_colour={}\nfont={}\nauto_load={}\neject_save={}\nrewind={}\nturbo={}\nblending={}\ngb_palette={}\nshow_recents={}\nshow_titles={}\nclock_24h={}\nlid_off_min={}\ncheevos={}\ncheevos_hardcore={}\nboot_animation={}\nholo={}\nrun_ahead={}\nonline_name={}\nrelay={}\nonline_password={}\nonline_address={}\n",
         s.cart.as_deref().unwrap_or(""),
         s.cart_platform.map_or(String::new(), platform_key),
         s.brightness,
@@ -199,6 +203,7 @@ pub fn write_app_state(root: &Path, s: &AppState) -> std::io::Result<()> {
         online_name(&s.online_name),
         s.relay,
         online_password(&s.online_password),
+        online_password(&s.online_address),
     );
     atomic_write(&state_path(root), text.as_bytes())
 }
@@ -244,6 +249,7 @@ fn parse(text: &str) -> Option<AppState> {
     let mut online_name_read = None;
     let mut relay = None;
     let mut online_password_read = None;
+    let mut online_address_read = None;
     for line in text.lines().filter(|l| !l.is_empty()) {
         let Some((key, value)) = line.split_once('=') else {
             continue;
@@ -288,6 +294,7 @@ fn parse(text: &str) -> Option<AppState> {
             "online_name" => online_name_read = Some(online_name(value)),
             "relay" => relay = value.trim().parse().ok(),
             "online_password" => online_password_read = Some(online_password(value)),
+            "online_address" => online_address_read = Some(online_password(value)),
             "lid_off_min" => {
                 lid_off_min = value.parse().ok().filter(|m| LID_OFF_MINUTES.contains(m))
             }
@@ -337,6 +344,7 @@ fn parse(text: &str) -> Option<AppState> {
         online_name: online_name_read.unwrap_or(fallback.online_name),
         relay: relay.unwrap_or(fallback.relay),
         online_password: online_password_read.unwrap_or(fallback.online_password),
+        online_address: online_address_read.unwrap_or(fallback.online_address),
     })
 }
 
