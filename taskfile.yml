@@ -505,7 +505,8 @@ tasks:
           rm -f vendor/ppsspp-src.tar.xz vendor/ppsspp-src.sha
           curl -fsSL -o vendor/ppsspp-src.tar.xz \
             "https://github.com/hrydgard/ppsspp/releases/download/v{{.PPSSPP_VERSION}}/ppsspp-{{.PPSSPP_VERSION}}.tar.xz"
-          tar -tJf vendor/ppsspp-src.tar.xz | grep -q "^ppsspp-{{.PPSSPP_VERSION}}/CMakeLists.txt$"
+          # grep reads the whole list: with -q it stops at the match, and tar, cut off, fails the pipe
+          tar -tJf vendor/ppsspp-src.tar.xz | grep "^ppsspp-{{.PPSSPP_VERSION}}/CMakeLists.txt$" >/dev/null
           echo "{{.PPSSPP_VERSION}}" > vendor/ppsspp-src.sha
         fi
       - task: device:sh
