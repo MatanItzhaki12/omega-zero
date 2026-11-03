@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## omega-zero 2.4.3
+
 - LAN play with RetroArch: Local has WITH, omega-zero or RetroArch. With RetroArch, a GBA game
   on gpSP links over the cable with RetroArch on the same Wi-Fi through its netplay, straight,
   with no relay or lobby: HOST opens a room RetroArch finds in its own room list, and JOIN lists
