@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Omega Zero</title>
+<title>Omega Zero Matan</title>
 <!--
   The omega-zero title logo, drawn as SVG by the script below.
 
@@ -31,7 +31,7 @@
 </style>
 </head>
 <body>
-<svg id="logo" viewBox="205 10 700 430" role="img" aria-label="Omega Zero"></svg>
+<svg id="logo" viewBox="205 10 700 430" role="img" aria-label="Omega Zero Matan"></svg>
 <script>
 // Letter shapes traced from the Mega Man Zero 2 artwork. Each glyph is a list of
 // rings (outer contour plus any counters), with x measured from its left edge.
@@ -373,18 +373,21 @@ for (const [x, y, size] of [[corner[0] - 3, corner[1] + 3, 1.2], [729 + at(6.5),
   el('ellipse', { rx: 16, ry: 2.2, fill: ray, transform: 'rotate(90) scale(.9 1)' }, glint);
 }
 
-// the TM tag hangs under the plate, above the light so the glow doesn't wash it out
+// the MATAN tag hangs under the plate, in the middle of the title, above the light so the glow
+// doesn't wash it out: this fork's name where Omega Zero's TM was
 const tm = el('g', {}, svg);
-const tmX = 508.5 + at(3.5);                              // under G and A
+const tmX = titleCx;
 const tmTop = plateEdgeAt(tmX, Math.max);
-const tmBox = { x: f(tmX - 19.5), y: f(tmTop), width: 39, height: f(317 - tmTop), rx: 2 };
+const TAG_W = SCREEN && SCREEN.p > 1 ? Math.max(88, 32 / SCREEN.k) : 88;
+const tmBox = { x: f(tmX - TAG_W / 2), y: f(tmTop), width: f(TAG_W), height: f(319 - tmTop), rx: 2 };
 el('rect', { ...tmBox, fill: NAVY }, tm);
 silhouette('rect', tmBox);
 if (SCREEN && SCREEN.p > 1) {
-  // too few pixels for a typeface: TM spelled out in pixels, a 3x5 T and a 5x5 M
-  const GLYPH = ['###.#...#', '.#..##.##', '.#..#.#.#', '.#..#...#', '.#..#...#'];
-  const [cx, top] = toPixel([tmX, tmTop]), bottom = toPixel([tmX, 317])[1];
-  const X = Math.round(cx - 4.5), Y = Math.round((top + bottom) / 2 - 2.5), u = 1 / SCREEN.k;
+  // too few pixels for a typeface: MATAN spelled out in pixels, five rows high
+  const GLYPH = ['#...#..##..###..##..#..#', '##.##.#..#..#..#..#.##.#', '#.#.#.####..#..####.#.##',
+                 '#...#.#..#..#..#..#.#..#', '#...#.#..#..#..#..#.#..#'];
+  const [cx, top] = toPixel([tmX, tmTop]), bottom = toPixel([tmX, 319])[1];
+  const X = Math.round(cx - GLYPH[0].length / 2), Y = Math.round((top + bottom) / 2 - 2.5), u = 1 / SCREEN.k;
   GLYPH.forEach((row, j) => [...row].forEach((c, i) => {
     if (c !== '#') return;
     const [x, y] = fromPixel([X + i, Y + j]);
@@ -392,7 +395,7 @@ if (SCREEN && SCREEN.p > 1) {
   }));
 } else {
   el('text', { x: f(tmX), y: 312.5, 'text-anchor': 'middle', fill: '#fff', 'font-family': 'Arial, Helvetica, sans-serif',
-    'font-weight': 700, 'font-size': 19, 'letter-spacing': -0.5 }, tm).textContent = 'TM';
+    'font-weight': 700, 'font-size': 19, 'letter-spacing': 1 }, tm).textContent = 'MATAN';
 }
 </script>
 </body>

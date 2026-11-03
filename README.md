@@ -1,21 +1,22 @@
-<h1 align="center"><img src="assets/logo/omega-zero-logo@2x.png" width="420" alt="omega-zero"></h1>
+<h1 align="center"><img src="assets/logo/omega-zero-logo@2x.png" width="420" alt="omega-zero-matan"></h1>
 
-<p align="center">A Game Boy-centric frontend for Anbernic H700 handhelds running
+<p align="center"><b>omega-zero-matan</b>, a fork of <a href="https://github.com/oauramos/omega-zero">Omega
+Zero</a>: a Game Boy-centric frontend for Anbernic H700 handhelds running
 <a href="https://github.com/pvaibhav/BaseOS">BaseOS</a>. It plays GBA, GBC and GB games, and SNES,
 PlayStation and PSP games too, on a shelf of cartridges, discs and UMDs that go down into the
 handheld when you play them.</p>
 
 <p align="center">
-<a href="https://oauramos.github.io/omega-zero/"><b>Site</b></a> ·
-<a href="https://github.com/oauramos/omega-zero/releases/latest"><b>Download</b></a> ·
-<a href="https://github.com/oauramos/omega-zero/wiki"><b>Wiki</b></a> ·
+<a href="https://github.com/MatanItzhaki12/omega-zero-matan/releases/latest"><b>Download</b></a> ·
+<a href="https://oauramos.github.io/omega-zero/"><b>Omega Zero's site</b></a> ·
+<a href="https://github.com/oauramos/omega-zero/wiki"><b>Omega Zero's wiki</b></a> ·
 <a href="CHANGELOG.md"><b>Changelog</b></a> ·
 <a href="README-FORK.md"><b>Fork changes</b></a>
 </p>
 
 ## About this fork
 
-This fork of omega-zero 1.2.0 brings back [Slot](https://github.com/BrandonKowalski/slot)'s
+omega-zero-matan forks Omega Zero 1.2.0 to bring back [Slot](https://github.com/BrandonKowalski/slot)'s
 controls and conveniences and adds RetroAchievements, drawn in omega-zero's own style:
 
 - **Slot's buttons**: MENU opens Settings on the shelf and the in-game menu in a game, START
@@ -63,8 +64,8 @@ for its panel.
 | RG CubeXX | 720x720 | Experimental |
 | RG28XX | 480x640, turned | Experimental |
 
-Own an untested one? A [device report](https://github.com/oauramos/omega-zero/wiki/Device-Reports)
-is the most useful thing you can send.
+Own an untested one? Omega Zero's [device reports](https://github.com/oauramos/omega-zero/wiki/Device-Reports) cover the same
+handhelds.
 
 <img src="site/media/readme/highlights.png" width="760" alt="">
 
@@ -111,7 +112,7 @@ is the most useful thing you can send.
 
 <p align="center">
 <a href="https://oauramos.github.io/omega-zero/"><img src="site/media/loops/lid.webp" width="640" alt="An RG35XX SP drawn in 3D, its lid open on the shelf of carts, Emerald in the middle"></a>
-<br><sub>The RG35XX SP in 3D, drawn the way a PlayStation drew it, with omega-zero's own screens on it: the loops play on the <a href="https://oauramos.github.io/omega-zero/">site</a></sub>
+<br><sub>The RG35XX SP in 3D, drawn the way a PlayStation drew it, with Omega Zero's own screens on it: the loops play on Omega Zero's <a href="https://oauramos.github.io/omega-zero/">site</a></sub>
 </p>
 
 <p align="center">
@@ -138,7 +139,7 @@ is the most useful thing you can send.
 
 1. Write the [BaseOS image](https://github.com/pvaibhav/BaseOS/releases/latest) for your model to a
    microSD card, put it in **SD1** and boot once.
-2. Copy the contents of the [latest release](https://github.com/oauramos/omega-zero/releases/latest)
+2. Copy the contents of the [latest release](https://github.com/MatanItzhaki12/omega-zero-matan/releases/latest)
    to the root of that card.
 3. Put your games in `Games/GBA`, `Games/GB`, `Games/GBC`, `Games/SNES`, `Games/PS1` and
    `Games/PSP`. A PlayStation game is a `.cue` with its `.bin`, a `.chd`, a `.pbp` or an `.m3u`;
@@ -155,7 +156,9 @@ in the [wiki](https://github.com/oauramos/omega-zero/wiki).
 
 ## Credits and licence
 
-omega-zero is made by **Otávio ([@oauramos](https://github.com/oauramos))**.
+omega-zero-matan is made by **Matan ([@MatanItzhaki12](https://github.com/MatanItzhaki12))**, as a
+fork of [Omega Zero](https://github.com/oauramos/omega-zero), made by **Otávio
+([@oauramos](https://github.com/oauramos))**: almost all of it is his work.
 
 - Based on [slot](https://github.com/BrandonKowalski/slot) by
   [Brandon T. Kowalski](https://github.com/BrandonKowalski) (GPL-3.0). The code that hosts the

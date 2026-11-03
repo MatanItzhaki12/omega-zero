@@ -160,9 +160,9 @@ fn the_terminal_tells_the_handheld_as_x5s_told_its_system() {
         "a blank line between X5's groups"
     );
     let text = |row| line(&a, row).unwrap();
-    assert_eq!(text(0), "OMEGA ZERO HANDHELD SYSTEM");
+    assert_eq!(text(0), "OMEGA ZERO MATAN HANDHELD");
     assert_eq!(text(1), "Model RG35XX SP");
-    assert_eq!(text(3), "Copyright (c) 2026 OAURAMOS");
+    assert_eq!(text(3), "(c) 2026 OAURAMOS & MATAN");
     assert_eq!(text(7), "real  mem = 1024 MB");
     assert_eq!(text(8), "avail mem =  872 MB");
     assert_eq!(text(10), "cpu     : H700 1.5GHz x4");

@@ -199,7 +199,7 @@ fn ask(base: &str, path: &str, body: Option<String>) -> std::io::Result<(u16, St
         "-m",
         ANSWER_SECS,
         "-A",
-        "omega-zero",
+        "omega-zero-matan",
         "-w",
         "\n%{http_code}",
     ];

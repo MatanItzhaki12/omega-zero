@@ -4,7 +4,7 @@
   link or button is the page's own, put inside it, so it keeps its text, its focus and what it
   does; the pill is drawn behind it and it covers the whole pill.
 
-    <omega-button><a href="https://github.com/oauramos/omega-zero/wiki">WIKI</a></omega-button>
+    <omega-button><a href="https://github.com/MatanItzhaki12/omega-zero-matan">SOURCE</a></omega-button>
     <omega-button primary><a href="…/releases/latest">DOWNLOAD</a></omega-button>
     <omega-button><button type="button">COPY</button></omega-button>
 

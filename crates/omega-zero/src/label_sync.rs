@@ -20,7 +20,7 @@ use omega_store::{ps1, Cart, Platform, Region};
 use crate::json::Json;
 
 const API: &str = "https://api.screenscraper.fr/api2";
-pub const SOFTNAME: &str = "omega-zero";
+pub const SOFTNAME: &str = "omega-zero-matan";
 pub const ACCOUNT_FILE: &str = "Config/screenscraper.conf";
 
 /// The widest label scan worth fetching for `platform`: half as wide again as its widest face's

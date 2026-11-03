@@ -22,10 +22,10 @@ const HEADER: usize = 54;
 fn lines() -> Vec<(u32, String)> {
     let version = env!("CARGO_PKG_VERSION");
     [
-        (0, format!("OmegaZero BIOS v{version},")),
+        (0, format!("OZ-Matan BIOS v{version},")),
         (1, "An Anbernic Ally".into()),
         (2, "Copyright (C) 2026,".into()),
-        (3, "oauramos Software Inc.".into()),
+        (3, "Matan Software Inc.".into()),
         (5, "ANBERNIC H700 Rev Beta".into()),
         (7, "H700 x4 CPU at 1.5GHz".into()),
         (8, "Memory Test : 1048576K OK".into()),

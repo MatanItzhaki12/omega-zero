@@ -124,12 +124,12 @@ fn the_rows_say_the_version_the_build_the_author_the_handheld_and_its_battery() 
         [
             ("VERSION", "0.0.2".to_string()),
             ("BUILD", "68CDBC4".to_string()),
-            ("AUTHOR", "@OAURAMOS".to_string()),
+            ("AUTHOR", "@MATANITZHAKI12".to_string()),
             ("HANDHELD", "RG35XX SP".to_string()),
             ("BATTERY", "86% CHARGING".to_string()),
         ]
     );
-    assert_eq!(AUTHOR, "@OAURAMOS");
+    assert_eq!(AUTHOR, "@MATANITZHAKI12");
 
     // a build with changes not committed is marked, and a handheld BaseOS does not name, or a
     // battery that says nothing, is said to be unknown rather than left blank
@@ -165,7 +165,8 @@ fn every_credit_is_kept_and_slot_is_not_named() {
         "gpSP (GPL-2.0)",
         "Snes9x (no commercial use)",
         "Mednafen's\nSupafaust",
-        "PCSX-ReARMed (both GPL-2.0)",
+        "PCSX-ReARMed, PPSSPP (GPL-2.0)",
+        "Omega Zero by @oauramos",
         "BaseOS by pvaibhav",
         "Pixel Code by Qwerasd",
         "GigaHerz's LCD3x",
@@ -183,7 +184,7 @@ fn every_credit_is_kept_and_slot_is_not_named() {
         !all.contains("slot"),
         "slot is named on the handheld, which only the repository does: {all}"
     );
-    assert_eq!((TITLE, CREDITS_TITLE), ("OMEGA-ZERO", "CREDITS"));
+    assert_eq!((TITLE, CREDITS_TITLE), ("OMEGA-ZERO-MATAN", "CREDITS"));
 }
 
 /// Every line of the credits is whole in its well, on this canvas, under the rows: none is cut

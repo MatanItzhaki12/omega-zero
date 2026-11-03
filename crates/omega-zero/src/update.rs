@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use crate::json::Json;
 
 /// The repository whose releases omega-zero updates from.
-pub const REPO: &str = "MatanItzhaki12/omega-zero";
+pub const REPO: &str = "MatanItzhaki12/omega-zero-matan";
 
 /// The release's omega-zero for the handheld, and its SHA-256 as `sha256sum` writes it.
 pub const ASSET: &str = "omega-zero-aarch64";
@@ -74,7 +74,7 @@ impl Update {
     pub fn note(&self) -> String {
         match self {
             Update::Idle | Update::Latest | Update::Failed(_) => {
-                format!("A checks for a newer omega-zero than v{VERSION}")
+                format!("A checks for a newer omega-zero-matan than v{VERSION}")
             }
             Update::Checking => "Asking GitHub for the latest release".to_string(),
             Update::Available { version, .. } => format!("A downloads and installs v{version}"),
@@ -339,7 +339,7 @@ fn fetch(url: &str) -> Fetched {
             "-m",
             "300",
             "-A",
-            "omega-zero",
+            "omega-zero-matan",
             "-w",
             "\n%{http_code}",
             url,

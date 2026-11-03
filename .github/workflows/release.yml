@@ -94,11 +94,11 @@ jobs:
           rm -f "$reply"
           status=0
           # the softname label_sync.rs sends
-          code="$(curl -s -m 30 --retry 2 -A omega-zero -o "$reply" -w '%{http_code}' -G \
+          code="$(curl -s -m 30 --retry 2 -A omega-zero-matan -o "$reply" -w '%{http_code}' -G \
             https://api.screenscraper.fr/api2/ssinfraInfos.php \
             --data-urlencode "devid=$OMEGA_SS_DEVID" \
             --data-urlencode "devpassword=$OMEGA_SS_DEVPASSWORD" \
-            -d softname=omega-zero -d output=json)" || status=$?
+            -d softname=omega-zero-matan -d output=json)" || status=$?
           if [ "$code" = 403 ] || grep -qs 'Erreur de login' "$reply"; then
             echo "::error::ScreenScraper refused OMEGA_SS_DEVID and OMEGA_SS_DEVPASSWORD"
             exit 1
@@ -138,7 +138,7 @@ jobs:
         # after the release's tag: an artifact's name takes no slashes
         env:
           TAG: ${{ needs.version.outputs.tag }}
-        run: echo "TREE=omega-zero-$(printf %s "$TAG" | tr / -)" >> "$GITHUB_ENV"
+        run: echo "TREE=omega-zero-matan-$(printf %s "$TAG" | tr / -)" >> "$GITHUB_ENV"
 
       - name: Build the tree
         env:
@@ -249,15 +249,15 @@ jobs:
         run: |
           set -eu
           cat > notes.md <<NOTES
-          For Anbernic H700 handhelds running [BaseOS](https://github.com/pvaibhav/BaseOS): made for the RG35XX SP, and also run on the RG SP. Other BaseOS devices are untested; see the [wiki](https://github.com/oauramos/omega-zero/wiki).
+          omega-zero-matan, a fork of [Omega Zero](https://github.com/oauramos/omega-zero) by @oauramos, for Anbernic H700 handhelds running [BaseOS](https://github.com/pvaibhav/BaseOS): made for the RG35XX SP, and also run on the RG SP. Other BaseOS devices are untested.
 
-          Unzip and copy the contents of \`omega-zero-${TAG}/\` to the root of the card omega-zero runs from (SD1 on its own, or SD2 beside it); the [wiki](https://github.com/oauramos/omega-zero/wiki/Installing) has the steps. See the [changelog](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md).
+          Unzip and copy the contents of \`omega-zero-matan-${TAG}/\` to the root of the card omega-zero-matan runs from (SD1 on its own, or SD2 beside it); Omega Zero's [wiki](https://github.com/oauramos/omega-zero/wiki/Installing) has the steps, which are the same. See the [changelog](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md).
 
-          Emulation by mGBA (MPL-2.0) and gpSP (GPL-2.0) for the Game Boys, Snes9x (free for non-commercial use only) and Supafaust (Mednafen's snes_faust, GPL-2.0) for the SNES, and PCSX ReARMed (GPL-2.0) for the PlayStation. Their licences, patches and source (mGBA's aside) are in \`System/licenses/\`. omega-zero is free software under the GPL-3.0-or-later; its credits are in the README.
+          Emulation by mGBA (MPL-2.0) and gpSP (GPL-2.0) for the Game Boys, Snes9x (free for non-commercial use only) and Supafaust (Mednafen's snes_faust, GPL-2.0) for the SNES, PCSX ReARMed (GPL-2.0) for the PlayStation and PPSSPP (GPL-2.0) for the PSP. Their licences, patches and source (mGBA's aside) are in \`System/licenses/\`. omega-zero-matan is free software under the GPL-3.0-or-later; its credits are in the README.
           NOTES
           cat >> notes.md <<NOTES
 
-          Already on omega-zero? **Settings > Update** fetches this release's omega-zero on the console itself (\`omega-zero-aarch64\`, checked against \`omega-zero-aarch64.sha256\`). The cores and the card's scripts only change with the zip.
+          Already on omega-zero-matan? **Settings > Update** fetches this release's omega-zero-matan on the console itself (\`omega-zero-aarch64\`, checked against \`omega-zero-aarch64.sha256\`). The cores and the card's scripts only change with the zip.
           NOTES
           # a tag that is not there yet is made at the commit this run built
           gh release create "$TAG" "$ZIP" omega-zero-aarch64 omega-zero-aarch64.sha256 \

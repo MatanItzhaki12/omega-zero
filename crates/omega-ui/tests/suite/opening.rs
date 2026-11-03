@@ -17,8 +17,8 @@ fn inked(face: &UndoFace, col: u32, row: u32) -> bool {
 #[test]
 fn a_line_is_a_cell_a_letter_and_the_face_tall() {
     assert_eq!((OPENING_ADVANCE, OPENING_PITCH, OPENING_RISE), (18, 18, 2));
-    let face = opening_line("OMEGA ZERO HANDHELD SYSTEM");
-    assert_eq!((face.w, face.h), (26 * 18 + 1, 20));
+    let face = opening_line("OMEGA ZERO MATAN HANDHELD");
+    assert_eq!((face.w, face.h), (25 * 18 + 1, 20));
     assert_eq!(face.rgba.len(), (face.w * face.h * 4) as usize);
     let blank = opening_line("   ");
     assert!(blank.rgba.iter().all(|&b| b == 0), "a space inks nothing");

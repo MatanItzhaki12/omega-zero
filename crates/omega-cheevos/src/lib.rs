@@ -220,7 +220,7 @@ pub fn start(hardcore: bool, version: &str) -> bool {
         let n = unsafe { oc_user_agent(clause.as_mut_ptr() as *mut c_char, clause.len()) };
         clause.truncate(n.min(clause.len()));
         *lock(&AGENT) = format!(
-            "omega-zero/{version} {}",
+            "omega-zero-matan/{version} {}",
             String::from_utf8_lossy(&clause).trim_end_matches('\0')
         );
         STARTED.store(true, Ordering::Release);
@@ -780,7 +780,10 @@ mod tests {
     fn the_client_is_made_and_says_what_it_is() {
         assert!(start(false, "9.9.9"));
         let agent = lock(&AGENT).clone();
-        assert!(agent.starts_with("omega-zero/9.9.9 rcheevos/"), "{agent}");
+        assert!(
+            agent.starts_with("omega-zero-matan/9.9.9 rcheevos/"),
+            "{agent}"
+        );
         assert_eq!(login(), Login::Out);
         assert_eq!(summary(), None);
     }

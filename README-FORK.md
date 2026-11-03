@@ -1,6 +1,6 @@
-# omega-zero, Slot edition: what this fork changes
+# omega-zero-matan: what this fork changes
 
-This fork of [omega-zero](https://github.com/oauramos/omega-zero) 1.2.0 brings back the parts of
+omega-zero-matan, this fork of [Omega Zero](https://github.com/oauramos/omega-zero) 1.2.0, brings back the parts of
 [Slot](https://github.com/BrandonKowalski/slot) that omega-zero left behind (its buttons, favorites,
 recents, in-game menu and settings) and adds RetroAchievements. Everything is drawn in omega-zero's
 own kit, so the new screens look like the rest of it. It is in daily use on an **Anbernic RG SP**.
