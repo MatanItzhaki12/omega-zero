@@ -243,14 +243,21 @@ pub fn core_options(
             put("pcsx_rearmed_memcard1", "libretro");
             put("pcsx_rearmed_memcard2", "none");
         }
-        // the H700 runs PSP games at their own 480x272, recompiled, skipping frames it has
-        // no time for, on the OpenGL ES context the frontend offers; Cross confirms, as on a PSP
-        // sold outside Japan. Names and values as PPSSPP 1.20's core declares them
+        // the H700 runs PSP games at their own 480x272, recompiled, on the OpenGL ES context the
+        // frontend offers; Cross confirms, as on a PSP sold outside Japan. Its frames are drawn
+        // one in two, as Knulli and muOS set PPSSPP up on the H700: auto frameskip, which skips
+        // only when behind, makes the sound crackle (PPSSPP's own docs), and reading frames
+        // back from the GPU and buffering more than one stall it. Names and values as PPSSPP
+        // 1.20's core declares them
         Core::Ppsspp => {
             put("ppsspp_backend", "opengl");
             put("ppsspp_cpu_core", "JIT");
             put("ppsspp_internal_resolution", "480x272");
-            put("ppsspp_auto_frameskip", "enabled");
+            put("ppsspp_auto_frameskip", "disabled");
+            put("ppsspp_frameskip", "1");
+            put("ppsspp_frameskiptype", "Number of frames");
+            put("ppsspp_skip_gpu_readbacks", "enabled");
+            put("ppsspp_inflight_frames", "Up to 1");
             put("ppsspp_fast_memory", "enabled");
             put("ppsspp_texture_scaling_level", "disabled");
             put("ppsspp_button_preference", "Cross");
@@ -358,7 +365,9 @@ mod tests {
             ("ppsspp_backend", "opengl"),
             ("ppsspp_cpu_core", "JIT"),
             ("ppsspp_internal_resolution", "480x272"),
-            ("ppsspp_auto_frameskip", "enabled"),
+            ("ppsspp_auto_frameskip", "disabled"),
+            ("ppsspp_frameskip", "1"),
+            ("ppsspp_skip_gpu_readbacks", "enabled"),
             ("ppsspp_button_preference", "Cross"),
         ] {
             assert!(
