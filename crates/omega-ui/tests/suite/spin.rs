@@ -76,6 +76,9 @@ fn a_shelf_that_has_just_stopped_eases_into_the_sway() {
     );
 }
 
+/// The cart picked turns as it comes to the middle to where its sway reaches on the side it came
+/// in from: from the right (▶), its right side to the back, a positive yaw; from the left (◀), its
+/// left. It stops floating while the shelf scrolls.
 #[test]
 fn the_sway_stops_while_the_shelf_scrolls_and_the_carts_lean_into_it() {
     let mut s = faced(5);
@@ -84,11 +87,21 @@ fn the_sway_stops_while_the_shelf_scrolls_and_the_carts_lean_into_it() {
     run(&mut s, 0.15);
     let p = s.pose();
     assert!(
-        p.yaw < -0.05,
-        "carts sliding left did not lean into it: {}",
+        p.yaw > 0.05,
+        "the cart coming in from the right did not turn its right side back: {}",
         p.yaw
     );
     assert_eq!(p.lift, 0.0, "the cart kept floating through the scroll");
+
+    let mut l = faced(5);
+    run(&mut l, 3.0);
+    l.left();
+    run(&mut l, 0.15);
+    assert!(
+        l.pose().yaw < -0.05,
+        "the cart coming in from the left did not turn its left side back: {}",
+        l.pose().yaw
+    );
 
     run(&mut s, 0.6);
     let spun: Vec<TexId> = row(&s)
@@ -425,6 +438,42 @@ fn the_super_famicom_cart_s_top_is_straight_with_its_corners_3_5_mm_round() {
             (d - r).abs() < 0.05,
             "the corner at {p:?} is {} mm from its middle, not 3.5",
             d / mm
+        );
+    }
+}
+
+/// From the press to the sway, the cart picked turns smoothly: it comes to rest at the sway's
+/// reach on the side it came in from, and the sway goes on from there with no jump, whichever
+/// side it came from and wherever the sway was when the press came.
+#[test]
+fn the_sway_goes_on_from_where_the_cart_came_in_turned() {
+    for (from_right, settled) in [(true, 3.0), (false, 3.0), (true, 1.3), (false, 2.2)] {
+        let mut s = faced(5);
+        run(&mut s, settled);
+        match from_right {
+            true => s.right(),
+            false => s.left(),
+        }
+        // the cart now picked, from where it stands beside the middle
+        let mut last = s.pose().yaw;
+        let mut turned_most = 0.0f32;
+        for frame in 0..(4.0 / DT) as usize {
+            s.update(DT);
+            let yaw = s.pose().yaw;
+            assert!(
+                (yaw - last).abs() < 0.05,
+                "the cart jumped {} at frame {frame} (from the right: {from_right})",
+                yaw - last
+            );
+            last = yaw;
+            turned_most = match from_right {
+                true => turned_most.max(yaw),
+                false => turned_most.min(yaw),
+            };
+        }
+        assert!(
+            turned_most.abs() > 0.3,
+            "it never turned to the sway's reach on its side: {turned_most}"
         );
     }
 }

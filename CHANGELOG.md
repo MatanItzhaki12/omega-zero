@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The cart picked on the shelf turns as it comes to the middle, to where its sway reaches on
+  the side it came in from (from the right, its right side to the back; from the left, its
+  left), eased over a third of a second, and its sway goes on from there rather than starting
+  again from the middle. It no longer leans the other way into the scroll first.
 - Save Backup looks for a network before it tries the NAS. With none, saves wait and nothing
   fails: Back Up Now says NO WI-FI, no failure toast shows, and it looks again every 5 seconds,
   copying as soon as the handheld has an address. While it waits, Wi-Fi, when it is switched on,

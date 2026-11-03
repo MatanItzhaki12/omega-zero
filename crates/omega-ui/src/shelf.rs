@@ -91,6 +91,9 @@ const BOB: f32 = 4.0;
 const BOB_S: f32 = 2.4;
 /// Both periods divide this, so the clock that drives them wraps here without a jump.
 const LOOP_S: f32 = 7.2;
+/// How long the cart picked takes to turn to the side it came in from: eased, so the turn
+/// starts and ends gently rather than as fast as the row slides.
+const ARRIVE_S: f32 = 0.35;
 /// How fast the sway comes in once the shelf stops, and goes once it moves, per second.
 const CALM_IN: f32 = 1.6;
 const CALM_OUT: f32 = 8.0;
@@ -131,6 +134,12 @@ pub struct Shelf {
     vel: f32,
     held: Option<(i32, Millis, usize)>,
     calm: f32,
+    /// The side the cart picked came in from, for its sway to start there: 1 from the right,
+    /// whose right side it turns to the back, -1 from the left, and 0 once the sway has taken
+    /// over, or while the cart is held still.
+    arrive: f32,
+    /// Seconds since the cart picked came in, for its turn to ease in over `ARRIVE_S`.
+    arrived: f32,
     age: f32,
     /// How far the discs have turned about their own middles, in radians.
     spin: f32,
@@ -159,6 +168,8 @@ impl Shelf {
             vel: 0.0,
             held: None,
             calm: 0.0,
+            arrive: 0.0,
+            arrived: 0.0,
             age: 0.0,
             spin: 0.0,
             still: false,
@@ -503,6 +514,8 @@ impl Shelf {
         }
         self.index = (self.index as i32 + by).rem_euclid(n as i32) as usize;
         self.ride += by as f32;
+        self.arrive = by.signum() as f32;
+        self.arrived = 0.0;
     }
 
     pub fn scroll_target(&self) -> f32 {
@@ -557,26 +570,42 @@ impl Shelf {
 
     /// How the selected cart is held right now, wherever it is in the row.
     pub fn pose(&self) -> Pose {
-        self.pose_at(self.scroll_target() - self.scroll)
+        self.pose_at(self.scroll_target() - self.scroll, true)
     }
 
     /// How a cart `offset` places from the middle of the row is held: the one in the middle
     /// sways and floats while the shelf stands still, and every cart leans into a scroll.
-    fn pose_at(&self, offset: f32) -> Pose {
-        let calm = ease(self.calm) * (1.0 - offset.abs().min(1.0));
+    ///
+    /// The cart picked turns as it comes to the middle, to where its sway reaches on the side it
+    /// came in from, and its sway starts there (`calm_down`): from the right, its right side to
+    /// the back; from the left, its left. It does not lean into the scroll as the others do, so it
+    /// turns one way, smoothly, from the scroll into the sway.
+    fn pose_at(&self, offset: f32, picked: bool) -> Pose {
+        let near = 1.0 - offset.abs().min(1.0);
+        let calm = ease(self.calm);
         let lean = match self.vel.abs() < LEAN_FROM {
             true => 0.0,
             false => (-self.vel * LEAN).clamp(-LEAN_MAX, LEAN_MAX),
         };
         let wave = |period: f32| (self.age * std::f32::consts::TAU / period).sin();
         let seen = |v: f32, least: f32| if v.abs() < least { 0.0 } else { v };
+        // the cart picked: turned to the sway's reach on the side it came in from, until the
+        // sway takes over; one leaving the middle only lets its sway go
+        let arrive = match picked {
+            true => self.arrive * ease((self.arrived / ARRIVE_S).min(1.0)),
+            false => 0.0,
+        };
+        let turned = (1.0 - calm) * arrive + calm * wave(SWAY_S);
+        // it turns into its sway rather than leaning into the scroll first, which would set it the other way
+        let lean = lean * (1.0 - self.arrive.abs() * picked as u8 as f32);
         Pose {
-            yaw: seen(SWAY * calm * wave(SWAY_S) + lean, STILL_YAW),
-            lift: seen(BOB * calm * wave(BOB_S), STILL_LIFT),
+            yaw: seen(SWAY * near * turned + lean, STILL_YAW),
+            lift: seen(BOB * calm * near * wave(BOB_S), STILL_LIFT),
         }
     }
 
     pub fn update(&mut self, dt: f32) {
+        self.arrived += dt;
         self.calm_down(dt);
         let accel = -2.0 * OMEGA * self.vel - OMEGA * OMEGA * (self.scroll - self.scroll_target());
         self.vel += accel * dt;
@@ -591,13 +620,25 @@ impl Shelf {
 
     fn calm_down(&mut self, dt: f32) {
         let moving = (self.scroll - self.scroll_target()).abs() > 0.01 || self.vel.abs() > 0.2;
+        if self.still {
+            // held still, it settles square, not turned to a side
+            self.arrive = 0.0;
+        }
         if moving || self.still {
             self.calm = (self.calm - CALM_OUT * dt).max(0.0);
         } else {
             if self.calm == 0.0 {
-                self.age = 0.0;
+                // the sway starts where the cart came in turned to: at its reach on that side
+                self.age = match self.arrive {
+                    a if a > 0.0 => SWAY_S / 4.0,
+                    a if a < 0.0 => SWAY_S * 3.0 / 4.0,
+                    _ => 0.0,
+                };
             }
             self.calm = (self.calm + CALM_IN * dt).min(1.0);
+            if self.calm == 1.0 {
+                self.arrive = 0.0;
+            }
         }
         self.age = (self.age + dt).rem_euclid(LOOP_S);
         self.spin = (self.spin + disc::SPIN * std::f32::consts::TAU * ease(self.calm) * dt)
@@ -655,7 +696,7 @@ impl Shelf {
             let face = self.faces.get(i).copied();
             // A cart still waiting for its face stands still: only a face can turn.
             let pose = match face {
-                Some(_) => self.pose_at(offset).toward_rest(recede),
+                Some(_) => self.pose_at(offset, i == self.index).toward_rest(recede),
                 None => Pose::REST,
             };
             let y = y - pose.lift;
