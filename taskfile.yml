@@ -9,6 +9,7 @@ vars:
   SNES9X_HOST: vendor/host/snes9x_libretro.{{.HOST_EXT}}
   SUPAFAUST_HOST: vendor/host/mednafen_supafaust_libretro.{{.HOST_EXT}}
   PCSX_HOST: vendor/host/pcsx_rearmed_libretro.{{.HOST_EXT}}
+  PPSSPP_HOST: vendor/host/ppsspp_libretro.{{.HOST_EXT}}
   # what file says of a library built for this computer
   HOST_LIB: '{{if eq OS "darwin"}}Mach-O{{else}}ELF{{end}}'
   MGBA_COMMIT: e31759b24e7a4e3899285ff720d7b573ac328ae7
@@ -16,8 +17,10 @@ vars:
   SNES9X_COMMIT: fae2fea08f74180759ef540ee94259213f503480
   SUPAFAUST_COMMIT: 642d1d1b6684aa7e306a02a89885f3f5456a5157
   PCSX_COMMIT: c8816799b50388e61cfe237fe2cdbb7d8175f20a
+  # a release of PPSSPP: its own source tarball carries the submodules a build needs
+  PPSSPP_VERSION: 1.20.4
   # The libretro names of the cores the device bundle ships, <name>_libretro.so in System/
-  DEVICE_CORES: mgba gpsp snes9x mednafen_supafaust pcsx_rearmed
+  DEVICE_CORES: mgba gpsp snes9x mednafen_supafaust pcsx_rearmed ppsspp
   # The cores built by cores/<name>/build.sh whose source archive ships in System/licenses/
   # beside them, as <name>:<libretro name>. gpSP's ships too, the way it always has
   SOURCE_CORES: snes9x:snes9x supafaust:mednafen_supafaust pcsx_rearmed:pcsx_rearmed
@@ -143,6 +146,7 @@ tasks:
       - task: core:snes9x:host
       - task: core:supafaust:host
       - task: core:pcsx:host
+      - task: core:ppsspp:host
 
   core:mgba:host:
     desc: Build mgba_libretro for this host from the pinned libretro/mgba commit and cores/mgba's patches
@@ -171,6 +175,12 @@ tasks:
     cmds:
       - task: core:buildbot
         vars: {LIB: pcsx_rearmed}
+
+  core:ppsspp:host:
+    desc: Fetch the host PPSSPP core from the libretro buildbot
+    cmds:
+      - task: core:buildbot
+        vars: {LIB: ppsspp}
 
   core:supafaust:host:
     desc: >-
@@ -477,9 +487,40 @@ tasks:
         vendor/pcsx_rearmed-src.tar.gz vendor/pcsx_rearmed-src.sha
       - task: core:pcsx
 
+  core:ppsspp:
+    desc: >-
+      Build the aarch64 linux PPSSPP core, for OpenGL ES with its ARM64 JIT, and its assets, from
+      the pinned release's source tarball, which ships beside it as its GPL-2.0 corresponding
+      source
+    status:
+      - test -f vendor/ppsspp_libretro.so
+      - test -d vendor/PPSSPP
+      - test "$(cat vendor/ppsspp-src.sha 2>/dev/null)" = "{{.PPSSPP_VERSION}}"
+      - test "$(cat vendor/ppsspp_libretro.so.meta 2>/dev/null)" = "$(sh cores/ppsspp/build.sh stamp {{.PPSSPP_VERSION}})"
+    cmds:
+      - |
+        set -euo pipefail
+        mkdir -p vendor
+        if [ "$(cat vendor/ppsspp-src.sha 2>/dev/null)" != "{{.PPSSPP_VERSION}}" ]; then
+          rm -f vendor/ppsspp-src.tar.xz vendor/ppsspp-src.sha
+          curl -fsSL -o vendor/ppsspp-src.tar.xz \
+            "https://github.com/hrydgard/ppsspp/releases/download/v{{.PPSSPP_VERSION}}/ppsspp-{{.PPSSPP_VERSION}}.tar.xz"
+          tar -tJf vendor/ppsspp-src.tar.xz | grep -q "^ppsspp-{{.PPSSPP_VERSION}}/CMakeLists.txt$"
+          echo "{{.PPSSPP_VERSION}}" > vendor/ppsspp-src.sha
+        fi
+      - task: device:sh
+        vars:
+          CMD: >-
+            sh cores/ppsspp/build.sh build {{.PPSSPP_VERSION}} vendor/ppsspp-src.tar.xz
+            target-device/ppsspp vendor/ppsspp_libretro.so
+      - file vendor/ppsspp_libretro.so | grep -q aarch64
+      - 'echo "built vendor/ppsspp_libretro.so and vendor/PPSSPP from PPSSPP {{.PPSSPP_VERSION}}"'
+
   cores:device:
-    desc: Build every core the device bundle ships, mGBA, gpSP, Snes9x, Supafaust and pcsx_rearmed
-    deps: [core:device, core:gpsp, core:snes9x, core:supafaust, core:pcsx]
+    desc: >-
+      Build every core the device bundle ships, mGBA, gpSP, Snes9x, Supafaust, pcsx_rearmed and
+      PPSSPP
+    deps: [core:device, core:gpsp, core:snes9x, core:supafaust, core:pcsx, core:ppsspp]
 
   device:sh:
     desc: >-
@@ -546,6 +587,18 @@ tasks:
           cp "vendor/${lib}_libretro.so" {{.OUT}}/System/
         done
       - cp -r licenses {{.OUT}}/System/licenses
+      # PPSSPP reads its fonts and the rest from the system folder's PPSSPP/, and its source,
+      # the release's own tarball, ships beside it
+      - cp -R vendor/PPSSPP {{.OUT}}/System/PPSSPP
+      - |
+        set -euo pipefail
+        v="$(cat vendor/ppsspp-src.sha)"
+        cp vendor/ppsspp-src.tar.xz "{{.OUT}}/System/licenses/ppsspp-${v}.tar.xz"
+        cp vendor/ppsspp_libretro.so.meta "{{.OUT}}/System/licenses/ppsspp-${v}.meta"
+        for p in cores/ppsspp/*.patch; do
+          [ -f "$p" ] || continue
+          cp "$p" "{{.OUT}}/System/licenses/ppsspp-$(basename "$p")"
+        done
       - |
         set -euo pipefail
         sha="$(cat vendor/gpsp-src.sha)"

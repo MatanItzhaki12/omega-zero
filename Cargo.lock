@@ -1727,6 +1727,7 @@ version = "2.5.3"
 name = "omega-store"
 version = "2.5.3"
 dependencies = [
+ "miniz_oxide",
  "tempfile",
  "unicode-normalization",
 ]

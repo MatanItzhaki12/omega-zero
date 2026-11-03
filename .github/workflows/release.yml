@@ -112,7 +112,8 @@ jobs:
           set -eu
           sed -i '/bullseye-security/d' /etc/apt/sources.list
           apt-get -o Acquire::Check-Valid-Until=false update
-          apt-get install -y --no-install-recommends zip cmake
+          # PPSSPP's build wants OpenGL ES's headers, though it links no GL of its own
+          apt-get install -y --no-install-recommends zip cmake libgles2-mesa-dev xz-utils
           # Task at a version named here, checked against the sum its release gives, rather
           # than whatever an install script fetches on the day
           curl -fsSL -o /tmp/task.tar.gz \
@@ -153,7 +154,7 @@ jobs:
           out="$TREE"
           file "$out/System/omega-zero" | grep -q aarch64
           # each core an aarch64 library a frontend can open: retro_init and retro_run exported
-          for lib in mgba gpsp snes9x mednafen_supafaust pcsx_rearmed; do
+          for lib in mgba gpsp snes9x mednafen_supafaust pcsx_rearmed ppsspp; do
             so="$out/System/${lib}_libretro.so"
             file "$so" | grep -q aarch64
             nm -D --defined-only "$so" | grep -qw retro_init
@@ -190,9 +191,14 @@ jobs:
             done
           done
           for licence in snes9x-non-commercial snes9x-snes_ntsc-LGPL-2.1 supafaust-GPL-2.0 \
-            pcsx_rearmed-GPL-2.0; do
+            pcsx_rearmed-GPL-2.0 ppsspp-GPL-2.0; do
             test -f "$out/System/licenses/$licence.txt"
           done
+          # PPSSPP's source, the release's tarball, and the assets it reads at its side
+          ppsspp_v="$(cat vendor/ppsspp-src.sha)"
+          test -f "$out/System/licenses/ppsspp-${ppsspp_v}.tar.xz"
+          test -f "$out/System/licenses/ppsspp-${ppsspp_v}.meta"
+          test -d "$out/System/PPSSPP"
 
       - name: Package
         id: package

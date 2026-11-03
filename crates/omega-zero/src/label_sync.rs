@@ -655,7 +655,8 @@ fn pick<'a>(
 /// is no scan.
 pub fn label_kinds(platform: Platform) -> &'static [&'static str] {
     match platform {
-        Platform::Ps1 => &["support-texture", "support-2D"],
+        // a UMD's label is scanned as a disc's face is, and drawn round it the same way
+        Platform::Ps1 | Platform::Psp => &["support-texture", "support-2D"],
         _ => &["support-texture"],
     }
 }

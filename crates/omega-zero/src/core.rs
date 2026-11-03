@@ -244,14 +244,15 @@ pub fn core_options(
             put("pcsx_rearmed_memcard2", "none");
         }
         // the H700 runs PSP games at their own 480x272, recompiled, skipping frames it has
-        // no time for; Cross confirms, as on a PSP sold outside Japan
+        // no time for, on the OpenGL ES context the frontend offers; Cross confirms, as on a PSP
+        // sold outside Japan. Names and values as PPSSPP 1.20's core declares them
         Core::Ppsspp => {
+            put("ppsspp_backend", "opengl");
             put("ppsspp_cpu_core", "JIT");
             put("ppsspp_internal_resolution", "480x272");
             put("ppsspp_auto_frameskip", "enabled");
             put("ppsspp_fast_memory", "enabled");
             put("ppsspp_texture_scaling_level", "disabled");
-            put("ppsspp_lazy_texture_caching", "enabled");
             put("ppsspp_button_preference", "Cross");
             put("ppsspp_psp_model", "psp_2000_3000");
         }
@@ -347,6 +348,23 @@ mod tests {
         assert_eq!(stand_in(Core::Snes9x).video_size(), (256, 224));
         assert_eq!(stand_in(Core::Supafaust).video_size(), (256, 224));
         assert_eq!(stand_in(Core::PcsxRearmed).video_size(), (320, 240));
+        assert_eq!(stand_in(Core::Ppsspp).video_size(), (480, 272));
+    }
+
+    #[test]
+    fn ppsspp_draws_with_opengl_at_the_psp_s_own_size() {
+        let set = core_options(Core::Ppsspp, "", false, false);
+        for want in [
+            ("ppsspp_backend", "opengl"),
+            ("ppsspp_cpu_core", "JIT"),
+            ("ppsspp_internal_resolution", "480x272"),
+            ("ppsspp_auto_frameskip", "enabled"),
+            ("ppsspp_button_preference", "Cross"),
+        ] {
+            assert!(set.contains(&(want.0, want.1.into())), "{want:?} is not set");
+        }
+        // every key is one PPSSPP 1.20's core declares
+        assert!(set.iter().all(|(k, _)| k.starts_with("ppsspp_")));
     }
 
     fn lock() -> std::sync::MutexGuard<'static, ()> {
