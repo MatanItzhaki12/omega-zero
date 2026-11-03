@@ -42,6 +42,7 @@ mod spin;
 mod switcher;
 mod toast;
 mod top_bar;
+mod umd;
 
 /// A file in this folder that the list above leaves out is never compiled, let alone run.
 #[test]

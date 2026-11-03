@@ -87,6 +87,7 @@ pub use models::disc::{
     MAX_STACK, STACK_DIVE,
 };
 pub use models::snes::{silhouette as snes_silhouette, SnesShell};
+pub use models::umd::{UMD_H, UMD_W};
 pub use motion::ease;
 pub use opening::{opening_line, OPENING_ADVANCE, OPENING_PITCH, OPENING_RISE};
 pub use plate::{word_cap_top, UndoFace, HINT_H};
@@ -106,7 +107,7 @@ pub use shelf::{
 pub use shell::{
     gb_table_shells, gba_shell_for, lookup_order_is_exact_then_family_then_default, shell_for,
     shell_presets, table_keys, Finish, Shell, DEFAULT_SHELL, DMG_SHELL, DUAL_MODE_SHELL,
-    GB_CLEAR_SHELL, SFC_SHELL, SNES_SHELL,
+    GB_CLEAR_SHELL, SFC_SHELL, SNES_SHELL, UMD_SHELL,
 };
 pub use silhouette::{gb_silhouette, silhouette, GbShell};
 pub use spin::{

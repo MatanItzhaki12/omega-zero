@@ -1,7 +1,7 @@
 use omega_gfx::{out_h, spun_x, Draw, MeshId, MeshVertex, TexId};
 
 use crate::models::disc::StackMeshes;
-use crate::models::{disc, snes, snes::SnesShell};
+use crate::models::{disc, snes, snes::SnesShell, umd};
 use crate::silhouette::GbShell;
 
 /// How thick a cart is, as a share of its width: a Game Pak is about 8 mm thick and 57 wide.
@@ -46,23 +46,25 @@ impl Pose {
     }
 }
 
-/// The shapes a game stands on the shelf as: a cart in one of its shells, or a disc.
+/// The shapes a game stands on the shelf as: a cart in one of its shells, a disc, or a UMD.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
 pub enum CartModel {
     Gba,
     Gb(GbShell),
     Snes(SnesShell),
     Disc,
+    Umd,
 }
 
 impl CartModel {
-    pub const ALL: [CartModel; 6] = [
+    pub const ALL: [CartModel; 7] = [
         CartModel::Gba,
         CartModel::Gb(GbShell::Notched),
         CartModel::Gb(GbShell::Rounded),
         CartModel::Snes(SnesShell::Ntsc),
         CartModel::Snes(SnesShell::Famicom),
         CartModel::Disc,
+        CartModel::Umd,
     ];
 
     /// Its place in [`CartModel::ALL`].
@@ -74,6 +76,7 @@ impl CartModel {
             CartModel::Snes(SnesShell::Ntsc) => 3,
             CartModel::Snes(SnesShell::Famicom) => 4,
             CartModel::Disc => 5,
+            CartModel::Umd => 6,
         }
     }
 
@@ -83,6 +86,7 @@ impl CartModel {
             CartModel::Gba | CartModel::Gb(_) => THICK,
             CartModel::Snes(_) => snes::THICK,
             CartModel::Disc => disc::THICK,
+            CartModel::Umd => umd::THICK,
         }
     }
 }
@@ -211,6 +215,7 @@ pub fn outline(model: CartModel) -> (Vec<(f32, f32)>, (f32, f32)) {
         CartModel::Gb(GbShell::Rounded) => (GBC_OUTLINE.to_vec(), (240.0, 259.0)),
         CartModel::Snes(shell) => snes::outline(shell),
         CartModel::Disc => disc::outline(),
+        CartModel::Umd => umd::outline(),
     }
 }
 
@@ -456,14 +461,14 @@ mod tests {
         );
     }
 
-    /// Only the Super Famicom cart's label is round at its corners: every other shape's goes
-    /// through the square label's drawing untouched.
+    /// Only the Super Famicom cart's label and the UMD's are round at their corners: every other
+    /// shape's goes through the square label's drawing untouched.
     #[test]
-    fn only_the_super_famicom_label_is_round() {
+    fn only_the_super_famicom_and_umd_labels_are_round() {
         for model in CartModel::ALL {
             let round = crate::cart::spec(model).label_round;
             match model {
-                CartModel::Snes(SnesShell::Famicom) => assert!(round > 0),
+                CartModel::Snes(SnesShell::Famicom) | CartModel::Umd => assert!(round > 0),
                 _ => assert_eq!(round, 0, "the {model:?} label is round"),
             }
         }

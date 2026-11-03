@@ -16,7 +16,7 @@ use std::sync::OnceLock;
 
 use omega_store::{Cart, Outline, Region};
 
-use crate::cart::{Board, Spec, PAD};
+use crate::cart::{Board, Inside, Spec, PAD};
 use crate::silhouette::{depth_map, rasterise_detail, rasterise_svg, Detail};
 
 const NTSC_SVG: &str = include_str!("../../assets/snes_cart.svg");
@@ -198,12 +198,12 @@ pub(crate) fn spec(shell: SnesShell) -> Spec {
         detail: detail(shell),
         max_h: (label.3 - 2 * PAD) as f32,
         rim: RIM,
-        board: Board {
+        inside: Inside::Board(Board {
             x: (0.1, 0.9),
             top: 0.1,
             pins: (0.27, 0.73),
             contacts_from: 0.86,
             traces_from: 0.78,
-        },
+        }),
     }
 }

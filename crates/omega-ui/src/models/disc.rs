@@ -18,7 +18,7 @@ use std::sync::OnceLock;
 use omega_gfx::{Draw, MeshId, MeshVertex, TexId, FOCAL};
 use omega_store::{ps1, Cart, Platform};
 
-use crate::cart::{label_colour, label_text, Board, CartFace, Spec};
+use crate::cart::{label_colour, label_text, CartFace, Inside, Spec};
 use crate::label_cut::label_art;
 use crate::silhouette::Detail;
 use crate::spin::posed_cart;
@@ -359,13 +359,7 @@ pub(crate) fn spec() -> Spec {
         detail: no_detail(),
         max_h: h as f32,
         rim: 0,
-        board: Board {
-            x: (0.0, 0.0),
-            top: 1.0,
-            pins: (0.0, 0.0),
-            contacts_from: 1.0,
-            traces_from: 1.0,
-        },
+        inside: Inside::Nothing,
     }
 }
 

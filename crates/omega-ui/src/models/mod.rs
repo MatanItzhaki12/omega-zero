@@ -3,3 +3,4 @@
 
 pub mod disc;
 pub mod snes;
+pub mod umd;

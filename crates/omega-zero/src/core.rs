@@ -361,7 +361,10 @@ mod tests {
             ("ppsspp_auto_frameskip", "enabled"),
             ("ppsspp_button_preference", "Cross"),
         ] {
-            assert!(set.contains(&(want.0, want.1.into())), "{want:?} is not set");
+            assert!(
+                set.contains(&(want.0, want.1.into())),
+                "{want:?} is not set"
+            );
         }
         // every key is one PPSSPP 1.20's core declares
         assert!(set.iter().all(|(k, _)| k.starts_with("ppsspp_")));

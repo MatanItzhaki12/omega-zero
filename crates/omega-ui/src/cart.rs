@@ -4,7 +4,7 @@ use omega_store::gb::Class;
 use omega_store::{Cart, Outline, Platform};
 
 use crate::label_cut::label_art;
-use crate::models::{disc, snes, snes::SnesShell};
+use crate::models::{disc, snes, snes::SnesShell, umd};
 use crate::shell::{shell_for, Finish, Shell};
 use crate::silhouette::{
     cart_depth, cart_mask, detail_mask, gb_cart_depth, gb_cart_mask, gb_detail_mask, Detail,
@@ -78,7 +78,17 @@ pub(crate) struct Spec {
     pub(crate) detail: &'static Detail,
     pub(crate) max_h: f32,
     pub(crate) rim: u32,
-    pub(crate) board: Board,
+    pub(crate) inside: Inside,
+}
+
+/// What a clear shell shows inside it.
+pub(crate) enum Inside {
+    /// A cart's board and the parts on it.
+    Board(Board),
+    /// The UMD's disc.
+    Disc,
+    /// Nothing: a disc's face, which has no shell.
+    Nothing,
 }
 
 pub(crate) struct Board {
@@ -111,8 +121,8 @@ pub fn model_of(cart: &Cart) -> CartModel {
             CartModel::Gb(gb_shell_of(cart).unwrap_or(GbShell::Notched))
         }
         Platform::Snes => CartModel::Snes(snes::shell_of(cart)),
-        // the UMD's own model is to come: until then a PSP game stands as a disc
-        Platform::Ps1 | Platform::Psp => CartModel::Disc,
+        Platform::Ps1 => CartModel::Disc,
+        Platform::Psp => CartModel::Umd,
     }
 }
 
@@ -132,6 +142,7 @@ pub(crate) fn spec(model: CartModel) -> Spec {
     match model {
         CartModel::Snes(shell) => snes::spec(shell),
         CartModel::Disc => disc::spec(),
+        CartModel::Umd => umd::spec(),
         CartModel::Gba => Spec {
             w: CART_W,
             h: CART_H,
@@ -142,7 +153,7 @@ pub(crate) fn spec(model: CartModel) -> Spec {
             detail: detail_mask(),
             max_h: (LABEL_H - 2 * PAD) as f32,
             rim: RIM,
-            board: Board {
+            inside: Inside::Board(Board {
                 // wider than the label, so the board's edge stands clear of the label's well
                 x: (0.07, 0.93),
                 // the board's top edge shows through over the label, as on a clear pak
@@ -150,7 +161,7 @@ pub(crate) fn spec(model: CartModel) -> Spec {
                 pins: (0.17, 0.84),
                 contacts_from: 0.85,
                 traces_from: 0.76,
-            },
+            }),
         },
         CartModel::Gb(shell) => Spec {
             w: GB_CART_W,
@@ -162,13 +173,13 @@ pub(crate) fn spec(model: CartModel) -> Spec {
             detail: gb_detail_mask(shell),
             max_h: (GB_LABEL_H - 2 * PAD) as f32,
             rim: GB_RIM,
-            board: Board {
+            inside: Inside::Board(Board {
                 x: (0.075, 0.925),
                 top: 0.07,
                 pins: (0.1, 0.9),
                 contacts_from: 0.905,
                 traces_from: 0.84,
-            },
+            }),
         },
     }
 }
@@ -186,7 +197,11 @@ pub fn seated_box(platform: Platform) -> (u32, u32) {
             (w.round() as u32, h.round() as u32)
         }
         Platform::Ps1 | Platform::Psp => {
-            let (_, (w, h)) = crate::spin::outline(CartModel::Disc);
+            let model = match platform {
+                Platform::Ps1 => CartModel::Disc,
+                _ => CartModel::Umd,
+            };
+            let (_, (w, h)) = crate::spin::outline(model);
             (w.round() as u32, h.round() as u32)
         }
     }
@@ -198,7 +213,8 @@ pub fn cart_box(platform: Platform) -> (u32, u32) {
         Platform::Gba => CartModel::Gba,
         Platform::Gb | Platform::Gbc => CartModel::Gb(GbShell::Notched),
         Platform::Snes => CartModel::Snes(SnesShell::Famicom),
-        Platform::Ps1 | Platform::Psp => CartModel::Disc,
+        Platform::Ps1 => CartModel::Disc,
+        Platform::Psp => CartModel::Umd,
     })
 }
 
@@ -237,7 +253,8 @@ pub fn face_labels(platform: Platform) -> Vec<(u32, u32)> {
             CartModel::Gba => platform == Platform::Gba,
             CartModel::Gb(_) => matches!(platform, Platform::Gb | Platform::Gbc),
             CartModel::Snes(_) => platform == Platform::Snes,
-            CartModel::Disc => matches!(platform, Platform::Ps1 | Platform::Psp),
+            CartModel::Disc => platform == Platform::Ps1,
+            CartModel::Umd => platform == Platform::Psp,
         })
         .map(|model| match model {
             CartModel::Disc => (disc::DISC_PX, disc::DISC_PX),
@@ -364,6 +381,10 @@ pub fn label_tags(stem: &str) -> Vec<String> {
 fn shell_face(s: &Spec, shell: &Shell) -> CartFace {
     let mut rgba = Vec::with_capacity((s.w * s.h * 4) as usize);
     let edge = rim_colour(through(shell.colour, shell.colour));
+    let shows = match s.inside {
+        Inside::Disc => DISC_SHOWS,
+        _ => PART_SHOWS,
+    };
     for (i, depth) in s.depth.iter().enumerate() {
         let (x, y) = (i as u32 % s.w, i as u32 / s.w);
         let rim = (*depth as u32).min(s.rim);
@@ -379,7 +400,7 @@ fn shell_face(s: &Spec, shell: &Shell) -> CartFace {
                     }
                     // a part on it keeps some of its own colour through the plastic: the gold
                     // of the contacts and the black of the chips read as such, not as more green
-                    Some(part) => lerp(through(shell.colour, part), part, PART_SHOWS, 255),
+                    Some(part) => lerp(through(shell.colour, part), part, shows, 255),
                 };
                 let c = lerp(edge, body, rim, s.rim);
                 // where no board stands behind it, the light comes through the plastic: the
@@ -410,6 +431,10 @@ const SURFACE: u32 = 40;
 
 /// How much of a part's own colour shows through a clear shell, of 255.
 const PART_SHOWS: u32 = 80;
+
+/// How much of a UMD's disc's own colour shows through its shell, of 255: more than a board's
+/// parts, so its silver reads through the smoky plastic.
+const DISC_SHOWS: u32 = 130;
 
 /// How opaque a clear shell is, of 255, where no board stands behind it, inside its rim: the
 /// shelf shows through the rest.
@@ -496,7 +521,11 @@ fn through(plastic: [u8; 3], behind: [u8; 3]) -> [u8; 3] {
 /// What stands behind the face's pixel `x, y` inside a clear shell: the board and its parts, or
 /// nothing, the shell's hollow.
 fn inside(s: &Spec, x: u32, y: u32) -> Option<[u8; 3]> {
-    let b = &s.board;
+    let b = match &s.inside {
+        Inside::Board(b) => b,
+        Inside::Disc => return umd::behind(x, y),
+        Inside::Nothing => return None,
+    };
     let (fx, fy) = (x as f32 / s.w as f32, y as f32 / s.h as f32);
     if !(b.x.0..b.x.1).contains(&fx) || fy < b.top {
         return None;
@@ -744,6 +773,9 @@ fn paste_label(s: &Spec, face: &mut CartFace, label: &[u8]) {
                     ((label[src + c] as u32 * a + face.rgba[d + c] as u32 * (255 - a) + 127) / 255)
                         as u8;
             }
+            // the label is paper: what is behind a clear shell does not show through it
+            let under = face.rgba[d + 3] as u32;
+            face.rgba[d + 3] = (a + under * (255 - a) / 255) as u8;
         }
     }
 }
@@ -759,9 +791,14 @@ pub const HOLO_FRAMES: usize = 12;
 const HOLO_BASE: f32 = 8.0;
 const HOLO_BAND: f32 = 64.0;
 
+/// How bright the light a UMD's disc throws through its shell gets at its brightest, of 255:
+/// brighter than a label's sheen, as a mirror is.
+const DISC_BAND: f32 = 120.0;
+
 /// The holo sheen over a `model` cart's label, `HOLO_FRAMES` frames of it, each the face's size
-/// at half its resolution, to be drawn over the face scaled up: clear but over the label. A
-/// disc has none.
+/// at half its resolution, to be drawn over the face scaled up: clear but over the label, and
+/// on a UMD over the disc's silver face too, which throws the light back in a rainbow running out
+/// from its middle, the way a CD does. A disc has none.
 pub fn holo_frames(model: CartModel) -> Vec<CartFace> {
     if model == CartModel::Disc {
         return Vec::new();
@@ -780,18 +817,30 @@ pub fn holo_frames(model: CartModel) -> Vec<CartFace> {
                         0 => (lx..lx + lw).contains(&x) && (ly..ly + lh).contains(&y),
                         r => in_round_rect(x, y, s.label, r),
                     };
+                    // the light's band, from past the top left to past the bottom right
+                    let light = -0.15 + 1.35 * t;
+                    let d = ((hy * w + hx) * 4) as usize;
                     if !inside {
+                        let on_face = matches!(s.inside, Inside::Disc)
+                            && umd::disc_part(x, y) == Some(umd::DiscPart::Face)
+                            && s.mask[(y.min(s.h - 1) * s.w + x.min(s.w - 1)) as usize] > 0;
+                        if on_face {
+                            let (u, v) = (x as f32 / s.w as f32, y as f32 / s.h as f32);
+                            let along = u * 0.75 + v * 0.45;
+                            let band = (-((along - light) / 0.12).powi(2)).exp();
+                            let hue = (umd::out_on_face(x, y) * 1.6 - t).rem_euclid(1.0) * 360.0;
+                            let c = hsv_to_rgb(hue, 0.45, 1.0);
+                            let a = (DISC_BAND * band) as u8;
+                            rgba[d..d + 4].copy_from_slice(&[c[0], c[1], c[2], a]);
+                        }
                         continue;
                     }
                     let (u, v) = ((x - lx) as f32 / lw as f32, (y - ly) as f32 / lh as f32);
                     let along = u * 0.75 + v * 0.45;
-                    // the light's band, from past the top left to past the bottom right
-                    let light = -0.15 + 1.35 * t;
                     let band = (-((along - light) / 0.16).powi(2)).exp();
                     let hue = (along * 1.4 - t * 0.6).rem_euclid(1.0) * 360.0;
                     let c = hsv_to_rgb(hue, 0.6, 1.0);
                     let a = (HOLO_BASE + HOLO_BAND * band) as u8;
-                    let d = ((hy * w + hx) * 4) as usize;
                     rgba[d..d + 4].copy_from_slice(&[c[0], c[1], c[2], a]);
                 }
             }
