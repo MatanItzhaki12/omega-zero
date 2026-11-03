@@ -322,6 +322,7 @@ pub fn label_text(cart: &Cart) -> String {
 }
 
 pub fn clean_label(stem: &str) -> String {
+    let stem = without_set_number(stem);
     let mut bare = String::with_capacity(stem.len());
     let mut depth = 0u32;
     for ch in stem.chars() {
@@ -344,6 +345,19 @@ pub fn clean_label(stem: &str) -> String {
         stem.to_string()
     } else {
         out
+    }
+}
+
+/// `stem` without the number a numbered set puts before each game, `0017 - Need for Speed`'s
+/// `0017 - `: four digits and a spaced dash, with a name after them.
+fn without_set_number(stem: &str) -> &str {
+    match stem.split_once(" - ") {
+        Some((n, rest))
+            if n.len() == 4 && n.bytes().all(|b| b.is_ascii_digit()) && !rest.is_empty() =>
+        {
+            rest
+        }
+        _ => stem,
     }
 }
 

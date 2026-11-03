@@ -417,6 +417,21 @@ fn the_label_is_the_filename_without_its_tags() {
 }
 
 #[test]
+fn a_numbered_set_s_number_is_not_on_the_label() {
+    assert_eq!(
+        clean_label("0017 - Need for Speed - Underground Rivals (USA)"),
+        "Need for Speed Underground Rivals"
+    );
+    assert_eq!(
+        clean_label("2040 - Tekken 6 (USA) (En,Fr,De,Es,It,Ru)"),
+        "Tekken 6"
+    );
+    // a number that is the name, or not set off by a dash, stays
+    assert_eq!(clean_label("1942 (USA, Europe)"), "1942");
+    assert_eq!(clean_label("Tetris 2 - 1993"), "Tetris 2 1993");
+}
+
+#[test]
 fn an_unspaced_hyphen_survives() {
     assert_eq!(clean_label("Spider-Man 2 (USA)"), "Spider-Man 2");
     assert_eq!(
