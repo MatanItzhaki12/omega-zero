@@ -429,20 +429,58 @@ fn copy(
 /// The largest file Sync From Backup reads back to compare: a save is far smaller.
 const LARGEST: u64 = 8 << 20;
 
-/// A save on the NAS that the card does not have as it is there: its path in Saves, what the
-/// NAS holds, and whether the card has one at all.
+/// Where PPSSPP keeps a PSP game's saves in Saves: a folder for each, its files together.
+const PSP_SAVES: &str = "PSP/SAVEDATA/";
+
+/// The save the file at `rel` in Saves is part of: a PSP save's folder, whose files go together,
+/// or the file itself. `None` for what a core keeps in Saves that is no game's save, the rest of
+/// PPSSPP's memory stick: backed up, but not offered back one file at a time.
+pub fn save_of(rel: &str) -> Option<String> {
+    match rel.strip_prefix(PSP_SAVES) {
+        Some(rest) => rest
+            .split_once('/')
+            .map(|(folder, _)| format!("{PSP_SAVES}{folder}")),
+        None if rel.starts_with("PSP/") => None,
+        None => Some(rel.to_string()),
+    }
+}
+
+/// A save on the NAS that the card does not have as it is there: its path in Saves (a file, or
+/// a PSP save's folder), each of its files as the NAS holds it, by its path in Saves, and
+/// whether the card has it at all.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Differs {
     pub rel: String,
-    pub bytes: Vec<u8>,
+    pub files: Vec<(String, Vec<u8>)>,
     pub on_card: bool,
 }
 
 impl Differs {
-    /// The game's name, as the list shows it: the file's, without its extension or region.
+    /// A save that is one file.
+    pub fn file(rel: &str, bytes: Vec<u8>, on_card: bool) -> Differs {
+        Differs {
+            rel: rel.to_string(),
+            files: vec![(rel.to_string(), bytes)],
+            on_card,
+        }
+    }
+
+    /// The game's name, as the list shows it: a PSP save's title, as its PARAM.SFO gives it,
+    /// else the file's name without its extension or region.
     pub fn name(&self) -> String {
+        let sfo = self
+            .files
+            .iter()
+            .find(|(rel, _)| rel.ends_with("/PARAM.SFO"))
+            .and_then(|(_, bytes)| omega_store::psp::save_title(bytes));
+        if let Some(title) = sfo {
+            return title;
+        }
         let file = self.rel.rsplit('/').next().unwrap_or(&self.rel);
-        let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
+        let stem = match self.rel.starts_with(PSP_SAVES) {
+            true => file,
+            false => file.rsplit_once('.').map_or(file, |(stem, _)| stem),
+        };
         stem.split(" (").next().unwrap_or(stem).trim().to_string()
     }
 
@@ -478,23 +516,38 @@ fn remote_files(nas: &mut Nas, to: &Target) -> Result<Vec<(String, u64)>, NasFai
 }
 
 /// The saves on the NAS at `to` that differ from the card's at `root`, or that the card does not
-/// have: each read back to compare, since a save is the same size whatever it holds.
+/// have: each read back to compare, since a save is the same size whatever it holds. A PSP
+/// save's folder differs when any of its files does, and is offered whole.
 pub fn differing(root: &Path, to: &Target) -> Result<Vec<Differs>, NasFail> {
     let mut nas = Nas::open(&to.login)?;
     let saves = crate::root::saves_dir(root);
-    let mut out = Vec::new();
+    let mut out: Vec<Differs> = Vec::new();
+    let mut changed: Vec<bool> = Vec::new();
     for (rel, _) in remote_files(&mut nas, to)? {
+        let Some(unit) = save_of(&rel) else {
+            continue;
+        };
         let bytes = nas.get(&to.share, &to.remote(&rel))?;
         let here = std::fs::read(saves.join(&rel)).ok();
-        if here.as_ref() != Some(&bytes) {
+        let differs = here.as_ref() != Some(&bytes);
+        // the files come sorted, so a folder's are together
+        if out.last().is_none_or(|d| d.rel != unit) {
             out.push(Differs {
-                on_card: here.is_some(),
-                rel,
-                bytes,
+                on_card: saves.join(&unit).exists(),
+                rel: unit,
+                files: Vec::new(),
             });
+            changed.push(false);
         }
+        let (last, any) = (out.len() - 1, changed.len() - 1);
+        out[last].files.push((rel, bytes));
+        changed[any] |= differs;
     }
-    Ok(out)
+    Ok(out
+        .into_iter()
+        .zip(changed)
+        .filter_map(|(d, changed)| changed.then_some(d))
+        .collect())
 }
 
 /// Where the card's save is kept before one from the NAS replaces it.
@@ -506,19 +559,21 @@ pub const UNDO: &str = "Config/save_backup_undo";
 /// takes it as the NAS has it, so it is not copied back.
 pub fn restore(root: &Path, from: &Differs, stamp: &str) -> std::io::Result<()> {
     let saves = crate::root::saves_dir(root);
-    let at = saves.join(&from.rel);
-    if let Ok(old) = std::fs::read(&at) {
-        let kept = root.join(UNDO).join(stamp).join(&from.rel);
-        if let Some(dir) = kept.parent() {
+    for (rel, bytes) in &from.files {
+        let at = saves.join(rel);
+        if let Ok(old) = std::fs::read(&at) {
+            let kept = root.join(UNDO).join(stamp).join(rel);
+            if let Some(dir) = kept.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            omega_store::atomic_write(&kept, &old)?;
+        }
+        if let Some(dir) = at.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        omega_store::atomic_write(&kept, &old)?;
+        omega_store::atomic_write(&at, bytes)?;
     }
-    if let Some(dir) = at.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    omega_store::atomic_write(&at, &from.bytes)?;
-    if let Some((platform, stem)) = game_of(&from.rel) {
+    for (platform, stem) in games_of(root, &from.rel) {
         for core in omega_store::Core::for_platform(platform) {
             let ring = omega_store::StateRing::new(root, platform, *core, &stem);
             if let Ok(Some(to)) = ring.retire_resume(stamp) {
@@ -528,16 +583,35 @@ pub fn restore(root: &Path, from: &Differs, stamp: &str) -> std::io::Result<()> 
     }
     let mut list = List::read(root);
     if !list.target.is_empty() {
-        list.files.insert(
-            from.rel.clone(),
-            Kept {
-                size: from.bytes.len() as u64,
-                crc: crate::label_sync::crc32(&from.bytes),
-            },
-        );
+        for (rel, bytes) in &from.files {
+            list.files.insert(
+                rel.clone(),
+                Kept {
+                    size: bytes.len() as u64,
+                    crc: crate::label_sync::crc32(bytes),
+                },
+            );
+        }
         list.write(root)?;
     }
     Ok(())
+}
+
+/// The games the save at `rel` in Saves is: a battery save's one, or every PSP game on the card
+/// whose ID its folder starts with.
+fn games_of(root: &Path, rel: &str) -> Vec<(omega_store::Platform, String)> {
+    if let Some(folder) = rel.strip_prefix(PSP_SAVES) {
+        let Some(id) = omega_store::psp::save_id(folder) else {
+            return Vec::new();
+        };
+        return omega_store::scan(root)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|c| c.platform == omega_store::Platform::Psp && c.code == id)
+            .map(|c| (c.platform, c.stem))
+            .collect();
+    }
+    game_of(rel).into_iter().collect()
 }
 
 /// The system and game a battery save in Saves is: `GBA/<stem>.sav` or `.srm`.
@@ -578,11 +652,7 @@ mod tests {
         let resume = root.join("States/GBA/gpsp/Emerald");
         std::fs::create_dir_all(&resume).unwrap();
         std::fs::write(resume.join("resume.state"), b"old state").unwrap();
-        let from = Differs {
-            rel: "GBA/Emerald.sav".into(),
-            bytes: b"from the nas".to_vec(),
-            on_card: true,
-        };
+        let from = Differs::file("GBA/Emerald.sav", b"from the nas".to_vec(), true);
         restore(root, &from, "2026-11-03_12-00-00").unwrap();
         assert_eq!(
             std::fs::read(saves.join("GBA/Emerald.sav")).unwrap(),
@@ -600,11 +670,11 @@ mod tests {
 
     #[test]
     fn a_save_on_the_nas_is_named_as_its_game() {
-        let d = Differs {
-            rel: "GBA/Pokemon - Emerald Version (USA, Europe).sav".into(),
-            bytes: Vec::new(),
-            on_card: false,
-        };
+        let d = Differs::file(
+            "GBA/Pokemon - Emerald Version (USA, Europe).sav",
+            Vec::new(),
+            false,
+        );
         assert_eq!(d.name(), "Pokemon - Emerald Version");
         assert_eq!(d.system(), "GBA");
         assert_eq!(
@@ -612,6 +682,97 @@ mod tests {
             Some(("GBA", "Emerald".to_string()))
         );
         assert_eq!(game_of("PS1/cards/Crash.mcd"), None);
+    }
+
+    #[test]
+    fn a_psp_save_is_its_folder_and_ppsspp_s_own_files_are_no_save() {
+        assert_eq!(
+            save_of("GBA/Emerald.sav").as_deref(),
+            Some("GBA/Emerald.sav")
+        );
+        assert_eq!(
+            save_of("PSP/SAVEDATA/ULUS10391DATA00/DATA.BIN").as_deref(),
+            Some("PSP/SAVEDATA/ULUS10391DATA00")
+        );
+        assert_eq!(save_of("PSP/SAVEDATA/stray.bin"), None);
+        assert_eq!(save_of("PSP/SYSTEM/CACHE/x.bin"), None);
+    }
+
+    /// A PSP save's folder from the NAS: its files together.
+    fn psp_save(title: &str, data: &[u8]) -> Differs {
+        let dir = "PSP/SAVEDATA/ULUS10391DATA00";
+        Differs {
+            rel: dir.into(),
+            files: vec![
+                (format!("{dir}/DATA.BIN"), data.to_vec()),
+                (
+                    format!("{dir}/PARAM.SFO"),
+                    omega_store::psp::param_sfo(&[("TITLE", title)]),
+                ),
+            ],
+            on_card: true,
+        }
+    }
+
+    #[test]
+    fn a_psp_save_on_the_nas_is_named_as_its_game() {
+        let d = psp_save("Monster Hunter Freedom Unite", b"");
+        assert_eq!(d.name(), "Monster Hunter Freedom Unite");
+        assert_eq!(d.system(), "PSP");
+        let mut bare = d.clone();
+        bare.files.retain(|(rel, _)| rel.ends_with("DATA.BIN"));
+        assert_eq!(bare.name(), "ULUS10391DATA00");
+    }
+
+    #[test]
+    fn a_psp_save_from_the_nas_replaces_the_cards_whole_and_sets_its_game_s_state_aside() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        let saves = crate::root::saves_dir(root);
+        let dir = saves.join("PSP/SAVEDATA/ULUS10391DATA00");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("DATA.BIN"), b"handheld").unwrap();
+        // the game on the card, an eboot whose PARAM.SFO gives its ID
+        let games = root.join("Games/PSP");
+        std::fs::create_dir_all(&games).unwrap();
+        let sfo = omega_store::psp::param_sfo(&[("DISC_ID", "ULUS10391"), ("TITLE", "MHFU")]);
+        let mut pbp = b"\0PBP".to_vec();
+        pbp.extend_from_slice(&0x0001_0000u32.to_le_bytes());
+        pbp.extend_from_slice(&40u32.to_le_bytes());
+        pbp.extend_from_slice(&(40 + sfo.len() as u32).to_le_bytes());
+        pbp.resize(40, 0);
+        pbp.extend(sfo);
+        std::fs::write(games.join("Monster Hunter.pbp"), pbp).unwrap();
+        let resume = root.join("States/PSP/ppsspp/Monster Hunter");
+        std::fs::create_dir_all(&resume).unwrap();
+        std::fs::write(resume.join("resume.state"), b"old state").unwrap();
+
+        restore(
+            root,
+            &psp_save("MHFU", b"from the nas"),
+            "2026-11-03_12-00-00",
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read(dir.join("DATA.BIN")).unwrap(),
+            b"from the nas"
+        );
+        assert!(
+            dir.join("PARAM.SFO").is_file(),
+            "the folder came over in part"
+        );
+        assert_eq!(
+            std::fs::read(
+                root.join(UNDO)
+                    .join("2026-11-03_12-00-00/PSP/SAVEDATA/ULUS10391DATA00/DATA.BIN")
+            )
+            .unwrap(),
+            b"handheld"
+        );
+        assert!(
+            !resume.join("resume.state").exists(),
+            "the game's resume state, holding the old save, would bring it back"
+        );
     }
 
     #[test]

@@ -83,6 +83,14 @@ fn saves_are_copied_and_a_new_save_replaces_the_old() {
     std::fs::create_dir_all(saves.join("PS1")).unwrap();
     std::fs::write(saves.join("GBA/Emerald.sav"), vec![7u8; 131072]).unwrap();
     std::fs::write(saves.join("PS1/Crash.mcd"), b"card").unwrap();
+    // a PSP save is a folder of files, and PPSSPP keeps files of its own beside them
+    let psp = saves.join("PSP/SAVEDATA/ULUS10391DATA00");
+    std::fs::create_dir_all(&psp).unwrap();
+    std::fs::write(psp.join("DATA.BIN"), b"hunt").unwrap();
+    let sfo = omega_store::psp::param_sfo(&[("TITLE", "Monster Hunter Freedom Unite")]);
+    std::fs::write(psp.join("PARAM.SFO"), &sfo).unwrap();
+    std::fs::create_dir_all(saves.join("PSP/SYSTEM")).unwrap();
+    std::fs::write(saves.join("PSP/SYSTEM/settings.bin"), b"ppsspp").unwrap();
     let dir = format!("pass-{}/RG SP", std::process::id());
     let to = Target {
         login,
@@ -99,7 +107,11 @@ fn saves_are_copied_and_a_new_save_replaces_the_old() {
         vec![7u8; 131072]
     );
     assert_eq!(std::fs::read(there.join("PS1/Crash.mcd")).unwrap(), b"card");
-    assert_eq!(List::read(d.path()).files.len(), 2);
+    assert_eq!(
+        std::fs::read(there.join("PSP/SAVEDATA/ULUS10391DATA00/DATA.BIN")).unwrap(),
+        b"hunt"
+    );
+    assert_eq!(List::read(d.path()).files.len(), 5);
 
     std::fs::write(saves.join("GBA/Emerald.sav"), vec![9u8; 131072]).unwrap();
     std::fs::remove_file(there.join("PS1/Crash.mcd")).unwrap();
@@ -113,13 +125,27 @@ fn saves_are_copied_and_a_new_save_replaces_the_old() {
         "a save that had not changed was copied again"
     );
 
-    // the NAS's save changed by another: Sync From Backup finds it, and puts it on the card
+    // the NAS's saves changed by another: Sync From Backup finds them, a PSP save's folder as
+    // one, named for its game, and PPSSPP's own files not at all
     std::fs::write(there.join("GBA/Emerald.sav"), b"from the pc").unwrap();
+    std::fs::write(
+        there.join("PSP/SAVEDATA/ULUS10391DATA00/DATA.BIN"),
+        b"hunted on the pc",
+    )
+    .unwrap();
+    std::fs::write(there.join("PSP/SYSTEM/settings.bin"), b"other").unwrap();
     let differs = omega_zero::save_backup::differing(d.path(), &to).expect("compared");
     assert_eq!(
         differs.iter().map(|d| d.rel.as_str()).collect::<Vec<_>>(),
-        ["GBA/Emerald.sav"],
-        "the changed save alone: one gone from the NAS is not offered"
+        ["GBA/Emerald.sav", "PSP/SAVEDATA/ULUS10391DATA00"],
+        "the changed saves alone: one gone from the NAS is not offered"
+    );
+    assert_eq!(differs[1].name(), "Monster Hunter Freedom Unite");
+    assert_eq!(differs[1].files.len(), 2, "the PSP save came in part");
+    omega_zero::save_backup::restore(d.path(), &differs[1], "2026-11-03_12-00-00").unwrap();
+    assert_eq!(
+        std::fs::read(psp.join("DATA.BIN")).unwrap(),
+        b"hunted on the pc"
     );
     omega_zero::save_backup::restore(d.path(), &differs[0], "2026-11-03_12-00-00").unwrap();
     assert_eq!(

@@ -70,6 +70,54 @@ pub fn from_sfo(sfo: &[u8]) -> Option<Sfo> {
     })
 }
 
+/// The title a PSP save's PARAM.SFO gives its game: a save's has no `DISC_ID`, only `TITLE`.
+pub fn save_title(sfo: &[u8]) -> Option<String> {
+    let title = sfo_text(sfo, "TITLE")?.trim().to_string();
+    (!title.is_empty()).then_some(title)
+}
+
+/// The game ID a PSP save's folder starts with: `ULUS10391DATA00` is `ULUS10391`'s.
+pub fn save_id(folder: &str) -> Option<String> {
+    let id = folder.get(..9)?;
+    let (letters, digits) = id.split_at(4);
+    (letters.chars().all(|c| c.is_ascii_alphabetic()) && digits.chars().all(|c| c.is_ascii_digit()))
+        .then(|| id.to_ascii_uppercase())
+}
+
+/// A PARAM.SFO holding `entries`, each a text value, as a PSP writes one: for tests, here and in
+/// what reads saves and games.
+pub fn param_sfo(entries: &[(&str, &str)]) -> Vec<u8> {
+    let mut keys = Vec::new();
+    let mut data = Vec::new();
+    let mut table = Vec::new();
+    for (key, value) in entries {
+        let key_at = keys.len() as u16;
+        keys.extend_from_slice(key.as_bytes());
+        keys.push(0);
+        let value_at = data.len() as u32;
+        let mut v = value.as_bytes().to_vec();
+        v.push(0);
+        let len = v.len() as u32;
+        data.extend_from_slice(&v);
+        table.extend_from_slice(&key_at.to_le_bytes());
+        table.extend_from_slice(&0x0204u16.to_le_bytes());
+        table.extend_from_slice(&len.to_le_bytes());
+        table.extend_from_slice(&len.to_le_bytes());
+        table.extend_from_slice(&value_at.to_le_bytes());
+    }
+    let keys_at = 20 + table.len() as u32;
+    let data_at = keys_at + keys.len() as u32;
+    let mut out = b"\0PSF".to_vec();
+    out.extend_from_slice(&0x0101u32.to_le_bytes());
+    out.extend_from_slice(&keys_at.to_le_bytes());
+    out.extend_from_slice(&data_at.to_le_bytes());
+    out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+    out.extend(table);
+    out.extend(keys);
+    out.extend(data);
+    out
+}
+
 /// The largest PARAM.SFO worth reading: real ones are a kilobyte or two.
 const SFO_MAX: u32 = 16 * 1024;
 
@@ -199,36 +247,24 @@ mod tests {
 
     /// A PARAM.SFO with `DISC_ID` and `TITLE`.
     pub(crate) fn sfo(id: &str, title: &str) -> Vec<u8> {
-        let entries = [("DISC_ID", id), ("TITLE", title)];
-        let mut keys = Vec::new();
-        let mut data = Vec::new();
-        let mut table = Vec::new();
-        for (key, value) in entries {
-            let key_at = keys.len() as u16;
-            keys.extend_from_slice(key.as_bytes());
-            keys.push(0);
-            let value_at = data.len() as u32;
-            let mut v = value.as_bytes().to_vec();
-            v.push(0);
-            let len = v.len() as u32;
-            data.extend_from_slice(&v);
-            table.extend_from_slice(&key_at.to_le_bytes());
-            table.extend_from_slice(&0x0204u16.to_le_bytes());
-            table.extend_from_slice(&len.to_le_bytes());
-            table.extend_from_slice(&len.to_le_bytes());
-            table.extend_from_slice(&value_at.to_le_bytes());
-        }
-        let keys_at = 20 + table.len() as u32;
-        let data_at = keys_at + keys.len() as u32;
-        let mut out = b"\0PSF".to_vec();
-        out.extend_from_slice(&0x0101u32.to_le_bytes());
-        out.extend_from_slice(&keys_at.to_le_bytes());
-        out.extend_from_slice(&data_at.to_le_bytes());
-        out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
-        out.extend(table);
-        out.extend(keys);
-        out.extend(data);
-        out
+        param_sfo(&[("DISC_ID", id), ("TITLE", title)])
+    }
+
+    #[test]
+    fn a_save_s_param_sfo_names_its_game_and_its_folder_the_game_s_id() {
+        let sfo = param_sfo(&[
+            ("TITLE", "Monster Hunter Freedom Unite"),
+            ("SAVEDATA_TITLE", "Save"),
+        ]);
+        assert_eq!(
+            save_title(&sfo).as_deref(),
+            Some("Monster Hunter Freedom Unite")
+        );
+        assert_eq!(from_sfo(&sfo), None, "a save has no disc ID");
+        assert_eq!(save_id("ULUS10391DATA00").as_deref(), Some("ULUS10391"));
+        assert_eq!(save_id("ulus10391"), Some("ULUS10391".into()));
+        assert_eq!(save_id("SYSTEM"), None);
+        assert_eq!(save_id("ULUSX0391DATA"), None);
     }
 
     /// A folder record for `name` at sector `lba`, `len` long.
