@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Settings > Save Backup has Sync From Backup, under Back Up Now: FROM BACKUP lists the saves on
+  the NAS unlike the handheld's, or not on it, by game. A on one asks, A again copies it onto
+  the handheld. The handheld's own is kept first in `Config/save_backup_undo/`, and the game's
+  resume state set aside, as it holds the save the game had: the game starts from the one copied.
+- A backup that fails is tried again after 5 seconds, then 10, 20 and 40, then every minute,
+  rather than after a minute at once; and at once when Save Backup is opened or Wi-Fi comes back.
+- A toast at the top of the screen says when saves were backed up, and when a backup failed: a
+  failure once, not again until saves copy again.
+- The log says what the NAS answered in full when it could not be used.
+
 ## omega-zero 2.5.0: Save Backup
 
 - Settings > Save Backup copies every save on the card to a folder on a NAS over Samba (SMB 2

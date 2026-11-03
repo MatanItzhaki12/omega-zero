@@ -291,6 +291,7 @@ is made.
 | Password | The user's password, typed on the keyboard |
 | Folder › | FOLDER: the NAS's shares, then the folders in the one opened. A opens one, B goes back up, **New Folder** makes one there, **Use This Folder** picks the one open |
 | Back Up Now | Where it stands: UP TO DATE, COPYING, *n* WAITING. A copies now. Its note says when the last copy was, or why the NAS could not be used |
+| Sync From Backup › | FROM BACKUP: the saves on the NAS unlike the handheld's, or not on it at all, by game. A on one asks, and A again copies it onto the handheld |
 
 How it works:
 
@@ -303,9 +304,18 @@ How it works:
 - **Only what changed** is copied: `Config/save_backup.list` keeps the size and CRC of each
   file as the NAS last got it. A save made over the old one replaces it on the NAS. It is
   written beside it first and renamed over it, so a copy cut short never leaves half a save.
-- **No NAS, no network, another network**: the saves wait. The next time the NAS answers, each
-  one waiting is copied as it stands then, so a game saved twice while away is copied once, the
-  newest.
+- **No NAS, no network, another network**: the saves wait. A failed try is tried again after 5
+  seconds, then 10, 20 and 40, then every minute, and at once when Wi-Fi comes back or Save
+  Backup is opened. The next time the NAS answers, each one waiting is copied as it stands then,
+  so a game saved twice while away is copied once, the newest.
+- **Toasts** at the top of the screen say when saves were backed up, and when a backup failed.
+  A failure is told once, and not again until saves copy again, so a NAS that stays away is not
+  told of at every try.
+- **Sync From Backup** compares the NAS's folder with the handheld's Saves, reading each save
+  back, since a save is the same size whatever it holds. Copying one onto the handheld keeps the
+  handheld's own first in `Config/save_backup_undo/<date>/`, and sets the game's resume state
+  aside, as a state holds the save the game had and would bring it back: the game starts from
+  the save copied.
 - **The first time**, or after picking another NAS or folder, everything in `Saves` is copied.
 - The NAS's user and password are kept in `Config/omega-zero.state` on the card, as written.
 
@@ -409,6 +419,7 @@ Unlocked and View All show once the game is found.
 | `Config/retroachievements/pending.txt` | Unlocks earned offline, waiting to be sent |
 | `Config/default_core.ini` | Each system's default core, where EMULATORS changed it: `GBA = gpsp` |
 | `Config/save_backup.list` | What Save Backup's NAS has: each save's path, size and CRC, as last copied |
+| `Config/save_backup_undo/` | The handheld's own saves as they were before Sync From Backup replaced them |
 | `System/trace-latency.on` | When it is there, each press's latency is written to the log |
 | `System/omega-zero.previous` | The omega-zero an update replaced, to go back to |
 | `Labels/cart_shell.txt` | Cart shells as Slot and Cart Studio write them |

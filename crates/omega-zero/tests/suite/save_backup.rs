@@ -112,6 +112,20 @@ fn saves_are_copied_and_a_new_save_replaces_the_old() {
         !there.join("PS1/Crash.mcd").exists(),
         "a save that had not changed was copied again"
     );
+
+    // the NAS's save changed by another: Sync From Backup finds it, and puts it on the card
+    std::fs::write(there.join("GBA/Emerald.sav"), b"from the pc").unwrap();
+    let differs = omega_zero::save_backup::differing(d.path(), &to).expect("compared");
+    assert_eq!(
+        differs.iter().map(|d| d.rel.as_str()).collect::<Vec<_>>(),
+        ["GBA/Emerald.sav"],
+        "the changed save alone: one gone from the NAS is not offered"
+    );
+    omega_zero::save_backup::restore(d.path(), &differs[0], "2026-11-03_12-00-00").unwrap();
+    assert_eq!(
+        std::fs::read(saves.join("GBA/Emerald.sav")).unwrap(),
+        b"from the pc"
+    );
 }
 
 fn press(a: &mut App, btn: Btn) {
@@ -177,6 +191,11 @@ fn the_save_backup_panel_is_set_up_on_the_keyboard() {
             (OptionRow::BackupPassword, "Password".into(), "NONE".into()),
             (OptionRow::BackupFolder, "Folder".into(), "PICK".into()),
             (OptionRow::BackupNow, "Back Up Now".into(), "OFF".into()),
+            (
+                OptionRow::BackupRestore,
+                "Sync From Backup".into(),
+                String::new()
+            ),
         ]
     );
 
@@ -215,6 +234,10 @@ fn the_save_backup_panel_is_set_up_on_the_keyboard() {
         a.refusal_active(a.now()),
         "Back Up Now with nowhere to copy"
     );
+    down_to(&mut a, OptionRow::BackupRestore);
+    press(&mut a, Btn::A);
+    assert!(a.refusal_active(a.now()), "Sync From Backup with no NAS");
+    assert_eq!(a.options_view().unwrap().title, "SAVE BACKUP");
 
     // FIND NAS lists what answers, and a row to type an address; B goes back
     down_to(&mut a, OptionRow::BackupNas);
@@ -315,7 +338,11 @@ fn a_folder_is_picked_on_the_nas_and_the_saves_go_there() {
 
     press(&mut a, Btn::A);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-    while !served.join(&name).join("GBA/Emerald.sav").exists() {
+    while std::fs::read(served.join(&name).join("GBA/Emerald.sav"))
+        .ok()
+        .as_deref()
+        != Some(b"emerald".as_slice())
+    {
         assert!(
             std::time::Instant::now() < deadline,
             "the save never arrived"
@@ -327,6 +354,75 @@ fn a_folder_is_picked_on_the_nas_and_the_saves_go_there() {
         std::fs::read(served.join(&name).join("GBA/Emerald.sav")).unwrap(),
         b"emerald"
     );
+    let told = Some(omega_ui::Toast::Emulator("Saves backed up to the NAS"));
+    while a.toast() != told {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "no toast for the copy"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        a.update(0.0);
+    }
+
+    // Sync From Backup: the NAS's save, now unlike the handheld's, is listed and copied back,
+    // once every pass asked for has ended
+    let mut quiet = 0;
+    while quiet < 10 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the backup never went quiet"
+        );
+        let s = a.backup_status();
+        quiet = if !s.busy && s.waiting == 0 {
+            quiet + 1
+        } else {
+            0
+        };
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        a.update(0.1);
+    }
+    std::fs::write(served.join(&name).join("GBA/Emerald.sav"), b"from the pc").unwrap();
+    down_to(&mut a, OptionRow::BackupRestore);
+    press(&mut a, Btn::A);
+    a.finish_slide();
+    assert_eq!(a.options_view().unwrap().title, "FROM BACKUP");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while a.options_view().unwrap().note == "Comparing with the NAS" {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the NAS never answered"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        a.update(0.02);
+    }
+    let v = a.options_view().unwrap();
+    assert_eq!(
+        v.lines,
+        [(
+            OptionRow::RestoreItem(0),
+            "Emerald".to_string(),
+            "GBA".to_string()
+        )],
+        "{}",
+        v.note
+    );
+    press(&mut a, Btn::A);
+    assert_eq!(
+        std::fs::read(saves.join("Emerald.sav")).unwrap(),
+        b"emerald",
+        "one press replaced the handheld's save"
+    );
+    assert_eq!(
+        a.options_view().unwrap().note,
+        "A again replaces the handheld's"
+    );
+    press(&mut a, Btn::A);
+    assert_eq!(
+        std::fs::read(saves.join("Emerald.sav")).unwrap(),
+        b"from the pc"
+    );
+    assert!(a.options_view().unwrap().lines.is_empty());
+    assert_eq!(a.options_view().unwrap().note, "Every save matches the NAS");
 }
 
 /// The cart picked when the handheld goes off is the one picked when it comes on, the game not
@@ -348,4 +444,41 @@ fn the_shelf_comes_up_on_the_cart_picked_when_it_went_off() {
         "the cart was opened: {:?}",
         a.phase()
     );
+}
+
+/// A NAS out of reach is told of in a toast once, not at every try after; a copy that goes
+/// through is told of every time.
+#[test]
+fn a_failed_backup_is_told_of_once_until_saves_copy_again() {
+    use omega_ui::Toast;
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    let saves = d.path().join("Saves/GBA");
+    std::fs::create_dir_all(&saves).unwrap();
+    std::fs::write(saves.join("Emerald.sav"), b"emerald").unwrap();
+    let mut s = read_app_state(d.path());
+    s.backup = true;
+    // nothing listens on port 9 here: refused at once
+    s.backup_host = "127.0.0.1:9".into();
+    s.backup_share = "Backups".into();
+    omega_store::write_app_state(d.path(), &s).unwrap();
+    let mut a = boot(d.path());
+    let failed_twice = |a: &mut App, n: u64| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while a.backup_status().failed < n {
+            assert!(std::time::Instant::now() < deadline, "no pass failed");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        a.update(0.0);
+    };
+    failed_twice(&mut a, 1);
+    assert_eq!(
+        a.toast(),
+        Some(Toast::Emulator("Save backup failed: NAS away, will retry"))
+    );
+    // the toast goes, and the next try fails too: no toast again
+    a.update(10.0);
+    assert_eq!(a.toast(), None);
+    open_backup(&mut a);
+    failed_twice(&mut a, 2);
+    assert_eq!(a.toast(), None, "a NAS still away was told of again");
 }

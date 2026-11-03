@@ -78,6 +78,8 @@ impl std::fmt::Display for NasFail {
 
 fn fail(e: smb2::Error) -> NasFail {
     use smb2::ErrorKind;
+    // what the NAS said, in full, for the log: the settings say it in a few words
+    eprintln!("omega-zero: nas: {e}");
     match e.kind() {
         ErrorKind::AuthRequired | ErrorKind::SigningRequired => NasFail::Login,
         ErrorKind::AccessDenied | ErrorKind::NotFound => NasFail::Denied,
@@ -185,6 +187,31 @@ impl Nas {
             .collect();
         folders.sort_by_key(|s| s.to_lowercase());
         Ok(folders)
+    }
+
+    /// What is in `dir` of `share`: each entry's name, whether it is a folder, and its size;
+    /// hidden ones left out.
+    pub fn entries(&mut self, share: &str, dir: &str) -> Result<Vec<(String, bool, u64)>, NasFail> {
+        self.tree(share)?;
+        let (_, tree) = self.share.as_mut().expect("the share");
+        let entries = self
+            .rt
+            .block_on(self.client.list_directory(tree, dir))
+            .map_err(fail)?;
+        Ok(entries
+            .into_iter()
+            .filter(|e| !e.name.starts_with('.') && e.name != "..")
+            .map(|e| (e.name, e.is_directory, e.size))
+            .collect())
+    }
+
+    /// The file at `path` in `share`.
+    pub fn get(&mut self, share: &str, path: &str) -> Result<Vec<u8>, NasFail> {
+        self.tree(share)?;
+        let (_, tree) = self.share.as_mut().expect("the share");
+        self.rt
+            .block_on(self.client.read_file(tree, path))
+            .map_err(fail)
     }
 
     /// Makes folder `dir` of `share`, each folder on the way to it too. One already there is

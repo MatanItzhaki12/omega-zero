@@ -26,10 +26,20 @@ use crate::nas::{Login, Nas, NasFail};
 /// The list of what the NAS has, under the card's root.
 const LIST: &str = "Config/save_backup.list";
 
-/// How long after a pass that left saves waiting the next tries, and how long between passes
-/// otherwise, for a save a core wrote with no word to omega-zero.
-const RETRY: Duration = Duration::from_secs(60);
+/// How long after a pass that left saves waiting the next tries: 5 seconds, then twice as long
+/// after each that fails, up to a minute, as the NAS may only be waking or the Wi-Fi coming
+/// up. And how long between passes otherwise, for a save a core wrote with no word to
+/// omega-zero.
+const RETRY_FIRST: Duration = Duration::from_secs(5);
+const RETRY_MOST: Duration = Duration::from_secs(60);
 const LOOK_AGAIN: Duration = Duration::from_secs(300);
+
+/// How long to wait after the `failed`th pass in a row that left saves waiting.
+pub fn retry_after(failed: u32) -> Duration {
+    RETRY_FIRST
+        .saturating_mul(1 << failed.saturating_sub(1).min(8))
+        .min(RETRY_MOST)
+}
 
 /// Where saves are copied to: the NAS, the share on it, and the folder in the share, its parts
 /// apart by `/`, none for the share's own top.
@@ -53,9 +63,10 @@ impl Target {
 
     /// Where the file at `rel` in Saves goes in the share.
     pub fn remote(&self, rel: &str) -> String {
-        match self.dir.trim_matches('/') {
-            "" => rel.to_string(),
-            dir => format!("{dir}/{rel}"),
+        match (self.dir.trim_matches('/'), rel) {
+            ("", rel) => rel.to_string(),
+            (dir, "") => dir.to_string(),
+            (dir, rel) => format!("{dir}/{rel}"),
         }
     }
 }
@@ -173,6 +184,10 @@ pub struct Status {
     pub done_at: Option<u64>,
     /// Why the last pass stopped short, while saves still wait.
     pub fail: Option<NasFail>,
+    /// How many passes have copied saves, and how many have failed, since the thread started:
+    /// each a toast's worth.
+    pub copied: u64,
+    pub failed: u64,
 }
 
 enum Ask {
@@ -223,6 +238,7 @@ fn now_secs() -> u64 {
 
 fn run(root: &Path, mut target: Option<Target>, rx: &Receiver<Ask>, status: &Mutex<Status>) {
     let mut wait = Duration::ZERO;
+    let mut failed = 0;
     loop {
         match rx.recv_timeout(wait) {
             Ok(Ask::Pass) | Err(RecvTimeoutError::Timeout) => {}
@@ -245,7 +261,11 @@ fn run(root: &Path, mut target: Option<Target>, rx: &Receiver<Ask>, status: &Mut
             continue;
         };
         let left = pass(root, to, status);
-        wait = if left > 0 { RETRY } else { LOOK_AGAIN };
+        failed = if left > 0 { failed + 1 } else { 0 };
+        wait = match failed {
+            0 => LOOK_AGAIN,
+            n => retry_after(n),
+        };
     }
 }
 
@@ -289,8 +309,12 @@ pub fn pass(root: &Path, to: &Target, status: &Mutex<Status>) -> usize {
             Ok(()) => {
                 s.fail = None;
                 s.done_at = Some(now_secs());
+                s.copied += 1;
             }
-            Err((_, e)) => s.fail = Some(e.clone()),
+            Err((_, e)) => {
+                s.fail = Some(e.clone());
+                s.failed += 1;
+            }
         }
     });
     left
@@ -331,6 +355,132 @@ fn copy(
     Ok(())
 }
 
+/// The largest file Sync From Backup reads back to compare: a save is far smaller.
+const LARGEST: u64 = 8 << 20;
+
+/// A save on the NAS that the card does not have as it is there: its path in Saves, what the
+/// NAS holds, and whether the card has one at all.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Differs {
+    pub rel: String,
+    pub bytes: Vec<u8>,
+    pub on_card: bool,
+}
+
+impl Differs {
+    /// The game's name, as the list shows it: the file's, without its extension or region.
+    pub fn name(&self) -> String {
+        let file = self.rel.rsplit('/').next().unwrap_or(&self.rel);
+        let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
+        stem.split(" (").next().unwrap_or(stem).trim().to_string()
+    }
+
+    /// The system's folder it is in: GBA, PS1 and the rest.
+    pub fn system(&self) -> &str {
+        self.rel
+            .split('/')
+            .next()
+            .filter(|_| self.rel.contains('/'))
+            .unwrap_or("")
+    }
+}
+
+/// Every file under `to`'s folder on the NAS, as its path from there.
+fn remote_files(nas: &mut Nas, to: &Target) -> Result<Vec<(String, u64)>, NasFail> {
+    let mut out = Vec::new();
+    let mut dirs = vec![String::new()];
+    while let Some(rel) = dirs.pop() {
+        for (name, is_dir, size) in nas.entries(&to.share, &to.remote(&rel))? {
+            let path = match rel.as_str() {
+                "" => name.clone(),
+                rel => format!("{rel}/{name}"),
+            };
+            match is_dir {
+                true => dirs.push(path),
+                false if !name.ends_with(".part") && size <= LARGEST => out.push((path, size)),
+                false => {}
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// The saves on the NAS at `to` that differ from the card's at `root`, or that the card does not
+/// have: each read back to compare, since a save is the same size whatever it holds.
+pub fn differing(root: &Path, to: &Target) -> Result<Vec<Differs>, NasFail> {
+    let mut nas = Nas::open(&to.login)?;
+    let saves = crate::root::saves_dir(root);
+    let mut out = Vec::new();
+    for (rel, _) in remote_files(&mut nas, to)? {
+        let bytes = nas.get(&to.share, &to.remote(&rel))?;
+        let here = std::fs::read(saves.join(&rel)).ok();
+        if here.as_ref() != Some(&bytes) {
+            out.push(Differs {
+                on_card: here.is_some(),
+                rel,
+                bytes,
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// Where the card's save is kept before one from the NAS replaces it.
+pub const UNDO: &str = "Config/save_backup_undo";
+
+/// Puts `from` on the card in place of its save. The card's own is kept first under
+/// `Config/save_backup_undo/<stamp>/`, and the game's resume state is set aside, as a state the
+/// core refused is: a state holds the save the game had, and would bring it back. The list
+/// takes it as the NAS has it, so it is not copied back.
+pub fn restore(root: &Path, from: &Differs, stamp: &str) -> std::io::Result<()> {
+    let saves = crate::root::saves_dir(root);
+    let at = saves.join(&from.rel);
+    if let Ok(old) = std::fs::read(&at) {
+        let kept = root.join(UNDO).join(stamp).join(&from.rel);
+        if let Some(dir) = kept.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        omega_store::atomic_write(&kept, &old)?;
+    }
+    if let Some(dir) = at.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    omega_store::atomic_write(&at, &from.bytes)?;
+    if let Some((platform, stem)) = game_of(&from.rel) {
+        for core in omega_store::Core::for_platform(platform) {
+            let ring = omega_store::StateRing::new(root, platform, *core, &stem);
+            if let Ok(Some(to)) = ring.retire_resume(stamp) {
+                eprintln!("omega-zero: sync from backup: set {} aside", to.display());
+            }
+        }
+    }
+    let mut list = List::read(root);
+    if !list.target.is_empty() {
+        list.files.insert(
+            from.rel.clone(),
+            Kept {
+                size: from.bytes.len() as u64,
+                crc: crate::label_sync::crc32(&from.bytes),
+            },
+        );
+        list.write(root)?;
+    }
+    Ok(())
+}
+
+/// The system and game a battery save in Saves is: `GBA/<stem>.sav` or `.srm`.
+fn game_of(rel: &str) -> Option<(omega_store::Platform, String)> {
+    let (dir, file) = rel.split_once('/')?;
+    let stem = file
+        .strip_suffix(".sav")
+        .or_else(|| file.strip_suffix(".srm"))?;
+    let platform = omega_store::Platform::ALL
+        .into_iter()
+        .find(|p| p.dir_name() == dir)?;
+    Some((platform, stem.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,6 +495,59 @@ mod tests {
             share: "Backups".into(),
             dir: "RG SP/Saves".into(),
         }
+    }
+
+    #[test]
+    fn a_save_from_the_nas_replaces_the_cards_which_is_kept() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        let saves = crate::root::saves_dir(root);
+        std::fs::create_dir_all(saves.join("GBA")).unwrap();
+        std::fs::write(saves.join("GBA/Emerald.sav"), b"handheld").unwrap();
+        let resume = root.join("States/GBA/gpsp/Emerald");
+        std::fs::create_dir_all(&resume).unwrap();
+        std::fs::write(resume.join("resume.state"), b"old state").unwrap();
+        let from = Differs {
+            rel: "GBA/Emerald.sav".into(),
+            bytes: b"from the nas".to_vec(),
+            on_card: true,
+        };
+        restore(root, &from, "2026-11-03_12-00-00").unwrap();
+        assert_eq!(
+            std::fs::read(saves.join("GBA/Emerald.sav")).unwrap(),
+            b"from the nas"
+        );
+        assert_eq!(
+            std::fs::read(root.join(UNDO).join("2026-11-03_12-00-00/GBA/Emerald.sav")).unwrap(),
+            b"handheld"
+        );
+        assert!(
+            !resume.join("resume.state").exists(),
+            "the resume state, holding the old save, would bring it back"
+        );
+    }
+
+    #[test]
+    fn a_save_on_the_nas_is_named_as_its_game() {
+        let d = Differs {
+            rel: "GBA/Pokemon - Emerald Version (USA, Europe).sav".into(),
+            bytes: Vec::new(),
+            on_card: false,
+        };
+        assert_eq!(d.name(), "Pokemon - Emerald Version");
+        assert_eq!(d.system(), "GBA");
+        assert_eq!(
+            game_of("GBA/Emerald.sav").map(|(p, s)| (p.dir_name(), s)),
+            Some(("GBA", "Emerald".to_string()))
+        );
+        assert_eq!(game_of("PS1/cards/Crash.mcd"), None);
+    }
+
+    #[test]
+    fn a_failed_pass_is_tried_again_soon_then_less_often() {
+        let waits: Vec<u64> = (1..=6).map(|n| retry_after(n).as_secs()).collect();
+        assert_eq!(waits, [5, 10, 20, 40, 60, 60]);
+        assert_eq!(retry_after(100).as_secs(), 60);
     }
 
     #[test]

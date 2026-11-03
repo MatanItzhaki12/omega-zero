@@ -12,11 +12,13 @@
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::time::Duration;
 
+use omega_ui::Toast;
+
 use crate::app::{App, Phase};
 use crate::nas::{Found, Login, Nas, NasFail};
 use crate::nav::Dir;
 use crate::options::{OptionRow, OptionsPage, OptionsScreen};
-use crate::save_backup::{SaveBackup, Status, Target};
+use crate::save_backup::{Differs, SaveBackup, Status, Target};
 
 /// One question to the NAS, answered on a thread of its own.
 pub struct Job<T> {
@@ -83,11 +85,22 @@ impl Browsing {
     }
 }
 
+/// FROM BACKUP while it is open: the saves on the NAS unlike the handheld's, the comparing under
+/// way, and the one A was pressed on once, which a second A copies.
+#[derive(Default)]
+pub struct Restoring {
+    pub found: Vec<Differs>,
+    job: Option<Job<Result<Vec<Differs>, NasFail>>>,
+    fail: Option<NasFail>,
+    armed: Option<u16>,
+}
+
 /// What Save Backup's panels are doing.
 #[derive(Default)]
 pub struct BackupUi {
     pub finding: Finding,
     pub browsing: Browsing,
+    pub restoring: Restoring,
 }
 
 /// How many characters of a value a row has room for beside its name.
@@ -160,6 +173,7 @@ impl App {
             self.backup_pass();
         }
         self.backup_joined = joined;
+        self.toast_backup();
         let finding = &mut self.backup_ui.finding;
         if let Some(found) = finding
             .job
@@ -170,6 +184,18 @@ impl App {
             match found {
                 Ok(found) => finding.found = found,
                 Err(_) => finding.offline = true,
+            }
+        }
+        let restoring = &mut self.backup_ui.restoring;
+        if let Some(compared) = restoring
+            .job
+            .as_ref()
+            .and_then(|j| j.poll(|| Err(NasFail::Other("the NAS's answer was lost".into()))))
+        {
+            restoring.job = None;
+            match compared {
+                Ok(found) => restoring.found = found,
+                Err(e) => restoring.fail = Some(e),
             }
         }
         let browsing = &mut self.backup_ui.browsing;
@@ -186,6 +212,31 @@ impl App {
         }
     }
 
+    /// A toast at the top of the screen once a pass has copied saves; and once a pass has
+    /// failed, but only the first since saves last copied, so a NAS that stays away is told of
+    /// once rather than at every try.
+    fn toast_backup(&mut self) {
+        if self.save_backup.is_none() {
+            return;
+        }
+        let status = self.backup_status();
+        let (copied, failed) = self.backup_seen;
+        self.backup_seen = (status.copied, status.failed);
+        if status.copied > copied {
+            self.backup_fail_told = false;
+            self.hud
+                .toast(Toast::Emulator("Saves backed up to the NAS"), self.now());
+        } else if status.failed > failed && !self.backup_fail_told {
+            self.backup_fail_told = true;
+            let text = match status.fail {
+                Some(NasFail::Login) => "Save backup failed: login refused",
+                Some(NasFail::Denied) => "Save backup failed: folder refused",
+                _ => "Save backup failed: NAS away, will retry",
+            };
+            self.hud.toast(Toast::Emulator(text), self.now());
+        }
+    }
+
     /// The rows of a panel whose rows are what the NAS has.
     pub(crate) fn backup_rows(&self, page: OptionsPage) -> Option<Vec<OptionRow>> {
         match page {
@@ -193,6 +244,11 @@ impl App {
                 (0..self.backup_ui.finding.found.len().min(u8::MAX as usize))
                     .map(|i| OptionRow::NasFound(i as u8))
                     .chain([OptionRow::NasAddress])
+                    .collect(),
+            ),
+            OptionsPage::Restore => Some(
+                (0..self.backup_ui.restoring.found.len().min(u16::MAX as usize))
+                    .map(|i| OptionRow::RestoreItem(i as u16))
                     .collect(),
             ),
             OptionsPage::Folder => {
@@ -221,6 +277,12 @@ impl App {
                 .get(i as usize)
                 .map(Found::shown),
             OptionRow::FolderItem(i) => self.backup_ui.browsing.entries.get(i as usize).cloned(),
+            OptionRow::RestoreItem(i) => self
+                .backup_ui
+                .restoring
+                .found
+                .get(i as usize)
+                .map(Differs::name),
             _ => None,
         }
     }
@@ -257,6 +319,11 @@ impl App {
                 .map(|f| f.addr.to_string())
                 .unwrap_or_default(),
             OptionRow::FolderUse => fit_end(&self.backup_ui.browsing.shown()),
+            OptionRow::RestoreItem(i) => match self.backup_ui.restoring.found.get(i as usize) {
+                Some(d) if d.on_card => d.system().to_string(),
+                Some(_) => "NEW".to_string(),
+                None => String::new(),
+            },
             _ => String::new(),
         }
     }
@@ -282,7 +349,26 @@ impl App {
     pub(crate) fn backup_note(&self, row: OptionRow) -> Option<String> {
         let finding = &self.backup_ui.finding;
         let browsing = &self.backup_ui.browsing;
+        let restoring = &self.backup_ui.restoring;
         Some(match row {
+            OptionRow::RestoreItem(_) if restoring.job.is_some() => {
+                "Comparing with the NAS".to_string()
+            }
+            OptionRow::RestoreItem(_) if restoring.fail.is_some() => restoring
+                .fail
+                .as_ref()
+                .map_or("", NasFail::line)
+                .to_string(),
+            OptionRow::RestoreItem(_) if restoring.found.is_empty() => {
+                "Every save matches the NAS".to_string()
+            }
+            OptionRow::RestoreItem(i) if restoring.armed == Some(i) => {
+                "A again replaces the handheld's".to_string()
+            }
+            OptionRow::RestoreItem(i) => match restoring.found.get(i as usize) {
+                Some(d) if d.on_card => "Unlike the handheld's: A copies it".to_string(),
+                _ => "Not on the handheld: A copies it".to_string(),
+            },
             OptionRow::BackupNow => {
                 let status = self.backup_status();
                 if !self.state.backup {
@@ -330,6 +416,8 @@ impl App {
             OptionRow::BackupFolder => self.open_folders(),
             OptionRow::BackupNow if self.backup_target().is_none() => self.refuse(),
             OptionRow::BackupNow => self.backup_pass(),
+            OptionRow::BackupRestore => self.open_restore(),
+            OptionRow::RestoreItem(i) => self.restore_press(i),
             OptionRow::NasFound(i) => {
                 let Some(found) = self.backup_ui.finding.found.get(i as usize).cloned() else {
                     return self.refuse();
@@ -450,6 +538,66 @@ impl App {
     fn light_option(&mut self, row: OptionRow) {
         if let Phase::Options(screen) = &mut self.phase {
             screen.row = row;
+        }
+    }
+
+    /// FROM BACKUP, the NAS asked which of its saves differ from the handheld's. The NAS and
+    /// folder are the ones set up, whether Save Backup is on or not.
+    fn open_restore(&mut self) {
+        let s = &self.state;
+        if s.backup_host.is_empty() || s.backup_share.is_empty() {
+            return self.refuse();
+        }
+        let (Some(root), to) = (
+            self.root.clone(),
+            Target {
+                login: self.backup_login(),
+                share: s.backup_share.clone(),
+                dir: s.backup_dir.clone(),
+            },
+        ) else {
+            return self.refuse();
+        };
+        self.backup_ui.restoring = Restoring {
+            job: Some(Job::spawn(move || {
+                crate::save_backup::differing(&root, &to)
+            })),
+            ..Restoring::default()
+        };
+        self.go(
+            Phase::Options(OptionsScreen {
+                row: OptionRow::RestoreItem(0),
+                ..OptionsScreen::new(OptionsPage::Restore)
+            }),
+            Dir::Deeper,
+        );
+    }
+
+    /// A on a save in FROM BACKUP: the first press asks, the second puts it on the handheld.
+    fn restore_press(&mut self, i: u16) {
+        let restoring = &mut self.backup_ui.restoring;
+        let Some(from) = restoring.found.get(i as usize).cloned() else {
+            return self.refuse();
+        };
+        if restoring.armed != Some(i) {
+            restoring.armed = Some(i);
+            return;
+        }
+        restoring.armed = None;
+        let Some(root) = self.root.clone() else {
+            return self.refuse();
+        };
+        let stamp = omega_store::format_stamp(self.wall_secs());
+        match crate::save_backup::restore(&root, &from, &stamp) {
+            Ok(()) => {
+                self.backup_ui.restoring.found.remove(i as usize);
+                self.hud
+                    .toast(Toast::Emulator("Save copied from the NAS"), self.now());
+            }
+            Err(e) => {
+                eprintln!("omega-zero: sync from backup: {}: {e}", from.rel);
+                self.refuse();
+            }
         }
     }
 

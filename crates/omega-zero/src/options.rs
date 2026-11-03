@@ -50,6 +50,8 @@ pub enum OptionsPage {
     Nas,
     /// The NAS's shares and folders, opened from SAVE BACKUP's Folder.
     Folder,
+    /// The saves on the NAS that differ from the handheld's, opened from Sync From Backup.
+    Restore,
 }
 
 /// The systems with more than one core to run on, so a default to pick.
@@ -66,6 +68,7 @@ impl OptionsPage {
             OptionsPage::Backup => "SAVE BACKUP",
             OptionsPage::Nas => "FIND NAS",
             OptionsPage::Folder => "FOLDER",
+            OptionsPage::Restore => "FROM BACKUP",
         }
     }
 
@@ -93,10 +96,12 @@ impl OptionsPage {
                 OptionRow::BackupPassword,
                 OptionRow::BackupFolder,
                 OptionRow::BackupNow,
+                OptionRow::BackupRestore,
             ],
             // what the NAS has: `App::page_rows`
             OptionsPage::Nas => &[OptionRow::NasAddress],
             OptionsPage::Folder => &[OptionRow::FolderUse],
+            OptionsPage::Restore => &[OptionRow::RestoreItem(0)],
             OptionsPage::Achievements => {
                 &[OptionRow::Cheevos, OptionRow::Account, OptionRow::Hardcore]
             }
@@ -124,7 +129,9 @@ impl OptionsPage {
             }
             OptionsPage::Shelf => SettingsRow::Shelf,
             OptionsPage::Achievements => SettingsRow::Achievements,
-            OptionsPage::Backup | OptionsPage::Nas | OptionsPage::Folder => SettingsRow::Backup,
+            OptionsPage::Backup | OptionsPage::Nas | OptionsPage::Folder | OptionsPage::Restore => {
+                SettingsRow::Backup
+            }
         }
     }
 
@@ -136,6 +143,7 @@ impl OptionsPage {
             OptionsPage::Online => Some((OptionsPage::Gameplay, OptionRow::OnlinePlay)),
             OptionsPage::Nas => Some((OptionsPage::Backup, OptionRow::BackupNas)),
             OptionsPage::Folder => Some((OptionsPage::Backup, OptionRow::BackupFolder)),
+            OptionsPage::Restore => Some((OptionsPage::Backup, OptionRow::BackupRestore)),
             OptionsPage::Gameplay
             | OptionsPage::Shelf
             | OptionsPage::Achievements
@@ -189,6 +197,10 @@ pub enum OptionRow {
     BackupFolder,
     /// Where the copying stands: A copies now.
     BackupNow,
+    /// The saves on the NAS that differ from the handheld's: A opens FROM BACKUP.
+    BackupRestore,
+    /// A save on the NAS that differs from the handheld's, by its place in the list.
+    RestoreItem(u16),
     /// A NAS found on the network, by its place in the list.
     NasFound(u8),
     /// A NAS's address, typed on the keyboard.
@@ -212,6 +224,7 @@ impl OptionRow {
                 | OptionRow::BackupUser
                 | OptionRow::BackupPassword
                 | OptionRow::BackupFolder
+                | OptionRow::BackupRestore
                 | OptionRow::NasAddress
                 | OptionRow::FolderNew
                 | OptionRow::FolderItem(_)
@@ -227,6 +240,7 @@ impl OptionRow {
                     | OptionRow::BackupNow
                     | OptionRow::NasFound(_)
                     | OptionRow::FolderUse
+                    | OptionRow::RestoreItem(_)
             )
     }
 
@@ -264,8 +278,9 @@ impl OptionRow {
             OptionRow::BackupPassword => "Password",
             OptionRow::BackupFolder => "Folder",
             OptionRow::BackupNow => "Back Up Now",
-            // a NAS's or a folder's own name: `App::option_label`
-            OptionRow::NasFound(_) | OptionRow::FolderItem(_) => "",
+            OptionRow::BackupRestore => "Sync From Backup",
+            // a NAS's, a folder's or a game's own name: `App::option_label`
+            OptionRow::NasFound(_) | OptionRow::FolderItem(_) | OptionRow::RestoreItem(_) => "",
             OptionRow::NasAddress => "Type Its Address",
             OptionRow::FolderUse => "Use This Folder",
             OptionRow::FolderNew => "New Folder",
@@ -305,6 +320,8 @@ impl OptionRow {
             OptionRow::BackupPassword => "The user's password",
             OptionRow::BackupFolder => "Where saves go on the NAS",
             OptionRow::BackupNow => "A copies every save now",
+            OptionRow::BackupRestore => "Saves on the NAS unlike the handheld's",
+            OptionRow::RestoreItem(_) => "A copies it to the handheld",
             OptionRow::NasFound(_) => "A picks this NAS",
             OptionRow::NasAddress => "Its name or address, as 192.168.1.5",
             OptionRow::FolderUse => "Saves go to the folder open",
@@ -494,6 +511,8 @@ impl App {
             | OptionRow::BackupPassword
             | OptionRow::BackupFolder
             | OptionRow::BackupNow
+            | OptionRow::BackupRestore
+            | OptionRow::RestoreItem(_)
             | OptionRow::NasFound(_)
             | OptionRow::NasAddress
             | OptionRow::FolderUse
@@ -568,6 +587,8 @@ impl App {
             | OptionRow::BackupPassword
             | OptionRow::BackupFolder
             | OptionRow::BackupNow
+            | OptionRow::BackupRestore
+            | OptionRow::RestoreItem(_)
             | OptionRow::NasFound(_)
             | OptionRow::NasAddress
             | OptionRow::FolderUse
@@ -671,6 +692,8 @@ impl App {
                         | OptionRow::BackupNas
                         | OptionRow::BackupFolder
                         | OptionRow::BackupNow
+                        | OptionRow::BackupRestore
+                        | OptionRow::RestoreItem(_)
                         | OptionRow::NasFound(_)
                         | OptionRow::FolderUse
                         | OptionRow::FolderItem(_)

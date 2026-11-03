@@ -354,6 +354,10 @@ pub struct App {
     pub(crate) save_backup: Option<crate::save_backup::SaveBackup>,
     pub(crate) backup_ui: crate::backup_settings::BackupUi,
     pub(crate) backup_joined: bool,
+    /// The passes that copied and failed, as last toasted, and whether a failure was told of
+    /// since the last copy: a failure is told once, until saves copy again.
+    pub(crate) backup_seen: (u64, u64),
+    pub(crate) backup_fail_told: bool,
     /// The keyboard asks again for a room's password, the one given having been turned away.
     pub(crate) link_refused: bool,
     /// Local, the link goes to RetroArch on this network rather than to another handheld.
@@ -579,6 +583,8 @@ impl App {
             save_backup: None,
             backup_ui: Default::default(),
             backup_joined: false,
+            backup_seen: (0, 0),
+            backup_fail_told: false,
             link_refused: false,
             link_retroarch: false,
             link_advanced: false,
