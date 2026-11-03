@@ -36,6 +36,7 @@ impl App {
             | SettingsRow::Shelf
             | SettingsRow::Labels
             | SettingsRow::Achievements
+            | SettingsRow::Backup
             | SettingsRow::DateTime
             | SettingsRow::Network
             | SettingsRow::Bluetooth
@@ -148,6 +149,7 @@ impl App {
             SettingsRow::Achievements => {
                 Phase::Options(OptionsScreen::new(OptionsPage::Achievements))
             }
+            SettingsRow::Backup => Phase::Options(OptionsScreen::new(OptionsPage::Backup)),
             SettingsRow::DateTime => clock_screen(self.utc_secs(), self.state.utc_offset_min, true),
             SettingsRow::Network => Phase::Network(WifiScreen::default()),
             SettingsRow::Bluetooth => Phase::Bluetooth(BluetoothScreen::default()),
@@ -172,6 +174,7 @@ impl App {
             | SettingsRow::Shelf
             | SettingsRow::Labels
             | SettingsRow::Achievements
+            | SettingsRow::Backup
             | SettingsRow::DateTime
             | SettingsRow::Network
             | SettingsRow::Bluetooth

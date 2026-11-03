@@ -97,6 +97,22 @@ pub struct AppState {
     /// The address an online room is joined at, under the link screen's ADVANCED: a host, and a
     /// port after a colon.
     pub online_address: String,
+    /// Save Backup: saves are copied to a NAS as they are made.
+    pub backup: bool,
+    /// The NAS: its address, and the name it was found by, shown in its place.
+    pub backup_host: String,
+    pub backup_name: String,
+    /// Who signs in to the NAS, and their password: no user is a guest.
+    pub backup_user: String,
+    pub backup_password: String,
+    /// The share saves go to on the NAS, and the folder in it, its parts apart by `/`.
+    pub backup_share: String,
+    pub backup_dir: String,
+    /// The shelf and the cart picked when omega-zero last went off, picked again at boot: the
+    /// shelf by its key (`recents`, `favorites` or a system's), the cart by its system and stem.
+    pub shelf: String,
+    pub picked: String,
+    pub picked_platform: Option<Platform>,
 }
 
 impl Default for AppState {
@@ -144,6 +160,16 @@ impl Default for AppState {
             relay: 1,
             online_password: String::new(),
             online_address: String::new(),
+            backup: false,
+            backup_host: String::new(),
+            backup_name: String::new(),
+            backup_user: String::new(),
+            backup_password: String::new(),
+            backup_share: String::new(),
+            backup_dir: String::new(),
+            shelf: String::new(),
+            picked: String::new(),
+            picked_platform: None,
         }
     }
 }
@@ -205,6 +231,20 @@ pub fn write_app_state(root: &Path, s: &AppState) -> std::io::Result<()> {
         online_password(&s.online_password),
         online_password(&s.online_address),
     );
+    let text = text
+        + &format!(
+            "backup={}\nbackup_host={}\nbackup_name={}\nbackup_user={}\nbackup_password={}\nbackup_share={}\nbackup_dir={}\nshelf={}\npicked={}\npicked_platform={}\n",
+            s.backup as u8,
+            kept_text(&s.backup_host),
+            kept_text(&s.backup_name),
+            kept_text(&s.backup_user),
+            kept_text(&s.backup_password),
+            kept_text(&s.backup_share),
+            kept_text(&s.backup_dir),
+            kept_text(&s.shelf),
+            kept_text(&s.picked),
+            s.picked_platform.map_or(String::new(), platform_key),
+        );
     atomic_write(&state_path(root), text.as_bytes())
 }
 
@@ -250,6 +290,9 @@ fn parse(text: &str) -> Option<AppState> {
     let mut relay = None;
     let mut online_password_read = None;
     let mut online_address_read = None;
+    let mut backup = None;
+    let mut backup_text: [Option<String>; 8] = Default::default();
+    let mut picked_platform = None;
     for line in text.lines().filter(|l| !l.is_empty()) {
         let Some((key, value)) = line.split_once('=') else {
             continue;
@@ -295,10 +338,16 @@ fn parse(text: &str) -> Option<AppState> {
             "relay" => relay = value.trim().parse().ok(),
             "online_password" => online_password_read = Some(online_password(value)),
             "online_address" => online_address_read = Some(online_password(value)),
+            "backup" => backup = flag(value),
+            "picked_platform" => picked_platform = platform_value(value),
             "lid_off_min" => {
                 lid_off_min = value.parse().ok().filter(|m| LID_OFF_MINUTES.contains(m))
             }
-            _ => {}
+            key => {
+                if let Some(at) = TEXT_KEYS.iter().position(|k| *k == key) {
+                    backup_text[at] = Some(kept_text(value));
+                }
+            }
         }
     }
     let cart = cart?;
@@ -345,6 +394,16 @@ fn parse(text: &str) -> Option<AppState> {
         relay: relay.unwrap_or(fallback.relay),
         online_password: online_password_read.unwrap_or(fallback.online_password),
         online_address: online_address_read.unwrap_or(fallback.online_address),
+        backup: backup.unwrap_or(fallback.backup),
+        backup_host: text_or(&mut backup_text[0], fallback.backup_host),
+        backup_name: text_or(&mut backup_text[1], fallback.backup_name),
+        backup_user: text_or(&mut backup_text[2], fallback.backup_user),
+        backup_password: text_or(&mut backup_text[3], fallback.backup_password),
+        backup_share: text_or(&mut backup_text[4], fallback.backup_share),
+        backup_dir: text_or(&mut backup_text[5], fallback.backup_dir),
+        shelf: text_or(&mut backup_text[6], fallback.shelf),
+        picked: text_or(&mut backup_text[7], fallback.picked),
+        picked_platform: picked_platform.or(fallback.picked_platform),
     })
 }
 
@@ -409,6 +468,32 @@ pub fn online_password(password: &str) -> String {
         .collect();
     let mut kept = kept.trim().to_string();
     while kept.len() > 63 {
+        kept.pop();
+    }
+    kept
+}
+
+/// The keys of the state's free text, read into one place by their order here.
+const TEXT_KEYS: [&str; 8] = [
+    "backup_host",
+    "backup_name",
+    "backup_user",
+    "backup_password",
+    "backup_share",
+    "backup_dir",
+    "shelf",
+    "picked",
+];
+
+fn text_or(read: &mut Option<String>, fallback: String) -> String {
+    read.take().unwrap_or(fallback)
+}
+
+/// Free text as the state can keep it, a line to itself: control characters left out, and no
+/// longer than 255 bytes. Nothing else is touched, so a password keeps its spaces and signs.
+pub fn kept_text(text: &str) -> String {
+    let mut kept: String = text.chars().filter(|c| !c.is_control()).collect();
+    while kept.len() > 255 {
         kept.pop();
     }
     kept

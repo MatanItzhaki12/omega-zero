@@ -64,6 +64,8 @@ pub enum SettingsRow {
     Labels,
     /// The ACHIEVEMENTS panel: RetroAchievements, the account and Hardcore.
     Achievements,
+    /// The SAVE BACKUP panel: saves copied to a NAS as they are made.
+    Backup,
     DateTime,
     Network,
     Bluetooth,
@@ -76,13 +78,14 @@ pub enum SettingsRow {
 }
 
 impl SettingsRow {
-    pub const ALL: [SettingsRow; 12] = [
+    pub const ALL: [SettingsRow; 13] = [
         SettingsRow::ColourCorrection,
         SettingsRow::ScreenFilter,
         SettingsRow::Gameplay,
         SettingsRow::Shelf,
         SettingsRow::Labels,
         SettingsRow::Achievements,
+        SettingsRow::Backup,
         SettingsRow::DateTime,
         SettingsRow::Network,
         SettingsRow::Bluetooth,
@@ -103,6 +106,7 @@ impl SettingsRow {
             SettingsRow::Shelf => "Shelf",
             SettingsRow::Labels => "Labels",
             SettingsRow::Achievements => "RetroAchievements",
+            SettingsRow::Backup => "Save Backup",
             SettingsRow::DateTime => "Date & Time",
             SettingsRow::Network => "Network",
             SettingsRow::Bluetooth => "Bluetooth",
@@ -119,7 +123,8 @@ impl SettingsRow {
             | SettingsRow::Gameplay
             | SettingsRow::Shelf
             | SettingsRow::Labels
-            | SettingsRow::Achievements => SettingsGroup::Configs,
+            | SettingsRow::Achievements
+            | SettingsRow::Backup => SettingsGroup::Configs,
             SettingsRow::DateTime
             | SettingsRow::Network
             | SettingsRow::Bluetooth
@@ -138,6 +143,7 @@ impl SettingsRow {
                 | SettingsRow::Shelf
                 | SettingsRow::Labels
                 | SettingsRow::Achievements
+                | SettingsRow::Backup
                 | SettingsRow::DateTime
                 | SettingsRow::Network
                 | SettingsRow::Bluetooth

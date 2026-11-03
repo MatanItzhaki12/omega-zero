@@ -294,6 +294,10 @@ pub enum OnlineJob {
         crc: u32,
         rom: Option<std::path::PathBuf>,
         password: String,
+        /// The TCP port the room is opened on and the UDP port it answers on: RetroArch's
+        /// own, both 55435, but in a test.
+        port: u16,
+        discovery: u16,
     },
     /// Join the room at an address, as RetroArch on the same network hosts one.
     JoinAt {
@@ -390,6 +394,8 @@ impl LinkStarter {
                         crc,
                         rom,
                         password,
+                        port,
+                        discovery,
                     } => {
                         let crc = rom
                             .and_then(|rom| std::fs::read(rom).ok())
@@ -398,10 +404,10 @@ impl LinkStarter {
                             nick,
                             game,
                             crc,
-                            port: netplay_lobby::NETPLAY_PORT,
+                            port,
                             password: !password.is_empty(),
                         };
-                        host_lan(&tx, &flag, ad, &password)
+                        host_lan(&tx, &flag, ad, &password, discovery)
                     }
                     OnlineJob::Join {
                         nick,
@@ -548,6 +554,7 @@ fn host_lan(
     cancel: &Cancel,
     ad: crate::netplay_lan::Ad,
     password: &str,
+    discovery: u16,
 ) -> Result<Connected, LinkFail> {
     let port = ad.port;
     let held = |e: std::io::Error| {
@@ -559,7 +566,7 @@ fn host_lan(
     listener.set_nonblocking(true).map_err(held)?;
     let nick = ad.nick.clone();
     let crc = ad.crc;
-    let _ad = crate::netplay_lan::Advertiser::start(ad).map_err(held)?;
+    let _ad = crate::netplay_lan::Advertiser::start_on(discovery, ad).map_err(held)?;
     let _ = tx.send(LinkProgress::At(LinkStep::Waiting));
     let until = Instant::now() + ROOM_OPEN;
     while Instant::now() < until {

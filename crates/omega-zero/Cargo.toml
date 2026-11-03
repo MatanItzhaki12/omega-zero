@@ -24,6 +24,8 @@ gilrs = { workspace = true, optional = true }
 libloading = { workspace = true }
 lz4_flex = { workspace = true }
 png = { workspace = true }
+smb2 = { workspace = true }
+tokio = { version = "1", default-features = false, features = ["rt", "time"] }
 
 [dev-dependencies]
 omega-gfx = { path = "../omega-gfx", default-features = false, features = ["test-support"] }

@@ -165,7 +165,9 @@ fn every_row_stands_in_its_own_panels_well() {
     let [_, y, _, h] = omega_ui::settings_rect(omega_ui::configs_in(&listed(true)));
     let [_, my, _, mh] = modal_rect();
     assert_eq!(y + h, my + mh, "the modal's foot moved");
-    assert!(my - y <= 1, "it reached up {} pixels", my - y);
+    // CONFIGS' seventh row, Save Backup, takes a row's height of the margin over it on a
+    // 480-line screen
+    assert!(my - y <= ROW_H + 1, "it reached up {} pixels", my - y);
     let frame = settings_frame(omega_ui::configs_in(&listed(true)), palette(NIGHT));
     let rects = settings_row_rects(&listed(true), frame.wells);
     let at = |row: SettingsRow| rects.iter().find(|(r, _)| *r == row).unwrap().1;
@@ -180,7 +182,7 @@ fn every_row_stands_in_its_own_panels_well() {
         "GENERAL's first row is not at its well's top"
     );
     assert_eq!(
-        at(SettingsRow::Achievements)[1] + ROW_H,
+        at(SettingsRow::Backup)[1] + ROW_H,
         frame.wells[0][1] + frame.wells[0][3],
         "CONFIGS does not hug its rows"
     );
@@ -487,6 +489,7 @@ fn the_rows_run_in_the_order_the_user_chose() {
             "Shelf",
             "Labels",
             "RetroAchievements",
+            "Save Backup",
             "Date & Time",
             "Network",
             "Bluetooth",
@@ -503,6 +506,7 @@ fn the_rows_run_in_the_order_the_user_chose() {
             SettingsRow::Shelf,
             SettingsRow::Labels,
             SettingsRow::Achievements,
+            SettingsRow::Backup,
             SettingsRow::DateTime,
             SettingsRow::Network,
             SettingsRow::Bluetooth,
@@ -519,7 +523,7 @@ fn the_configs_come_first_and_the_handheld_itself_after() {
         .iter()
         .take_while(|g| **g == SettingsGroup::Configs)
         .count();
-    assert_eq!(configs, 6, "{groups:?}");
+    assert_eq!(configs, 7, "{groups:?}");
     assert!(
         groups[configs..]
             .iter()

@@ -349,6 +349,11 @@ pub struct App {
     /// The LINK panel's row under the cursor, and the keyboard up over it for NAME or PASSWORD.
     pub(crate) link_field: crate::link_screen::LinkField,
     pub(crate) link_typing: Option<(crate::link_screen::LinkField, omega_ui::Keyboard)>,
+    /// Save Backup's thread, what its panels are doing, and whether a network was joined at
+    /// the last frame, for a pass once one is.
+    pub(crate) save_backup: Option<crate::save_backup::SaveBackup>,
+    pub(crate) backup_ui: crate::backup_settings::BackupUi,
+    pub(crate) backup_joined: bool,
     /// The keyboard asks again for a room's password, the one given having been turned away.
     pub(crate) link_refused: bool,
     /// Local, the link goes to RetroArch on this network rather than to another handheld.
@@ -571,6 +576,9 @@ impl App {
             online_room: None,
             link_field: crate::link_screen::LinkField::Role,
             link_typing: None,
+            save_backup: None,
+            backup_ui: Default::default(),
+            backup_joined: false,
             link_refused: false,
             link_retroarch: false,
             link_advanced: false,
@@ -636,6 +644,7 @@ impl App {
         app.bluetooth.start(app.state.bluetooth);
         app.labels = Labels::new(label_jobs(root), Account::load(root));
         app.start_achievements();
+        app.start_save_backup();
         app.recents = read_recents(root);
         app.refresh_recents();
         app.refresh_marks();
@@ -697,7 +706,75 @@ impl App {
                 self.state.cart = None;
                 self.state.cart_platform = None;
                 self.name_pending = true;
+                self.pick_last();
             }
+        }
+    }
+
+    /// The key a shelf is kept by: `recents`, `favorites`, or its system's.
+    fn shelf_key(kind: ShelfKind) -> String {
+        match kind {
+            ShelfKind::Recents => "recents".to_string(),
+            ShelfKind::Favorites => "favorites".to_string(),
+            ShelfKind::System(p) => p.dir_name().to_ascii_lowercase(),
+        }
+    }
+
+    /// Keeps the shelf and the cart picked, for the next boot to pick again.
+    pub(crate) fn remember_pick(&mut self) {
+        let kind = self.shelves[self.shelf_at].0;
+        let cart = self.shelf().carts.get(self.shelf().index);
+        let (stem, platform) = match cart {
+            Some(c) => (c.stem.clone(), Some(c.platform)),
+            None => (String::new(), None),
+        };
+        let shelf = Self::shelf_key(kind);
+        let s = &mut self.state;
+        if s.shelf == shelf && s.picked == stem && s.picked_platform == platform {
+            return;
+        }
+        s.shelf = shelf;
+        s.picked = stem;
+        s.picked_platform = platform;
+        self.persist();
+    }
+
+    /// The shelf and the cart picked when omega-zero last went off, picked again: on the shelf
+    /// it was on, else on its system's, the shelf staying as it is when the cart is gone.
+    fn pick_last(&mut self) {
+        let (key, stem, platform) = (
+            self.state.shelf.clone(),
+            self.state.picked.clone(),
+            self.state.picked_platform,
+        );
+        if stem.is_empty() {
+            return;
+        }
+        let holds = |shelf: &Shelf| {
+            shelf
+                .carts
+                .iter()
+                .position(|c| c.stem == stem && platform.is_none_or(|p| c.platform == p))
+        };
+        let on_kept = self
+            .shelves
+            .iter()
+            .position(|(kind, _)| Self::shelf_key(*kind) == key)
+            .and_then(|at| holds(&self.shelves[at].1).map(|i| (at, i)));
+        let on_system = || {
+            self.shelves
+                .iter()
+                .enumerate()
+                .find_map(|(at, (kind, shelf))| {
+                    matches!(kind, ShelfKind::System(_))
+                        .then(|| holds(shelf))
+                        .flatten()
+                        .map(|i| (at, i))
+                })
+        };
+        if let Some((at, i)) = on_kept.or_else(on_system) {
+            self.shelf_at = at;
+            self.shelf_mut().select(i);
         }
     }
 
@@ -1354,6 +1431,7 @@ impl App {
     }
 
     pub fn poweroff(&mut self) {
+        self.remember_pick();
         self.settle_saves();
         if let Some(power) = &mut self.power {
             power.poweroff();
@@ -1905,6 +1983,7 @@ impl App {
         self.timers();
         self.poll_link();
         self.poll_rooms();
+        self.poll_backup();
         let now = self.now();
         let ready = self.core_faces_ready();
         if let Some(picker) = &mut self.core_picker {
@@ -2706,6 +2785,7 @@ impl App {
             }
             Err(e) => eprintln!("omega-zero: eject: {e}"),
         }
+        self.backup_pass();
     }
 
     fn doze(&mut self) {
@@ -3329,6 +3409,8 @@ impl App {
                 crc: 0,
                 rom,
                 password,
+                port: crate::netplay_lobby::NETPLAY_PORT,
+                discovery: crate::netplay_lan::DISCOVERY_PORT,
             },
             _ => OnlineJob::Host {
                 nick,
@@ -3564,6 +3646,7 @@ impl App {
         if self.shutting_down() {
             return;
         }
+        self.remember_pick();
         if self.link_active() {
             self.end_link();
         }
@@ -3579,6 +3662,7 @@ impl App {
         if self.shutting_down() {
             return;
         }
+        self.remember_pick();
         self.close_game_menu();
         self.restarting = true;
         self.act_at = self.now() + SHUTDOWN_SHOW_MS;
@@ -3646,6 +3730,7 @@ impl App {
             Ok(h) => self.pending_save = Some(h),
             Err(e) => eprintln!("omega-zero: autosave: no writer thread: {e}"),
         }
+        self.backup_pass();
     }
 
     pub fn flush_resume(&mut self) {
@@ -3670,6 +3755,7 @@ impl App {
         ) {
             eprintln!("omega-zero: flush: {e}");
         }
+        self.backup_pass();
     }
 
     pub(crate) fn ring(&self) -> Option<StateRing> {

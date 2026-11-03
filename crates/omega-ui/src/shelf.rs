@@ -120,6 +120,9 @@ pub struct Shelf {
     holo: [Vec<TexId>; CartModel::ALL.len()],
     /// Whether the cart picked has its holo sheen: Labels > Holo Sheen.
     holo_shown: bool,
+    /// Whether the cart last asked about has a clear or glitter shell, and so the sheen: kept
+    /// for it by its ROM and shell, since a Game Boy cart's is read from its ROM's header.
+    clear: std::cell::RefCell<Option<(std::path::PathBuf, Option<omega_store::ShellChoice>, bool)>>,
     models: Vec<CartModel>,
     /// How many discs each cart stands as: one, but for a game on several discs.
     discs: Vec<usize>,
@@ -150,6 +153,7 @@ impl Shelf {
             shadows: [None; CartModel::ALL.len()],
             holo: Default::default(),
             holo_shown: true,
+            clear: Default::default(),
             meshes: None,
             ride: 0.0,
             vel: 0.0,
@@ -194,9 +198,15 @@ impl Shelf {
     /// over the sway's reach, so it slides over the label as the cart turns one way and back.
     /// Only the cart picked has it, fading in as it comes to the middle: one more face drawn
     /// over one cart, not over every cart in sight, and none while the row scrolls past.
-    fn holo_at(&self, model: CartModel, yaw: f32, offset: f32) -> Option<(TexId, f32)> {
+    fn holo_at(
+        &self,
+        cart: &Cart,
+        model: CartModel,
+        yaw: f32,
+        offset: f32,
+    ) -> Option<(TexId, f32)> {
         let fade = 1.0 - offset.abs() / HOLO_REACH;
-        if !self.holo_shown || fade <= 0.0 {
+        if !self.holo_shown || fade <= 0.0 || !self.clear_shell(cart) {
             return None;
         }
         let frames = &self.holo[model.index()];
@@ -204,6 +214,20 @@ impl Shelf {
         let t = (0.5 + yaw / (2.0 * SWAY)).clamp(0.0, 1.0);
         let tex = frames.get((t * last as f32).round() as usize).copied()?;
         Some((tex, fade))
+    }
+
+    /// Whether `cart`'s shell is clear or glitter plastic, the shells the holo sheen is for: a
+    /// solid one's label has none.
+    fn clear_shell(&self, cart: &Cart) -> bool {
+        let mut kept = self.clear.borrow_mut();
+        if let Some((rom, shell, clear)) = kept.as_ref() {
+            if *rom == cart.rom && *shell == cart.shell {
+                return *clear;
+            }
+        }
+        let clear = crate::shell::shell_for(cart).finish != crate::shell::Finish::Solid;
+        *kept = Some((cart.rom.clone(), cart.shell, clear));
+        clear
     }
 
     /// The models carts are drawn with from now on, sides and all.
@@ -660,7 +684,7 @@ impl Shelf {
                         ));
                         // the label's holo sheen over the model's face, as far along as the
                         // cart is turned
-                        if let Some((holo, fade)) = self.holo_at(model, pose.yaw, offset) {
+                        if let Some((holo, fade)) = self.holo_at(cart, model, pose.yaw, offset) {
                             out.push(spin::posed_face(
                                 (x, y, w, h),
                                 holo,
@@ -697,7 +721,7 @@ impl Shelf {
                 }
             }
             // the label's holo sheen over the face, as far along as the cart is turned
-            let holo = face.and_then(|_| self.holo_at(model, pose.yaw, offset));
+            let holo = face.and_then(|_| self.holo_at(cart, model, pose.yaw, offset));
             out.push(match face {
                 Some(tex) => spin::posed_face((x, y, w, h), tex, alpha * dim, 0.0, pose.yaw),
                 None => {

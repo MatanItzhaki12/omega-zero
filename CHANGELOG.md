@@ -1,6 +1,30 @@
 # Changelog
 
-## Unreleased
+## Unreleased: Save Backup
+
+- Settings > Save Backup copies every save on the card to a folder on a NAS over Samba (SMB 2
+  and 3), as each is made. FIND NAS lists the NASes answering on the Wi-Fi by name, with a row
+  to type one's address; User and Password are typed on the keyboard, none signing in as a
+  guest; FOLDER lists the NAS's shares and their folders, opens them, makes a new one, and picks
+  the one open. Back Up Now says where it stands and copies at once.
+- What is copied is the card's whole Saves folder, whatever wrote it, so a system or emulator
+  added later is backed up with no change. Only what changed is copied, as `Config/save_backup.list`
+  keeps it, each over the one on the NAS by way of a file beside it renamed over it. With no
+  network, or the NAS away, saves wait, and the newest of each is copied once the NAS answers:
+  after the next save, when Wi-Fi comes back, or within minutes. The first time, or after
+  another NAS or folder is picked, the whole Saves folder is copied.
+- The shelf comes up on the game it was on when the handheld went off, on the same shelf, the
+  game not opened: a game that was playing is still picked up again as before.
+- The holo sheen is the clear and glitter carts': a cart in solid plastic has none.
+- The Settings window holds a seventh CONFIGS row, Save Backup; on a 480-line screen it reaches
+  up over the top bar to hold every row.
+- Tests: Save Backup against a real Samba server when one is named (from the panel down to the
+  file on the server), LAN play end to end (a room opened, found as RetroArch looks for rooms,
+  joined with its password and a wrong one turned away), the shelf's cart at power-on and the
+  sheen's shells.
+- The README and README-FORK describe everything since 2.1.2: link play nearby, on the LAN and
+  online, Run-Ahead, the holo sheen, START + POWER restarting, Save Backup and the files and keys
+  they keep.
 
 ## omega-zero 2.4.3
 

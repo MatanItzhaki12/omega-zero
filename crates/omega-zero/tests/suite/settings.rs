@@ -135,6 +135,7 @@ fn up_and_down_move_the_bar_and_wrap_at_the_ends() {
         SettingsRow::Shelf,
         SettingsRow::Labels,
         SettingsRow::Achievements,
+        SettingsRow::Backup,
         SettingsRow::DateTime,
         SettingsRow::Network,
         SettingsRow::Bluetooth,
@@ -455,7 +456,7 @@ fn the_modal_fills_the_page_and_the_lit_title_follows_the_cursor() {
         let out = frame(&a);
         assert_eq!(
             placed(&out, 100),
-            Some(at_2x(omega_ui::settings_rect(6))),
+            Some(at_2x(omega_ui::settings_rect(7))),
             "{row:?}: the frame"
         );
         let (configs, general) = (drawn(&out, 110), drawn(&out, 111));
@@ -540,6 +541,8 @@ fn the_rows_say_what_is_set_in_flows_capitals() {
             None,
             None,
             None,
+            None,
+            // Save Backup opens its panel
             None,
             clock_text,
             text("OFF"),
@@ -642,7 +645,7 @@ fn without_a_radio_network_is_not_listed_drawn_or_stepped_onto() {
     let date = placed(&out, 200 + SettingsRow::DateTime.index()).unwrap();
     let bluetooth = placed(&out, 200 + SettingsRow::Bluetooth.index()).unwrap();
     assert_eq!(bluetooth[1], date[1] + (2 * ROW_H) as f32);
-    assert_eq!(placed(&out, 100), Some(at_2x(omega_ui::settings_rect(6))));
+    assert_eq!(placed(&out, 100), Some(at_2x(omega_ui::settings_rect(7))));
     assert_eq!(placed(&out, 111), Some(at_2x(faces.titles[1].at)));
 }
 

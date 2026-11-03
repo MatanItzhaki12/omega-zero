@@ -23,6 +23,8 @@ tempfile = "3"
 unicode-normalization = "0.1"
 resvg = { version = "0.48", default-features = false }
 usvg = { version = "0.48", default-features = false }
+# Save Backup's client for a NAS's Samba shares: pure Rust, run on a thread of its own.
+smb2 = "0.39"
 
 # Dependencies build once and then sit still, so the debug build and the tests run them
 # optimised: png, lz4 and the font and svg rasterisers are most of what the render tests spend.

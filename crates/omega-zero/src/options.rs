@@ -30,6 +30,10 @@ use crate::screens::settings::{ff_next, SettingsRow};
 /// How wide a panel is, in art pixels: room for Load State on Insert and a palette's name.
 pub const PANEL_W: u32 = 268;
 
+/// How many rows a panel shows at once, GAMEPLAY's all: a longer list, as a NAS's folders can
+/// be, shows those round the lit one.
+pub const VIEW_ROWS: usize = 12;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum OptionsPage {
     Gameplay,
@@ -40,6 +44,12 @@ pub enum OptionsPage {
     Emulators,
     /// The name and the relay of online play, opened from GAMEPLAY.
     Online,
+    /// Save Backup, opened from CONFIGS: saves copied to a NAS.
+    Backup,
+    /// The NASes on this Wi-Fi, opened from SAVE BACKUP's NAS.
+    Nas,
+    /// The NAS's shares and folders, opened from SAVE BACKUP's Folder.
+    Folder,
 }
 
 /// The systems with more than one core to run on, so a default to pick.
@@ -53,6 +63,9 @@ impl OptionsPage {
             OptionsPage::Achievements => "ACHIEVEMENTS",
             OptionsPage::Emulators => "EMULATORS",
             OptionsPage::Online => "ONLINE PLAY",
+            OptionsPage::Backup => "SAVE BACKUP",
+            OptionsPage::Nas => "FIND NAS",
+            OptionsPage::Folder => "FOLDER",
         }
     }
 
@@ -73,6 +86,17 @@ impl OptionsPage {
                 OptionRow::Emulators,
             ],
             OptionsPage::Online => &[OptionRow::OnlineName, OptionRow::Relay],
+            OptionsPage::Backup => &[
+                OptionRow::BackupOn,
+                OptionRow::BackupNas,
+                OptionRow::BackupUser,
+                OptionRow::BackupPassword,
+                OptionRow::BackupFolder,
+                OptionRow::BackupNow,
+            ],
+            // what the NAS has: `App::page_rows`
+            OptionsPage::Nas => &[OptionRow::NasAddress],
+            OptionsPage::Folder => &[OptionRow::FolderUse],
             OptionsPage::Achievements => {
                 &[OptionRow::Cheevos, OptionRow::Account, OptionRow::Hardcore]
             }
@@ -100,6 +124,7 @@ impl OptionsPage {
             }
             OptionsPage::Shelf => SettingsRow::Shelf,
             OptionsPage::Achievements => SettingsRow::Achievements,
+            OptionsPage::Backup | OptionsPage::Nas | OptionsPage::Folder => SettingsRow::Backup,
         }
     }
 
@@ -109,7 +134,12 @@ impl OptionsPage {
         match self {
             OptionsPage::Emulators => Some((OptionsPage::Gameplay, OptionRow::Emulators)),
             OptionsPage::Online => Some((OptionsPage::Gameplay, OptionRow::OnlinePlay)),
-            OptionsPage::Gameplay | OptionsPage::Shelf | OptionsPage::Achievements => None,
+            OptionsPage::Nas => Some((OptionsPage::Backup, OptionRow::BackupNas)),
+            OptionsPage::Folder => Some((OptionsPage::Backup, OptionRow::BackupFolder)),
+            OptionsPage::Gameplay
+            | OptionsPage::Shelf
+            | OptionsPage::Achievements
+            | OptionsPage::Backup => None,
         }
     }
 }
@@ -148,6 +178,25 @@ pub enum OptionRow {
     OnlineName,
     /// The relay an online room is opened through.
     Relay,
+    /// Save Backup, on or off.
+    BackupOn,
+    /// The NAS: A opens FIND NAS.
+    BackupNas,
+    /// Who signs in to the NAS, and their password: A types each.
+    BackupUser,
+    BackupPassword,
+    /// The folder saves go to: A opens FOLDER.
+    BackupFolder,
+    /// Where the copying stands: A copies now.
+    BackupNow,
+    /// A NAS found on the network, by its place in the list.
+    NasFound(u8),
+    /// A NAS's address, typed on the keyboard.
+    NasAddress,
+    /// FOLDER: the folder open picked, a folder made in it, and a share or folder in it.
+    FolderUse,
+    FolderNew,
+    FolderItem(u16),
 }
 
 impl OptionRow {
@@ -159,12 +208,26 @@ impl OptionRow {
                 | OptionRow::Emulators
                 | OptionRow::OnlinePlay
                 | OptionRow::OnlineName
+                | OptionRow::BackupNas
+                | OptionRow::BackupUser
+                | OptionRow::BackupPassword
+                | OptionRow::BackupFolder
+                | OptionRow::NasAddress
+                | OptionRow::FolderNew
+                | OptionRow::FolderItem(_)
         )
     }
 
     /// Left and Right step the row's value, which stands between a ◀ and a ▶ while it is lit.
     pub fn carets(self) -> bool {
-        !self.opens() && !matches!(self, OptionRow::Switched(_))
+        !self.opens()
+            && !matches!(
+                self,
+                OptionRow::Switched(_)
+                    | OptionRow::BackupNow
+                    | OptionRow::NasFound(_)
+                    | OptionRow::FolderUse
+            )
     }
 
     pub fn label(self) -> &'static str {
@@ -195,6 +258,17 @@ impl OptionRow {
             OptionRow::OnlinePlay => "Online Play",
             OptionRow::OnlineName => "Name",
             OptionRow::Relay => "Relay",
+            OptionRow::BackupOn => "Save Backup",
+            OptionRow::BackupNas => "NAS",
+            OptionRow::BackupUser => "User",
+            OptionRow::BackupPassword => "Password",
+            OptionRow::BackupFolder => "Folder",
+            OptionRow::BackupNow => "Back Up Now",
+            // a NAS's or a folder's own name: `App::option_label`
+            OptionRow::NasFound(_) | OptionRow::FolderItem(_) => "",
+            OptionRow::NasAddress => "Type Its Address",
+            OptionRow::FolderUse => "Use This Folder",
+            OptionRow::FolderNew => "New Folder",
         }
     }
 
@@ -225,6 +299,17 @@ impl OptionRow {
             OptionRow::OnlinePlay => "Your name and relay for online rooms",
             OptionRow::OnlineName => "What the other player sees",
             OptionRow::Relay => "The nearest is the quickest",
+            OptionRow::BackupOn => "Saves copy to a NAS as they're made",
+            OptionRow::BackupNas => "A Samba share on this Wi-Fi",
+            OptionRow::BackupUser => "None signs in as a guest",
+            OptionRow::BackupPassword => "The user's password",
+            OptionRow::BackupFolder => "Where saves go on the NAS",
+            OptionRow::BackupNow => "A copies every save now",
+            OptionRow::NasFound(_) => "A picks this NAS",
+            OptionRow::NasAddress => "Its name or address, as 192.168.1.5",
+            OptionRow::FolderUse => "Saves go to the folder open",
+            OptionRow::FolderNew => "A names a folder to make here",
+            OptionRow::FolderItem(_) => "A opens it, B goes back up",
         }
     }
 }
@@ -236,6 +321,18 @@ pub enum Step {
     Password,
     /// The name for online rooms, typed on its own.
     OnlineName,
+    /// Save Backup: the NAS's user and password, a NAS's address, and a new folder's name.
+    BackupUser,
+    BackupPassword,
+    NasAddress,
+    NewFolder,
+}
+
+impl Step {
+    /// Typing nothing is an answer: no user is a guest, no password is none.
+    fn may_be_empty(self) -> bool {
+        matches!(self, Step::BackupUser | Step::BackupPassword)
+    }
 }
 
 /// The keyboard up over the panel, signing in to RetroAchievements.
@@ -252,6 +349,10 @@ impl SignIn {
         match self.step {
             Step::User => "RetroAchievements user name".to_string(),
             Step::OnlineName => "Your name in online rooms".to_string(),
+            Step::BackupUser => "The NAS's user, or none for a guest".to_string(),
+            Step::BackupPassword => "The NAS user's password".to_string(),
+            Step::NasAddress => "The NAS's name or address".to_string(),
+            Step::NewFolder => "The new folder's name".to_string(),
             Step::Password => format!("RetroAchievements password for {}", self.user),
         }
     }
@@ -270,7 +371,7 @@ impl OptionsScreen {
     pub fn new(page: OptionsPage) -> Self {
         OptionsScreen {
             page,
-            row: page.rows()[0],
+            row: page.rows().first().copied().unwrap_or(OptionRow::FolderUse),
             typing: None,
         }
     }
@@ -280,7 +381,8 @@ impl OptionsScreen {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OptionsView {
     pub title: &'static str,
-    pub lines: Vec<(OptionRow, String)>,
+    /// Each row in view, its name and its value.
+    pub lines: Vec<(OptionRow, String, String)>,
     pub lit: usize,
     /// The lit row's note: what it does, or for RetroAchievements who is signed in.
     pub note: String,
@@ -296,12 +398,12 @@ pub fn options_panel_face(view: &OptionsView, pal: &Palette) -> UndoFace {
         true,
         pal,
     );
-    for (i, (row, value)) in view.lines.iter().enumerate() {
+    for (i, (row, label, value)) in view.lines.iter().enumerate() {
         let [x, y, w, _] = row_rect(panel.well, i as u32);
         let face = row_face(
             w,
             &Row {
-                label: row.label(),
+                label,
                 value: (!value.is_empty()).then_some(value.as_str()),
                 lit: i == view.lit,
                 carets: row.carets(),
@@ -386,7 +488,30 @@ impl App {
             OptionRow::OnlinePlay => String::new(),
             OptionRow::OnlineName => self.online_name(),
             OptionRow::Relay => relay_word(s.relay).to_string(),
+            OptionRow::BackupOn
+            | OptionRow::BackupNas
+            | OptionRow::BackupUser
+            | OptionRow::BackupPassword
+            | OptionRow::BackupFolder
+            | OptionRow::BackupNow
+            | OptionRow::NasFound(_)
+            | OptionRow::NasAddress
+            | OptionRow::FolderUse
+            | OptionRow::FolderNew
+            | OptionRow::FolderItem(_) => self.backup_text(row),
         }
+    }
+
+    /// A row's name: its own, or a NAS's or a folder's.
+    pub fn option_label(&self, row: OptionRow) -> String {
+        self.backup_label(row)
+            .unwrap_or_else(|| row.label().to_string())
+    }
+
+    /// The rows `page` shows now: its own, or what the NAS has.
+    pub fn page_rows(&self, page: OptionsPage) -> Vec<OptionRow> {
+        self.backup_rows(page)
+            .unwrap_or_else(|| page.rows().to_vec())
     }
 
     /// Steps `row` on, or back, and keeps it; a change a game in play can take reaches it.
@@ -437,6 +562,17 @@ impl App {
             | OptionRow::Emulators
             | OptionRow::OnlinePlay
             | OptionRow::OnlineName => return,
+            OptionRow::BackupOn => return self.change_backup(row),
+            OptionRow::BackupNas
+            | OptionRow::BackupUser
+            | OptionRow::BackupPassword
+            | OptionRow::BackupFolder
+            | OptionRow::BackupNow
+            | OptionRow::NasFound(_)
+            | OptionRow::NasAddress
+            | OptionRow::FolderUse
+            | OptionRow::FolderNew
+            | OptionRow::FolderItem(_) => return,
             OptionRow::Relay => {
                 let n = crate::netplay_lobby::RELAYS.len() as u8;
                 s.relay = match right {
@@ -471,14 +607,27 @@ impl App {
         if screen.typing.is_some() {
             return None;
         }
-        let rows = screen.page.rows();
+        let rows = self.page_rows(screen.page);
+        let lit = rows.iter().position(|r| *r == screen.row).unwrap_or(0);
+        // a long list shows the rows round the lit one
+        let first = lit
+            .saturating_sub(VIEW_ROWS - 1)
+            .min(rows.len().saturating_sub(VIEW_ROWS));
+        let row = rows.get(lit).copied().unwrap_or(screen.row);
         Some(OptionsView {
             title: screen.page.title(),
-            lines: rows.iter().map(|r| (*r, self.option_text(*r))).collect(),
-            lit: rows.iter().position(|r| *r == screen.row).unwrap_or(0),
-            note: match screen.row {
+            lines: rows
+                .iter()
+                .skip(first)
+                .take(VIEW_ROWS)
+                .map(|r| (*r, self.option_label(*r), self.option_text(*r)))
+                .collect(),
+            lit: lit - first,
+            note: match row {
                 OptionRow::Cheevos | OptionRow::Account => self.achievements_note(),
-                row => row.note().to_string(),
+                row => self
+                    .backup_note(row)
+                    .unwrap_or_else(|| row.note().to_string()),
             },
         })
     }
@@ -490,11 +639,46 @@ impl App {
         if screen.typing.is_some() {
             return self.sign_in_input(action);
         }
-        let rows = screen.page.rows();
-        let (page, row) = (screen.page, screen.row);
+        let page = screen.page;
+        let rows = self.page_rows(page);
+        let Phase::Options(screen) = &mut self.phase else {
+            return;
+        };
+        // a row gone from a list that changed: the cursor is on its first
+        if !rows.contains(&screen.row) {
+            screen.row = rows.first().copied().unwrap_or(screen.row);
+        }
+        let row = screen.row;
         match action {
-            Action::GbaDown(Btn::Up) => screen.row = step(rows, row, false),
-            Action::GbaDown(Btn::Down) => screen.row = step(rows, row, true),
+            Action::GbaDown(Btn::Up) if !rows.is_empty() => screen.row = step(&rows, row, false),
+            Action::GbaDown(Btn::Down) if !rows.is_empty() => screen.row = step(&rows, row, true),
+            Action::GbaDown(Btn::A) if row == OptionRow::BackupUser => {
+                self.open_typing(Step::BackupUser, self.state.backup_user.clone())
+            }
+            Action::GbaDown(Btn::A) if row == OptionRow::BackupPassword => {
+                self.open_typing(Step::BackupPassword, self.state.backup_password.clone())
+            }
+            Action::GbaDown(Btn::A) if row == OptionRow::NasAddress => {
+                self.open_typing(Step::NasAddress, self.state.backup_host.clone())
+            }
+            Action::GbaDown(Btn::A) if row == OptionRow::FolderNew => {
+                self.open_typing(Step::NewFolder, String::new())
+            }
+            Action::GbaDown(Btn::A)
+                if matches!(
+                    row,
+                    OptionRow::BackupOn
+                        | OptionRow::BackupNas
+                        | OptionRow::BackupFolder
+                        | OptionRow::BackupNow
+                        | OptionRow::NasFound(_)
+                        | OptionRow::FolderUse
+                        | OptionRow::FolderItem(_)
+                ) =>
+            {
+                self.backup_press(row)
+            }
+            Action::GbaDown(Btn::B) if page == OptionsPage::Folder && self.folder_back() => {}
             Action::GbaDown(Btn::A) if row == OptionRow::Account => self.open_sign_in(),
             Action::GbaDown(Btn::A) if row == OptionRow::OnlineName => self.open_online_name(),
             Action::GbaDown(Btn::A) if row == OptionRow::OnlinePlay => self.go(
@@ -532,6 +716,23 @@ impl App {
             },
             _ => {}
         }
+    }
+
+    /// The keyboard slides in over the panel for `step`, `text` already typed.
+    fn open_typing(&mut self, step: Step, text: String) {
+        let Phase::Options(screen) = &mut self.phase else {
+            return;
+        };
+        let before = Phase::Options(screen.clone());
+        screen.typing = Some(SignIn {
+            step,
+            user: String::new(),
+            keys: Keyboard {
+                text,
+                ..Keyboard::default()
+            },
+        });
+        self.slide_from(before, Dir::Deeper);
     }
 
     /// A on Name: the keyboard slides in over the panel, the name rooms show already typed.
@@ -623,11 +824,19 @@ impl App {
             }
             _ => return,
         }
-        if !submit || t.keys.text.is_empty() {
+        if !submit || (t.keys.text.is_empty() && !t.step.may_be_empty()) {
             return;
         }
         let typed = std::mem::take(&mut t.keys.text);
         match t.step {
+            step @ (Step::BackupUser
+            | Step::BackupPassword
+            | Step::NasAddress
+            | Step::NewFolder) => {
+                screen.typing = None;
+                self.slide_from(before, Dir::Back);
+                self.backup_typed(step, &typed);
+            }
             Step::OnlineName => {
                 screen.typing = None;
                 self.slide_from(before, Dir::Back);

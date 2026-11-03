@@ -498,3 +498,110 @@ fn a_lobby_that_cannot_be_reached_fails_the_room_as_the_lobby() {
         LinkProgress::Failed(LinkFail::Lobby)
     ));
 }
+
+/// A TCP port and a UDP port free on this machine, for a room on the network in a test.
+fn free_ports() -> (u16, u16) {
+    let tcp = TcpListener::bind("127.0.0.1:0").unwrap();
+    let udp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    (
+        tcp.local_addr().unwrap().port(),
+        udp.local_addr().unwrap().port(),
+    )
+}
+
+/// A room opened on the network for RetroArch, `password` kept for it.
+fn lan_room(password: &str) -> (LinkStarter, u16) {
+    let (port, discovery) = free_ports();
+    let host = LinkStarter::spawn_online(
+        OnlineJob::HostLan {
+            nick: "Ash".into(),
+            game: "Pokemon - Emerald Version (USA, Europe)".into(),
+            crc: 0x1F1C_08FB,
+            rom: None,
+            password: password.into(),
+            port,
+            discovery,
+        },
+        "http://127.0.0.1:9/",
+    );
+    (host, discovery)
+}
+
+/// The room answering on `discovery`, once it does.
+fn found(discovery: u16) -> omega_zero::netplay_lobby::Room {
+    let at = std::net::SocketAddr::from(([127, 0, 0, 1], discovery));
+    let deadline = Instant::now() + BAIL;
+    loop {
+        let rooms = omega_zero::netplay_lan::discover_at(at, Duration::from_millis(300)).unwrap();
+        if let Some(room) = rooms.into_iter().next() {
+            return room;
+        }
+        assert!(Instant::now() < deadline, "the room never answered");
+    }
+}
+
+/// LAN play as 2.4.3 brought it: a room opened on the network answers RetroArch's look for
+/// rooms, saying it has a password, and the player who gives it is let in.
+#[test]
+fn a_room_on_the_network_is_found_and_joined_with_its_password() {
+    let (mut host, discovery) = lan_room("pikachu");
+    let room = found(discovery);
+    assert_eq!(room.username, "Ash");
+    assert_eq!(room.game_crc, 0x1F1C_08FB);
+    assert!(room.has_password);
+    assert!(
+        room.relay().is_none(),
+        "a room on the network is reached straight"
+    );
+    let mut joiner = LinkStarter::spawn_online(
+        OnlineJob::Join {
+            nick: "RG SP".into(),
+            room,
+            password: "pikachu".into(),
+        },
+        "http://127.0.0.1:9/",
+    );
+    match drain(&mut joiner) {
+        LinkProgress::Ready(ready) => assert_eq!(ready.peer.as_deref(), Some("Ash")),
+        LinkProgress::Failed(fail) => panic!("the join failed: {fail:?}"),
+        LinkProgress::At(_) => unreachable!(),
+    }
+    match drain(&mut host) {
+        LinkProgress::Ready(ready) => assert_eq!(ready.peer.as_deref(), Some("RG SP")),
+        LinkProgress::Failed(fail) => panic!("the room failed: {fail:?}"),
+        LinkProgress::At(_) => unreachable!(),
+    }
+}
+
+/// A wrong password is turned away as one, and the room stays open for the right one.
+#[test]
+fn a_room_on_the_network_turns_away_a_wrong_password_and_stays_open() {
+    let (mut host, discovery) = lan_room("pikachu");
+    let room = found(discovery);
+    let mut wrong = LinkStarter::spawn_online(
+        OnlineJob::Join {
+            nick: "RG SP".into(),
+            room: room.clone(),
+            password: "eevee".into(),
+        },
+        "http://127.0.0.1:9/",
+    );
+    assert!(matches!(
+        drain(&mut wrong),
+        LinkProgress::Failed(LinkFail::Password)
+    ));
+    assert!(
+        host.poll().is_none_or(|p| matches!(p, LinkProgress::At(_))),
+        "the room closed"
+    );
+    let mut right = LinkStarter::spawn_online(
+        OnlineJob::Join {
+            nick: "RG SP".into(),
+            room,
+            password: "pikachu".into(),
+        },
+        "http://127.0.0.1:9/",
+    );
+    assert!(matches!(drain(&mut right), LinkProgress::Ready(_)));
+    assert!(matches!(drain(&mut host), LinkProgress::Ready(_)));
+}

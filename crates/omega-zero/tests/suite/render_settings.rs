@@ -114,11 +114,11 @@ fn over(under: &mut UndoFace, top: &UndoFace, x: u32, y: u32) {
     }
 }
 
-/// The modal as the kit's faces make it for `shown`, at art resolution, at `omega_ui::settings_rect(6)`.
+/// The modal as the kit's faces make it for `shown`, at art resolution, at `omega_ui::settings_rect(7)`.
 fn expected(shown: &[RowShown], pal: &Palette) -> UndoFace {
     let rows: Vec<SettingsRow> = shown.iter().map(|s| s.row).collect();
     let frame = settings_frame(configs_in(&rows), pal);
-    let [mx, my, ..] = omega_ui::settings_rect(6);
+    let [mx, my, ..] = omega_ui::settings_rect(7);
     let mut modal = UndoFace {
         rgba: frame.face.rgba.clone(),
         w: frame.face.w,
@@ -139,7 +139,7 @@ fn expected(shown: &[RowShown], pal: &Palette) -> UndoFace {
 fn holds_the_modal(px: &[u8], f: &Frontend, name: &str) {
     let pal = f.app().palette();
     let want = expected(&f.app().settings_shown(), pal);
-    let [mx, my, ..] = omega_ui::settings_rect(6);
+    let [mx, my, ..] = omega_ui::settings_rect(7);
     let mut off = Vec::new();
     for y in 0..want.h {
         for x in 0..want.w {
@@ -187,7 +187,7 @@ fn settings_draws_the_modal_and_the_lit_rows_band_over_the_backdrop() {
     holds_the_modal(&px, &f, "night");
 
     // the frame: its dark outline, its bright line, the frame colour the panels sit on
-    let [mx, my, mw, mh] = omega_ui::settings_rect(6);
+    let [mx, my, mw, mh] = omega_ui::settings_rect(7);
     assert_eq!(art(&px, mx + 3, my), pal.dark, "the frame's top outline");
     assert_eq!(art(&px, mx, my + 3), pal.dark, "the frame's left outline");
     assert_eq!(
@@ -224,12 +224,12 @@ fn settings_draws_the_modal_and_the_lit_rows_band_over_the_backdrop() {
     }
 
     // round the modal, the backdrop and nothing over it
-    for (x, y) in [
-        (0, 0),
-        (mx - 1, my + mh / 2),
-        (mx + mw, my),
-        (mx + mw / 2, my - 1),
-    ] {
+    // on a 480-line screen the modal reaches the top, and nothing stands over it
+    let above = (my > 0).then(|| (mx + mw / 2, my - 1));
+    for (x, y) in [(0, 0), (mx - 1, my + mh / 2), (mx + mw, my)]
+        .into_iter()
+        .chain(above)
+    {
         assert_eq!(art(&px, x, y), pal.bg, "the backdrop at art ({x}, {y})");
     }
     assert_eq!(art(&px, mx + mw / 2, my + mh), pal.bg, "under the modal");
@@ -244,7 +244,7 @@ fn the_palette_tints_settings_with_the_backdrop() {
     let Ok(mut c) = Compositor::new(&surface) else {
         return;
     };
-    let [mx, my, _, mh] = omega_ui::settings_rect(6);
+    let [mx, my, _, mh] = omega_ui::settings_rect(7);
     let mut sides = Vec::new();
     for (colour, name) in [(NIGHT, "night"), (AMBER, "amber")] {
         let (_d, mut f, _) = settings_over(colour, &mut c);

@@ -472,7 +472,7 @@ fn account_signs_in_to_retroachievements_on_the_keyboard_and_y_signs_out() {
     assert_eq!(a.options_view().unwrap().title, "ACHIEVEMENTS");
     down_to(&mut a, omega_zero::options::OptionRow::Account);
     let view = a.options_view().expect("the ACHIEVEMENTS panel");
-    assert_eq!(view.lines[view.lit].1, "SIGN IN");
+    assert_eq!(view.lines[view.lit].2, "SIGN IN");
 
     press(&mut a, Btn::A);
     let prompt = |a: &App| a.typing().map(|t| t.prompt);
@@ -544,7 +544,7 @@ fn retroachievements_opens_from_configs_under_labels() {
     let view = a.options_view().expect("the ACHIEVEMENTS panel");
     assert_eq!(view.title, "ACHIEVEMENTS");
     assert_eq!(
-        view.lines.iter().map(|(r, _)| *r).collect::<Vec<_>>(),
+        view.lines.iter().map(|(r, _, _)| *r).collect::<Vec<_>>(),
         [OptionRow::Cheevos, OptionRow::Account, OptionRow::Hardcore]
     );
     press(&mut a, Btn::B);
@@ -578,7 +578,7 @@ fn emulators_set_each_systems_default_and_put_switched_games_back() {
     press(&mut a, Btn::A);
     a.finish_slide();
     let view = a.options_view().expect("the GAMEPLAY panel");
-    let (last, value) = view.lines.last().unwrap().clone();
+    let (last, _, value) = view.lines.last().unwrap().clone();
     assert_eq!(
         (last, value.as_str()),
         (OptionRow::Emulators, ""),
@@ -589,7 +589,8 @@ fn emulators_set_each_systems_default_and_put_switched_games_back() {
     a.finish_slide();
     let view = a.options_view().expect("the EMULATORS panel");
     assert_eq!(view.title, "EMULATORS");
-    let said: Vec<(OptionRow, String)> = view.lines.clone();
+    let said: Vec<(OptionRow, String)> =
+        view.lines.iter().map(|(r, _, v)| (*r, v.clone())).collect();
     assert_eq!(
         said,
         [

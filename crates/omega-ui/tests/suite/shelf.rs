@@ -961,11 +961,65 @@ fn on_a_row_of_mixed_systems_no_cart_reaches_into_or_covers_the_picked_one() {
     }
 }
 
+/// Every cart of `s` in a shell of `finish`.
+fn shells_of(s: &mut Shelf, finish: omega_store::ShellFinish) {
+    for cart in &mut s.carts {
+        cart.shell = Some(omega_store::ShellChoice {
+            outline: omega_store::Outline::Auto,
+            colour: [0x80, 0x40, 0xc0],
+            finish,
+        });
+    }
+}
+
+/// The sheens `s` draws over its row, by their place in what it draws.
+fn sheens_drawn(s: &mut Shelf, frames: &[TexId]) -> (Vec<Draw>, Vec<usize>) {
+    s.set_faces((0..3).map(|i| TexId::from_raw(20 + i)).collect());
+    s.set_meshes(CartMeshes::build(|model| {
+        MeshId::from_raw(model.index() + 1)
+    }));
+    for model in omega_ui::CartModel::ALL {
+        s.set_model_holo(model, frames.to_vec());
+    }
+    let mut out = Vec::new();
+    s.draw_row(None, 0.0, 0.0, 1.0, &mut out);
+    let sheens = (0..out.len())
+        .filter(|&i| match out[i] {
+            Draw::Tex { tex, .. } | Draw::Turned { tex, .. } | Draw::Spun { tex, .. } => {
+                frames.contains(&tex)
+            }
+            _ => false,
+        })
+        .collect();
+    (out, sheens)
+}
+
+/// A cart in solid plastic has no sheen on its label, picked or not: the sheen is the clear
+/// and glitter shells' alone.
+#[test]
+fn a_solid_cart_has_no_holo_sheen() {
+    let frames: Vec<TexId> = (0..omega_ui::HOLO_FRAMES)
+        .map(|k| TexId::from_raw(900 + k))
+        .collect();
+    for (finish, sheens) in [
+        (omega_store::ShellFinish::Solid, 0),
+        (omega_store::ShellFinish::Clear, 1),
+        (omega_store::ShellFinish::Glitter, 1),
+    ] {
+        let mut s = snes_shelf();
+        shells_of(&mut s, finish);
+        settle(&mut s);
+        let (_, drawn) = sheens_drawn(&mut s, &frames);
+        assert_eq!(drawn.len(), sheens, "{finish:?}");
+    }
+}
+
 /// The cart picked, drawn as its model as on the handheld, has the holo sheen over its face,
 /// posed as the face is; the carts beside it have none.
 #[test]
 fn only_the_cart_picked_has_its_holo_sheen() {
     let mut s = snes_shelf();
+    shells_of(&mut s, omega_store::ShellFinish::Clear);
     settle(&mut s);
     s.set_faces((0..3).map(|i| TexId::from_raw(20 + i)).collect());
     s.set_meshes(CartMeshes::build(|model| {

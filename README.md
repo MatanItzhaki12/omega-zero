@@ -33,7 +33,16 @@ controls and conveniences and adds RetroAchievements, drawn in omega-zero's own 
   keyboard, with hardcore, and an in-game page showing the game it was matched to and every
   achievement. Sign-in retries until Wi-Fi is up, and unlocks earned offline are sent later.
 - **Slot's `cart_shell.txt`** is read, clear shells look clear with a board, chips and a battery
-  inside, and labels load first for the carts on screen.
+  inside, and labels load first for the carts on screen. Clear and glitter carts have a holo
+  sheen on their label, as on a holographic Pokémon card.
+- **Link play online and on the LAN** for GBA games on gpSP, through RetroArch's netplay: with
+  RetroArch on a PC on the same Wi-Fi, or with anyone online through RetroArch's lobby and
+  relays, rooms with passwords and all, as well as handheld to handheld.
+- **Save Backup**: every save copied to a folder on your NAS over Samba as it is made, kept until
+  the NAS can be reached when it cannot, the NAS found on the Wi-Fi and the folder picked or
+  made from the handheld.
+- **Run-Ahead** on gpSP: a press answered a frame sooner.
+- **START while holding POWER restarts**, and the shelf comes up on the game it was on.
 
 Everything, with defaults and the files kept on the card, is in **[README-FORK.md](README-FORK.md)**.
 
