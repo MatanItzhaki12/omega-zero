@@ -15,12 +15,28 @@ use omega_zero::emu::Speed;
 use omega_zero::link_net::{Cancel, TcpLink};
 use omega_zero::session::Session;
 
+/// `connect` tried until the host on its own thread is listening: refused until then. A fixed
+/// wait for it lost the race when the machine was busy.
+fn when_listening<T>(mut connect: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match connect() {
+            Err(e)
+                if e.kind() == std::io::ErrorKind::ConnectionRefused
+                    && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            other => return other,
+        }
+    }
+}
+
 #[test]
 fn a_packet_survives_the_wire_intact() {
     let port = common::free_port();
     let server = std::thread::spawn(move || TcpLink::host("127.0.0.1", port).expect("host"));
-    std::thread::sleep(std::time::Duration::from_millis(150));
-    let mut client = TcpLink::join("127.0.0.1", port).expect("join");
+    let mut client = when_listening(|| TcpLink::join("127.0.0.1", port)).expect("join");
     let mut host = server.join().expect("host thread");
 
     host.send(NETPACKET_RELIABLE, b"\x01\x02\x03");
@@ -36,8 +52,7 @@ fn a_packet_survives_the_wire_intact() {
 fn batched_writes_keep_their_boundaries() {
     let port = common::free_port();
     let server = std::thread::spawn(move || TcpLink::host("127.0.0.1", port).expect("host"));
-    std::thread::sleep(std::time::Duration::from_millis(150));
-    let mut raw = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    let mut raw = when_listening(|| TcpStream::connect(("127.0.0.1", port))).expect("connect");
     let mut host = server.join().expect("host thread");
 
     let mut batch = Vec::new();
@@ -55,8 +70,7 @@ fn batched_writes_keep_their_boundaries() {
 fn try_recv_never_blocks_on_an_idle_link() {
     let port = common::free_port();
     let server = std::thread::spawn(move || TcpLink::host("127.0.0.1", port).expect("host"));
-    std::thread::sleep(std::time::Duration::from_millis(150));
-    let mut client = TcpLink::join("127.0.0.1", port).expect("join");
+    let mut client = when_listening(|| TcpLink::join("127.0.0.1", port)).expect("join");
     let _host = server.join().expect("host thread");
 
     let start = std::time::Instant::now();
@@ -135,8 +149,7 @@ fn send_never_blocks_on_a_peer_that_stopped_reading() {
 fn wrap_disables_nagle_on_both_sockets() {
     let port = common::free_port();
     let server = std::thread::spawn(move || TcpLink::host("127.0.0.1", port).expect("host"));
-    std::thread::sleep(Duration::from_millis(150));
-    let client = TcpLink::join("127.0.0.1", port).expect("join");
+    let client = when_listening(|| TcpLink::join("127.0.0.1", port)).expect("join");
     let host = server.join().expect("host thread");
 
     assert!(
@@ -806,8 +819,7 @@ fn a_quiet_link_is_not_closed() {
 fn ending_a_link_tells_the_peer_rather_than_only_dropping_the_socket() {
     let port = common::free_port();
     let server = std::thread::spawn(move || TcpLink::host("127.0.0.1", port).expect("host"));
-    std::thread::sleep(Duration::from_millis(150));
-    let mut client = TcpLink::join("127.0.0.1", port).expect("join");
+    let mut client = when_listening(|| TcpLink::join("127.0.0.1", port)).expect("join");
     let mut host = server.join().expect("host thread");
 
     assert!(!client.peer_ended(), "ended before anyone said so");
@@ -832,8 +844,7 @@ fn ending_a_link_tells_the_peer_rather_than_only_dropping_the_socket() {
 fn an_unknown_control_frame_is_ignored_and_the_stream_stays_in_step() {
     let port = common::free_port();
     let server = std::thread::spawn(move || TcpLink::host("127.0.0.1", port).expect("host"));
-    std::thread::sleep(Duration::from_millis(150));
-    let mut raw = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    let mut raw = when_listening(|| TcpStream::connect(("127.0.0.1", port))).expect("connect");
     let mut host = server.join().expect("host thread");
 
     let mut batch = Vec::new();
@@ -860,8 +871,7 @@ fn an_unknown_control_frame_is_ignored_and_the_stream_stays_in_step() {
 fn an_empty_payload_is_refused_rather_than_framed_as_the_control_marker() {
     let port = common::free_port();
     let server = std::thread::spawn(move || TcpLink::host("127.0.0.1", port).expect("host"));
-    std::thread::sleep(Duration::from_millis(150));
-    let mut client = TcpLink::join("127.0.0.1", port).expect("join");
+    let mut client = when_listening(|| TcpLink::join("127.0.0.1", port)).expect("join");
     let mut host = server.join().expect("host thread");
 
     host.send(NETPACKET_RELIABLE, b"");

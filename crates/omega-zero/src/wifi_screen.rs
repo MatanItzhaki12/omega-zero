@@ -123,6 +123,17 @@ impl Wifi {
         }
     }
 
+    /// Asks the radio to join a saved network again, as it does when switched on, and for the
+    /// status after: Save Backup's saves wait for one. Nothing while Wi-Fi is off: switched off,
+    /// it stays off.
+    pub fn wake(&mut self, now: Millis) {
+        if !self.enabled {
+            return;
+        }
+        self.jobs.ask(WifiJob::Up);
+        self.refresh_at = now;
+    }
+
     pub fn set_enabled(&mut self, on: bool, now: Millis) {
         if on == self.enabled || !self.present() {
             return;

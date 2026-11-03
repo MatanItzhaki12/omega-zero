@@ -103,6 +103,9 @@ pub struct BackupUi {
     pub restoring: Restoring,
 }
 
+/// How often, at most, Save Backup asks Wi-Fi to join again while saves wait on a network.
+const WAKE_EVERY_MS: omega_ui::Millis = 30_000;
+
 /// How many characters of a value a row has room for beside its name.
 const VALUE_CHARS: usize = 18;
 
@@ -174,6 +177,7 @@ impl App {
         }
         self.backup_joined = joined;
         self.toast_backup();
+        self.wake_for_backup();
         let finding = &mut self.backup_ui.finding;
         if let Some(found) = finding
             .job
@@ -210,6 +214,24 @@ impl App {
                 Err(e) => browsing.fail = Some(e),
             }
         }
+    }
+
+    /// Saves waiting on a network: Wi-Fi, while it is on, is asked to join a saved network
+    /// again, every half minute at most.
+    fn wake_for_backup(&mut self) {
+        if !self.backup_status().offline || !self.wifi.enabled() {
+            return;
+        }
+        let now = self.now();
+        if self
+            .backup_woke_at
+            .is_some_and(|at| now.saturating_sub(at) < WAKE_EVERY_MS)
+        {
+            return;
+        }
+        self.backup_woke_at = Some(now);
+        eprintln!("omega-zero: save backup: no network: asking Wi-Fi to join");
+        self.wifi.wake(now);
     }
 
     /// A toast at the top of the screen once a pass has copied saves; and once a pass has
@@ -339,6 +361,7 @@ impl App {
         let status = self.backup_status();
         match (status.busy, status.waiting) {
             (true, _) => "COPYING".to_string(),
+            (false, n) if n > 0 && status.offline => "NO WI-FI".to_string(),
             (false, 0) if status.done_at.is_some() => "UP TO DATE".to_string(),
             (false, 0) => "READY".to_string(),
             (false, n) => format!("{n} WAITING"),
@@ -375,6 +398,10 @@ impl App {
                     "Switch Save Backup on first".to_string()
                 } else if self.backup_target().is_none() {
                     "Pick a NAS and a folder first".to_string()
+                } else if status.offline && status.waiting > 0 && !self.wifi.enabled() {
+                    "Wi-Fi is off: saves wait for it".to_string()
+                } else if status.offline && status.waiting > 0 {
+                    "Saves wait for Wi-Fi to join".to_string()
                 } else if let Some(fail) = &status.fail {
                     format!("{}: saves wait", fail.line())
                 } else if let Some(at) = status.done_at {

@@ -39,6 +39,20 @@ const LOOK_AGAIN: Duration = Duration::from_secs(300);
 /// call everything copied, and not look again for minutes.
 pub const SETTLE: Duration = Duration::from_secs(3);
 
+/// How often a pass looks again while the handheld is on no network: a look costs nothing, and
+/// saves go as soon as one is back.
+const OFFLINE_LOOK: Duration = Duration::from_secs(5);
+
+/// How long a connection that failed is given before it is tried once more: a radio that dozed
+/// may drop the first.
+const AGAIN: Duration = Duration::from_secs(2);
+
+/// Whether the handheld is on a network: it has an address on one. A pass with none does not
+/// try the NAS.
+pub fn on_network() -> bool {
+    crate::nas::local_address().is_some()
+}
+
 /// How long to wait after the `failed`th pass in a row that left saves waiting.
 pub fn retry_after(failed: u32) -> Duration {
     RETRY_FIRST
@@ -193,6 +207,9 @@ pub struct Status {
     /// each a toast's worth.
     pub copied: u64,
     pub failed: u64,
+    /// Saves wait for a network: the handheld had none when the last pass looked, so it did not
+    /// try the NAS. No failure, and no toast.
+    pub offline: bool,
 }
 
 enum Ask {
@@ -273,11 +290,17 @@ fn run(root: &Path, mut target: Option<Target>, rx: &Receiver<Ask>, status: &Mut
             wait = Duration::from_secs(3600);
             continue;
         };
-        let left = pass(root, to, status);
-        failed = if left > 0 { failed + 1 } else { 0 };
-        wait = match failed {
-            0 => LOOK_AGAIN,
-            n => retry_after(n),
+        let left = pass_on(root, to, status, on_network);
+        let offline = status.lock().is_ok_and(|s| s.offline);
+        failed = match (left, offline) {
+            (0, _) => 0,
+            (_, true) => failed,
+            _ => failed + 1,
+        };
+        wait = match (failed, offline && left > 0) {
+            (_, true) => OFFLINE_LOOK,
+            (0, false) => LOOK_AGAIN,
+            (n, false) => retry_after(n),
         };
     }
 }
@@ -285,6 +308,17 @@ fn run(root: &Path, mut target: Option<Target>, rx: &Receiver<Ask>, status: &Mut
 /// One pass: copies what the NAS does not have to `to`, keeping the list as each is copied.
 /// Returns how many are left waiting.
 pub fn pass(root: &Path, to: &Target, status: &Mutex<Status>) -> usize {
+    pass_on(root, to, status, || true)
+}
+
+/// As [`pass`], trying the NAS only while `online` says the handheld is on a network: with
+/// none, the saves wait, and nothing fails.
+pub fn pass_on(
+    root: &Path,
+    to: &Target,
+    status: &Mutex<Status>,
+    online: impl Fn() -> bool,
+) -> usize {
     let set = |f: &dyn Fn(&mut Status)| {
         if let Ok(mut s) = status.lock() {
             f(&mut s);
@@ -305,11 +339,22 @@ pub fn pass(root: &Path, to: &Target, status: &Mutex<Status>) -> usize {
     if todo.is_empty() {
         set(&|s| {
             s.fail = None;
+            s.offline = false;
             s.done_at.get_or_insert(now_secs());
         });
         return 0;
     }
-    set(&|s| s.busy = true);
+    if !online() {
+        set(&|s| {
+            s.offline = true;
+            s.fail = None;
+        });
+        return total;
+    }
+    set(&|s| {
+        s.busy = true;
+        s.offline = false;
+    });
     let outcome = copy(root, to, &mut list, todo, status);
     let left = match &outcome {
         Ok(()) => 0,
@@ -341,10 +386,19 @@ fn copy(
     status: &Mutex<Status>,
 ) -> Result<(), (usize, NasFail)> {
     let total = todo.len();
-    let mut nas = Nas::open(&to.login).map_err(|e| {
-        eprintln!("omega-zero: save backup: {}: {e}", to.login.host);
-        (total, e)
-    })?;
+    // a radio that dozed may drop the first connection: it is tried once more
+    let mut nas = Nas::open(&to.login)
+        .or_else(|e| match e {
+            NasFail::Unreachable => {
+                std::thread::sleep(AGAIN);
+                Nas::open(&to.login)
+            }
+            e => Err(e),
+        })
+        .map_err(|e| {
+            eprintln!("omega-zero: save backup: {}: {e}", to.login.host);
+            (total, e)
+        })?;
     for (done, (rel, bytes)) in todo.into_iter().enumerate() {
         if let Err(e) = nas.put(&to.share, &to.remote(&rel), &bytes) {
             eprintln!("omega-zero: save backup: {rel}: {e}");
@@ -558,6 +612,20 @@ mod tests {
             Some(("GBA", "Emerald".to_string()))
         );
         assert_eq!(game_of("PS1/cards/Crash.mcd"), None);
+    }
+
+    #[test]
+    fn with_no_network_saves_wait_and_nothing_fails() {
+        let d = tempfile::tempdir().unwrap();
+        let saves = crate::root::saves_dir(d.path());
+        std::fs::create_dir_all(saves.join("GBA")).unwrap();
+        std::fs::write(saves.join("GBA/Emerald.sav"), b"e").unwrap();
+        let status = Mutex::new(Status::default());
+        assert_eq!(pass_on(d.path(), &target(), &status, || false), 1);
+        let s = status.lock().unwrap().clone();
+        assert!(s.offline, "the pass did not say it waits for a network");
+        assert_eq!((s.waiting, s.failed), (1, 0), "{s:?}");
+        assert!(s.fail.is_none());
     }
 
     #[test]

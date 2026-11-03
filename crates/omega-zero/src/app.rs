@@ -358,6 +358,8 @@ pub struct App {
     /// since the last copy: a failure is told once, until saves copy again.
     pub(crate) backup_seen: (u64, u64),
     pub(crate) backup_fail_told: bool,
+    /// When Save Backup last asked Wi-Fi to join again, for saves waiting on a network.
+    pub(crate) backup_woke_at: Option<Millis>,
     /// The keyboard asks again for a room's password, the one given having been turned away.
     pub(crate) link_refused: bool,
     /// Local, the link goes to RetroArch on this network rather than to another handheld.
@@ -585,6 +587,7 @@ impl App {
             backup_joined: false,
             backup_seen: (0, 0),
             backup_fail_told: false,
+            backup_woke_at: None,
             link_refused: false,
             link_retroarch: false,
             link_advanced: false,
