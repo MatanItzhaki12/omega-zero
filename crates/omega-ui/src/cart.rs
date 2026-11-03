@@ -292,6 +292,7 @@ fn face_of(cart: &Cart, scans: bool) -> CartFace {
     let scan = cart.label.as_deref().filter(|_| scans);
     let label = match scan.and_then(|p| label_art(p, lw, lh)) {
         Some(rgba) => rgba,
+        None if model == CartModel::Umd => umd::generated_label(&s, &label_text(cart)),
         None => generated_label(&s, &label_text(cart)),
     };
     mould_detail(&s, &mut face);
@@ -381,10 +382,6 @@ pub fn label_tags(stem: &str) -> Vec<String> {
 fn shell_face(s: &Spec, shell: &Shell) -> CartFace {
     let mut rgba = Vec::with_capacity((s.w * s.h * 4) as usize);
     let edge = rim_colour(through(shell.colour, shell.colour));
-    let shows = match s.inside {
-        Inside::Disc => DISC_SHOWS,
-        _ => PART_SHOWS,
-    };
     for (i, depth) in s.depth.iter().enumerate() {
         let (x, y) = (i as u32 % s.w, i as u32 / s.w);
         let rim = (*depth as u32).min(s.rim);
@@ -400,7 +397,7 @@ fn shell_face(s: &Spec, shell: &Shell) -> CartFace {
                     }
                     // a part on it keeps some of its own colour through the plastic: the gold
                     // of the contacts and the black of the chips read as such, not as more green
-                    Some(part) => lerp(through(shell.colour, part), part, shows, 255),
+                    Some(part) => lerp(through(shell.colour, part), part, PART_SHOWS, 255),
                 };
                 let c = lerp(edge, body, rim, s.rim);
                 // where no board stands behind it, the light comes through the plastic: the
@@ -431,11 +428,6 @@ const SURFACE: u32 = 40;
 
 /// How much of a part's own colour shows through a clear shell, of 255.
 const PART_SHOWS: u32 = 80;
-
-/// How much of a UMD's disc's own colour shows through its shell, of 255: more than a board's
-/// parts, so its silver reads through the smoky plastic.
-const DISC_SHOWS: u32 = 130;
-
 /// How opaque a clear shell is, of 255, where no board stands behind it, inside its rim: the
 /// shelf shows through the rest.
 const CLEAR_ALPHA: u32 = 175;
@@ -791,14 +783,10 @@ pub const HOLO_FRAMES: usize = 12;
 const HOLO_BASE: f32 = 8.0;
 const HOLO_BAND: f32 = 64.0;
 
-/// How bright the light a UMD's disc throws through its shell gets at its brightest, of 255:
-/// brighter than a label's sheen, as a mirror is.
-const DISC_BAND: f32 = 120.0;
-
 /// The holo sheen over a `model` cart's label, `HOLO_FRAMES` frames of it, each the face's size
-/// at half its resolution, to be drawn over the face scaled up: clear but over the label, and
-/// on a UMD over the disc's silver face too, which throws the light back in a rainbow running out
-/// from its middle, the way a CD does. A disc has none.
+/// at half its resolution, to be drawn over the face scaled up: clear but over the label. A
+/// UMD's label is its disc's, round, and its rainbow runs out from its middle in rings, the way
+/// a CD throws the light. A disc has none.
 pub fn holo_frames(model: CartModel) -> Vec<CartFace> {
     if model == CartModel::Disc {
         return Vec::new();
@@ -817,28 +805,20 @@ pub fn holo_frames(model: CartModel) -> Vec<CartFace> {
                         0 => (lx..lx + lw).contains(&x) && (ly..ly + lh).contains(&y),
                         r => in_round_rect(x, y, s.label, r),
                     };
-                    // the light's band, from past the top left to past the bottom right
-                    let light = -0.15 + 1.35 * t;
-                    let d = ((hy * w + hx) * 4) as usize;
                     if !inside {
-                        let on_face = matches!(s.inside, Inside::Disc)
-                            && umd::disc_part(x, y) == Some(umd::DiscPart::Face)
-                            && s.mask[(y.min(s.h - 1) * s.w + x.min(s.w - 1)) as usize] > 0;
-                        if on_face {
-                            let (u, v) = (x as f32 / s.w as f32, y as f32 / s.h as f32);
-                            let along = u * 0.75 + v * 0.45;
-                            let band = (-((along - light) / 0.12).powi(2)).exp();
-                            let hue = (umd::out_on_face(x, y) * 1.6 - t).rem_euclid(1.0) * 360.0;
-                            let c = hsv_to_rgb(hue, 0.45, 1.0);
-                            let a = (DISC_BAND * band) as u8;
-                            rgba[d..d + 4].copy_from_slice(&[c[0], c[1], c[2], a]);
-                        }
                         continue;
                     }
                     let (u, v) = ((x - lx) as f32 / lw as f32, (y - ly) as f32 / lh as f32);
                     let along = u * 0.75 + v * 0.45;
+                    // the light's band, from past the top left to past the bottom right
+                    let light = -0.15 + 1.35 * t;
                     let band = (-((along - light) / 0.16).powi(2)).exp();
-                    let hue = (along * 1.4 - t * 0.6).rem_euclid(1.0) * 360.0;
+                    let runs = match model {
+                        CartModel::Umd => ((u - 0.5).hypot(v - 0.5) * 2.0) * 1.6,
+                        _ => along * 1.4,
+                    };
+                    let hue = (runs - t * 0.6).rem_euclid(1.0) * 360.0;
+                    let d = ((hy * w + hx) * 4) as usize;
                     let c = hsv_to_rgb(hue, 0.6, 1.0);
                     let a = (HOLO_BASE + HOLO_BAND * band) as u8;
                     rgba[d..d + 4].copy_from_slice(&[c[0], c[1], c[2], a]);
@@ -872,7 +852,7 @@ fn generated_label(s: &Spec, title: &str) -> Vec<u8> {
     rgba
 }
 
-fn ink(bg: [u8; 3]) -> [u8; 3] {
+pub(crate) fn ink(bg: [u8; 3]) -> [u8; 3] {
     let luma = 0.2126 * bg[0] as f32 + 0.7152 * bg[1] as f32 + 0.0722 * bg[2] as f32;
     if luma > 140.0 {
         [0x1a, 0x18, 0x16]

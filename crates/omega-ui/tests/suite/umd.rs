@@ -1,5 +1,5 @@
-//! The PSP's UMD on the shelf: a smoky clear shell with its disc showing through it round the
-//! label, the disc catching the light as the label's holo sheen does.
+//! The PSP's UMD on the shelf, as it is made: a round-topped shell with a round clear window
+//! across its front, the disc's printed side filling it, and the shell's foot square.
 
 use omega_store::{Cart, Platform, ShellChoice};
 use omega_ui::{
@@ -23,12 +23,12 @@ fn alpha(face: &omega_ui::CartFace, x: u32, y: u32) -> u8 {
     face.rgba[((y * face.w + x) * 4 + 3) as usize]
 }
 
-/// On the disc's silver face, under the label.
-const ON_DISC: (u32, u32) = (138, 234);
-/// In the shell's top corner, clear of the disc and the label.
-const HOLLOW: (u32, u32) = (60, 16);
-/// Under the label, where the disc's clear ring is.
-const OVER_RING: (u32, u32) = (138, 94);
+/// On the disc's print, in the window.
+const ON_PRINT: (u32, u32) = (138, 200);
+/// On the shell's foot, clear of the window.
+const ON_FOOT: (u32, u32) = (24, 262);
+/// Beside the top's half circle, off the UMD.
+const OFF: (u32, u32) = (4, 4);
 
 #[test]
 fn a_psp_game_stands_as_a_umd_and_a_playstation_game_as_a_disc() {
@@ -47,44 +47,39 @@ fn a_umd_comes_in_smoky_clear_plastic_unless_set_otherwise() {
 }
 
 #[test]
-fn the_disc_shows_through_the_shell_and_the_label_hides_it() {
+fn the_window_shows_the_disc_s_print_and_the_top_is_round() {
     let face = cart_face(&game(Platform::Psp, ""));
     assert_eq!((face.w, face.h), (UMD_W, UMD_H));
     assert_eq!(
-        alpha(&face, ON_DISC.0, ON_DISC.1),
+        alpha(&face, ON_PRINT.0, ON_PRINT.1),
         255,
-        "the disc lets the shelf through"
+        "the shelf shows through the disc's print"
     );
-    let hollow = alpha(&face, HOLLOW.0, HOLLOW.1);
-    assert!(hollow < 255, "the empty shell is not see-through: {hollow}");
-    assert!(hollow > 0, "the shell is not there at all");
-    assert_eq!(
-        alpha(&face, OVER_RING.0, OVER_RING.1),
-        255,
-        "the disc's clear ring shows through the label"
+    let foot = alpha(&face, ON_FOOT.0, ON_FOOT.1);
+    assert!(foot > 0 && foot < 255, "the clear foot is {foot} opaque");
+    assert_eq!(alpha(&face, OFF.0, OFF.1), 0, "the top is not round");
+    // the foot is square: its corner is shell
+    assert!(
+        alpha(&face, 8, UMD_H - 12) > 0,
+        "the foot's corner is cut away"
     );
-    // outside the round top corner there is no shell
-    assert_eq!(alpha(&face, 2, 2), 0);
 }
 
 #[test]
-fn the_disc_throws_the_light_as_the_umd_turns_and_the_empty_shell_does_not() {
+fn the_disc_s_print_catches_the_light_as_the_umd_turns_and_the_shell_does_not() {
     let frames = holo_frames(CartModel::Umd);
     assert_eq!(frames.len(), HOLO_FRAMES);
     let half = |(x, y): (u32, u32)| (x / 2, y / 2);
-    let (dx, dy) = half(ON_DISC);
-    let lit: Vec<u8> = frames.iter().map(|f| alpha(f, dx, dy)).collect();
+    let (px, py) = half(ON_PRINT);
+    let lit: Vec<u8> = frames.iter().map(|f| alpha(f, px, py)).collect();
+    assert!(lit.iter().all(|&a| a > 0), "a frame leaves the print bare");
     assert!(
-        lit.iter().any(|&a| a > 60),
-        "the disc never catches the light: {lit:?}"
+        lit.iter().max() > lit.iter().min(),
+        "the light does not move over the print: {lit:?}"
     );
+    let (fx, fy) = half(ON_FOOT);
     assert!(
-        lit.iter().any(|&a| a < 10),
-        "the disc's light does not move off it: {lit:?}"
-    );
-    let (hx, hy) = half(HOLLOW);
-    assert!(
-        frames.iter().all(|f| alpha(f, hx, hy) == 0),
-        "the empty shell shines"
+        frames.iter().all(|f| alpha(f, fx, fy) == 0),
+        "the shell shines"
     );
 }
