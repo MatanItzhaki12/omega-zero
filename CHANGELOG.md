@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## omega-zero 2.5.2
+
 - A save made in a game is backed up: the backup waited for nothing as it was asked, so it looked
   at the Saves folder before the game's save was written there, called everything copied, and
   looked again only minutes later. It now waits 3 seconds for the save being written, even when
