@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Save Backup looks for a network before it tries the NAS. With none, saves wait and nothing
+  fails: Back Up Now says NO WI-FI, no failure toast shows, and it looks again every 5 seconds,
+  copying as soon as the handheld has an address. While it waits, Wi-Fi, when it is switched on,
+  is asked to join a saved network again, every half minute at most; switched off, it stays off.
+- A connection to the NAS that fails is tried once more 2 seconds later, as a radio that dozed
+  can drop the first.
+- The link session tests wait for their host to listen rather than a fixed 150 ms, which a busy
+  machine could miss.
+
 ## omega-zero 2.5.2
 
 - A save made in a game is backed up: the backup waited for nothing as it was asked, so it looked
