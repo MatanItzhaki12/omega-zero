@@ -128,6 +128,11 @@ pub fn run() {
     };
     let rotation = choose_canvas(surface.window_size());
     let logo = read_boot_logo(&root, surface.window_size(), rotation);
+    // a context for cores that draw on the GPU, lent to each game that wants one
+    match omega_gfx::Surface::gpu_thread(&surface) {
+        Ok(gpu) => omega_zero::gpu_core::provide(gpu),
+        Err(e) => eprintln!("omega-zero: gpu: {e}"),
+    }
     let mut compositor = match Compositor::new(&surface) {
         Ok(c) => c,
         Err(e) => {

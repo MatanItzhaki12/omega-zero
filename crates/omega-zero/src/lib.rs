@@ -18,6 +18,7 @@ pub mod face_builder;
 pub mod favorites;
 pub mod frames;
 pub mod frontend;
+pub mod gpu_core;
 pub mod input;
 pub mod json;
 pub mod label_cutter;

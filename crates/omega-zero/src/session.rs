@@ -139,6 +139,11 @@ impl Session {
         self.emu.as_ref().and_then(|e| e.latest_frame())
     }
 
+    /// The last frame a core that draws on the GPU drew as a shared texture, taken.
+    pub fn take_gpu_frame(&self) -> Option<omega_gfx::GpuFrame> {
+        self.emu.as_ref().and_then(|e| e.take_gpu_frame())
+    }
+
     pub fn core_settling(&self) -> bool {
         self.emu
             .as_ref()

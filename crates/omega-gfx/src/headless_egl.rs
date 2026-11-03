@@ -277,6 +277,11 @@ impl crate::gpu::GpuThread for HeadlessGpu {
     fn shares(&self) -> bool {
         false
     }
+
+    fn release(&self) {
+        let none = std::ptr::null_mut();
+        unsafe { (self.make_current)(self.display, none, none, none) };
+    }
 }
 
 impl Drop for HeadlessGpu {

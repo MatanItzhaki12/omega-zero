@@ -340,6 +340,10 @@ impl Frontend {
         if let Some(f) = &frame {
             self.picture = Some((platform, f.size()));
         }
+        let gpu_frame = self.session.take_gpu_frame();
+        if let Some(g) = &gpu_frame {
+            self.picture = Some((platform, g.size()));
+        }
         let size = match self.picture {
             Some((p, size)) if p == platform => size,
             _ => platform.picture(),
@@ -359,6 +363,10 @@ impl Frontend {
         compositor.begin_frame();
         if let Some(frame) = frame {
             compositor.upload_game_sized(&frame, frame.size());
+            crate::latency::taken();
+        }
+        if let Some(g) = gpu_frame {
+            compositor.show_gpu_frame(&g);
             crate::latency::taken();
         }
         sync_clock(self.session.app_mut(), compositor, &mut self.clocks);

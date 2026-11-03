@@ -23,7 +23,7 @@ pub use canvas::{canvas, out_h, out_w, set_canvas, Canvas, CANVAS_ENV};
 pub use draw::{spun_x, Draw, MeshId, MeshVertex, TexId, FOCAL};
 pub use fbdev::{egl_error, panel_mode, panel_size, FbdevSurface};
 pub use fbo::{Bezel, Compositor, BACKDROP};
-pub use gpu::{wait_and_free, GpuFrame, GpuFrames, GpuThread};
+pub use gpu::{delete_fence, wait_and_free, GpuFrame, GpuFrames, GpuThread};
 pub use grade::{blue_light_gain, grade_gain, low_light, BLUE_LIGHT_MAX};
 #[cfg(any(target_os = "macos", all(target_os = "linux", not(feature = "device"))))]
 pub use headless::HeadlessSurface;

@@ -390,6 +390,11 @@ impl crate::gpu::GpuThread for FbdevGpu {
     fn shares(&self) -> bool {
         true
     }
+
+    fn release(&self) {
+        let none = std::ptr::null_mut();
+        unsafe { (self.egl.make_current)(self.display, none, none, none) };
+    }
 }
 
 impl Drop for FbdevGpu {

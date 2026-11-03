@@ -220,6 +220,9 @@ struct Shared {
     disc: AtomicUsize,
     /// The disc a swap last put in and the file it is read from, until the session keeps it.
     swapped: Mutex<Option<(usize, String)>>,
+    /// The last frame a core that draws on the GPU drew as a texture shared with the
+    /// compositor, until the compositor takes it.
+    gpu_frame: Mutex<Option<omega_gfx::GpuFrame>>,
 }
 
 #[derive(Default)]
@@ -332,11 +335,13 @@ impl EmuHandle {
             discs: AtomicUsize::new(1),
             disc: AtomicUsize::new(0),
             swapped: Mutex::new(None),
+            gpu_frame: Mutex::new(None),
         });
         let (tx, rx) = channel();
         let worker = Worker {
             frames: frames.clone(),
             shared: shared.clone(),
+            gpu: std::cell::RefCell::new(None),
             cmds: rx,
             player,
             rules,
@@ -479,6 +484,12 @@ impl EmuHandle {
 
     pub fn input(&self) -> ButtonMask {
         ButtonMask(self.shared.input.load(Ordering::Relaxed))
+    }
+
+    /// The last frame a core that draws on the GPU drew as a shared texture, taken: none while
+    /// there is no new one, or for a core that draws in memory.
+    pub fn take_gpu_frame(&self) -> Option<omega_gfx::GpuFrame> {
+        self.shared.gpu_frame.lock().ok()?.take()
     }
 
     pub fn latest_frame(&self) -> Option<FrameRef> {
@@ -656,6 +667,8 @@ impl Drop for EndAchievements {
 struct Worker {
     frames: Arc<Frames>,
     shared: Arc<Shared>,
+    /// The GPU, for a core that draws on it.
+    gpu: std::cell::RefCell<Option<crate::gpu_core::GpuCore>>,
     cmds: Receiver<Cmd>,
     player: Option<u8>,
     rules: Rules,
@@ -684,12 +697,22 @@ impl Worker {
         resume: Option<Vec<u8>>,
         link: Link,
     ) {
+        *self.gpu.borrow_mut() = crate::gpu_core::GpuCore::offer(&mut *core);
         if let Err(e) = core.load(&rom) {
             eprintln!("omega-zero: {e}");
             self.shared
                 .state
                 .store(CoreState::Failed as u8, Ordering::Release);
             return;
+        }
+        let drawing = self
+            .gpu
+            .borrow_mut()
+            .as_mut()
+            .is_some_and(|g| g.start(&mut *core));
+        if !drawing {
+            // a core that draws in memory lets the GPU go
+            *self.gpu.borrow_mut() = None;
         }
         if let Some(sav) = sav {
             if let Err(e) = core.load_save_ram(&sav) {
@@ -855,7 +878,7 @@ impl Worker {
                     omega_cheevos::reset();
                     core.set_frame_skip(false);
                     core.run_frame(ButtonMask(0));
-                    self.publish(core.video_xrgb8888(), core.video_size());
+                    self.publish_core(&*core);
                 }
                 self.shared
                     .rewind_fill
@@ -1045,7 +1068,7 @@ impl Worker {
                     }
                 }
                 flush_outbound(&mut transport, &link);
-                self.publish(core.video_xrgb8888(), core.video_size());
+                self.publish_core(&*core);
                 self.frame_done(served);
 
                 since_snapshot += 1;
@@ -1194,7 +1217,11 @@ impl Worker {
                 let _ = reply.send(core.save_ram());
             }
             Cmd::Thumb(reply) => {
-                let _ = reply.send(crate::thumb::png(core.video_xrgb8888(), core.video_size()));
+                let gpu = self.gpu.borrow_mut().as_mut().and_then(|g| g.last_pixels());
+                let _ = reply.send(match gpu {
+                    Some((px, size)) => crate::thumb::png(&px, size),
+                    None => crate::thumb::png(core.video_xrgb8888(), core.video_size()),
+                });
             }
             Cmd::BeginLink(client_id, t) => {
                 self.shared.link_lost.store(false, Ordering::Relaxed);
@@ -1296,6 +1323,34 @@ impl Worker {
                 Ok((c, _)) => c,
                 Err(e) => e.into_inner().0,
             };
+        }
+    }
+
+    /// The frame the core just drew, published as it drew it: from memory, or from the GPU,
+    /// as pixels read back or as a texture for the compositor.
+    fn publish_core(&self, core: &dyn RetroCore) {
+        let mut gpu = self.gpu.borrow_mut();
+        let Some(g) = gpu.as_mut() else {
+            drop(gpu);
+            return self.publish(core.video_xrgb8888(), core.video_size());
+        };
+        match g.finish(core) {
+            // drawn none: the last frame stands
+            None => {}
+            Some(omega_gfx::GpuFrame::Pixels(px, size)) => {
+                drop(gpu);
+                self.publish(&px, size);
+            }
+            Some(frame) => {
+                if let Ok(mut slot) = self.shared.gpu_frame.lock() {
+                    // a frame the compositor never took lets its fence go here
+                    if let Some(omega_gfx::GpuFrame::Texture { fence, .. }) = slot.replace(frame) {
+                        omega_gfx::delete_fence(fence);
+                    }
+                }
+                self.shared.published.fetch_add(1, Ordering::Relaxed);
+                crate::latency::published();
+            }
         }
     }
 

@@ -23,6 +23,9 @@ pub trait GpuThread: Send {
     /// Whether the compositor's context sees this one's textures: frames are handed over as
     /// textures, else read back.
     fn shares(&self) -> bool;
+    /// Makes no context current on the calling thread, before it ends: the context is lent to
+    /// the next game's thread.
+    fn release(&self);
 }
 
 /// How many framebuffers take turns.
@@ -135,6 +138,13 @@ impl GpuFrames {
         self.size
     }
 
+    /// The pixels of the frame handed over last, `size` of it, XRGB8888 the right way up.
+    pub fn read_last(&self, size: (u32, u32)) -> Vec<u8> {
+        let size = (size.0.min(self.size.0), size.1.min(self.size.1));
+        let last = (self.next + RING - 1) % RING;
+        read_back(self.targets[last].fbo, size)
+    }
+
     /// The frame the core just drew, `size` of it from the bottom left, handed over; the next
     /// framebuffer is the one it draws into next.
     pub fn finish(&mut self, size: (u32, u32)) -> GpuFrame {
@@ -201,6 +211,13 @@ fn read_back(fbo: u32, size: (u32, u32)) -> Vec<u8> {
         }
     }
     out
+}
+
+/// Lets a fence go unwaited, for a frame the compositor never took.
+pub fn delete_fence(fence: usize) {
+    if fence != 0 {
+        unsafe { gl::DeleteSync(fence as gl::types::GLsync) };
+    }
 }
 
 /// Waits, on the compositor's context, for the drawing a fence follows to be done, and lets
