@@ -1,9 +1,9 @@
 <h1 align="center"><img src="assets/logo/omega-zero-logo@2x.png" width="420" alt="omega-zero"></h1>
 
 <p align="center">A Game Boy-centric frontend for Anbernic H700 handhelds running
-<a href="https://github.com/pvaibhav/BaseOS">BaseOS</a>. It plays GBA, GBC and GB games, and SNES
-and PlayStation games too, on a shelf of cartridges and discs that go down into the handheld when
-you play them.</p>
+<a href="https://github.com/pvaibhav/BaseOS">BaseOS</a>. It plays GBA, GBC and GB games, and SNES,
+PlayStation and PSP games too, on a shelf of cartridges, discs and UMDs that go down into the
+handheld when you play them.</p>
 
 <p align="center">
 <a href="https://oauramos.github.io/omega-zero/"><b>Site</b></a> ·
@@ -29,7 +29,7 @@ controls and conveniences and adds RetroAchievements, drawn in omega-zero's own 
 - **Updates on the console**: Settings › Update fetches the latest release from GitHub, where
   every version bump is tested, built and released by GitHub Actions.
 - **Slot's in-game menu**: Resume, Undo Save / Load, States, Settings, Restart and Exit Game.
-- **RetroAchievements** for Game Boy, Game Boy Color, GBA and SNES games, signed in on the
+- **RetroAchievements** for Game Boy, Game Boy Color, GBA, SNES and PSP games, signed in on the
   keyboard, with hardcore, and an in-game page showing the game it was matched to and every
   achievement. Sign-in retries until Wi-Fi is up, and unlocks earned offline are sent later.
 - **Slot's `cart_shell.txt`** is read, clear shells look clear with a board, chips and a battery
@@ -72,18 +72,23 @@ is the most useful thing you can send.
 
 - A shelf for each system, modelled low-poly and drawn the way a PlayStation drew 3D, with real
   label scans: Game Boy carts in their own plastics, SNES carts in the American shape for a game
-  from the USA and the Super Famicom's for the rest, and PlayStation discs, a game on several
-  discs standing as a stack of them. The one you are on floats and sways; A pulls it down out of
+  from the USA and the Super Famicom's for the rest, PlayStation discs, a game on several
+  discs standing as a stack of them, and PSP UMDs: a round-topped shell with the disc's label
+  showing through its clear window, catching the light in rings as it sways, the way a CD does. The one you are on floats and sways; A pulls it down out of
   the screen into the handheld, and the game comes on like a tube TV. At power-on, an opening in the
   style of Mega Man X5's boot terminal tells you the handheld's memory, chip and battery, then
   fades into the shelf.
-- Five cores: mGBA and gpSP for the GBA and Snes9x and Supafaust for the SNES, chosen per cart;
-  mGBA for the Game Boys; PCSX ReARMed for the PlayStation, with a BIOS of its own built in. GBA
-  fills a 640x480 screen and the PlayStation fills it at 4:3; the SNES is drawn at twice its size,
-  and Game Boy stays at 3x.
+- Six cores: mGBA and gpSP for the GBA and Snes9x and Supafaust for the SNES, chosen per cart;
+  mGBA for the Game Boys; PCSX ReARMed for the PlayStation, with a BIOS of its own built in; and
+  PPSSPP for the PSP, drawing on the handheld's GPU. GBA fills a 640x480 screen and the
+  PlayStation fills it at 4:3; the SNES is drawn at twice its size, and Game Boy stays at 3x. A
+  PSP game fills the screen's width (Fit), or shows at its own 480x272 or stretched, set in
+  Settings > Gameplay > PSP Screen and for each game in its menu.
+- The PSP's stick is the D-pad while L2 is held, or until L2 is pressed again, or never, set
+  for each game in its menu (GAMEPLAY > D-Pad as Stick).
 - A PlayStation game on several discs is one game: DISC, on SELECT+MENU in a game, puts another
   disc in, and the game resumes with the disc that was in the drive.
-- Resume on boot, save states with a switcher, rewind (not on the PlayStation), fast-forward,
+- Resume on boot, save states with a switcher, rewind (not on the PlayStation or PSP), fast-forward,
   and turbo buttons on the Game Boys.
 - Link play between two handhelds over Wi-Fi, for Game Boy and GBA games: Pokémon trades,
   Advance Wars, Mario Kart and Tetris.
@@ -93,7 +98,7 @@ is the most useful thing you can send.
 - A tap of SELECT opens CONTROLS: what every button does, on the shelf and in a game, on one panel.
 - Network: home Wi-Fi, network time, and SSH and SFTP, each ON or OFF. Y on one opens its panel:
   SSH's shows the login and root's own random password. Labels are fetched from ScreenScraper,
-  one for each disc of a PlayStation game.
+  one for each disc of a PlayStation game, and a UMD's disc label for a PSP game.
 - Bluetooth, on handhelds that have it: pair a device and connect it, or forget it. Game sound and
   gamepads over Bluetooth are still to come.
 - Theme: the background's pattern, its motion and its colour, which the menus and both bars take
@@ -135,9 +140,11 @@ is the most useful thing you can send.
    microSD card, put it in **SD1** and boot once.
 2. Copy the contents of the [latest release](https://github.com/oauramos/omega-zero/releases/latest)
    to the root of that card.
-3. Put your games in `Games/GBA`, `Games/GB`, `Games/GBC`, `Games/SNES` and `Games/PS1`. A
-   PlayStation game is a `.cue` with its `.bin`, a `.chd`, a `.pbp` or an `.m3u`; a real
-   PlayStation BIOS, such as `scph5501.bin`, is used from `BIOS/` when it is there.
+3. Put your games in `Games/GBA`, `Games/GB`, `Games/GBC`, `Games/SNES`, `Games/PS1` and
+   `Games/PSP`. A PlayStation game is a `.cue` with its `.bin`, a `.chd`, a `.pbp` or an `.m3u`;
+   a real PlayStation BIOS, such as `scph5501.bin`, is used from `BIOS/` when it is there. A PSP
+   game is an `.iso`, a `.cso`, a `.chd` or an eboot `.pbp`; its saves are kept in
+   `Saves/PSP/SAVEDATA`, as on a memory stick.
 4. Boot. On the shelf, MENU opens Settings and a tap of SELECT shows every button.
 
 Two cards and updating are in the site's
@@ -158,8 +165,9 @@ omega-zero is made by **Otávio ([@oauramos](https://github.com/oauramos))**.
   (GPL-2.0) for the Game Boys; [Snes9x](https://github.com/libretro/snes9x) (free for
   non-commercial use only) and [Supafaust](https://github.com/libretro/supafaust), Mednafen's
   snes_faust (GPL-2.0), for the SNES; and
-  [PCSX ReARMed](https://github.com/libretro/pcsx_rearmed) (GPL-2.0) for the PlayStation. Their
-  licences and patches, and the source of all but mGBA, ship in `System/licenses/`.
+  [PCSX ReARMed](https://github.com/libretro/pcsx_rearmed) (GPL-2.0) for the PlayStation; and
+  [PPSSPP](https://www.ppsspp.org) (GPL-2.0) for the PSP. Their licences and patches, and the
+  source of all but mGBA, ship in `System/licenses/`.
 - Type is [Pixel Code](https://github.com/qwerasd205/PixelCode) by Qwerasd (SIL OFL 1.1); every
   icon is drawn as pixel art. The LCD mask is derived from GigaHerz's LCD3x.
 - Cart labels come from [ScreenScraper](https://www.screenscraper.fr), fetched with your own
@@ -174,5 +182,6 @@ maintainer. The site and these pictures are drawn with its
 UI kit, [`assets/ui`](assets/ui).
 
 Game Boy, Game Boy Color, Game Boy Advance, Super Nintendo Entertainment System and Super Famicom
-are trademarks of Nintendo. PlayStation is a trademark of Sony Interactive Entertainment. Anbernic
+are trademarks of Nintendo. PlayStation, PSP and UMD are trademarks of Sony Interactive
+Entertainment. Anbernic
 is a trademark of its owner. This project is not affiliated with any of them.

@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- PSP games, on PPSSPP 1.20.4: put them in `Games/PSP` as `.iso`, `.cso`, `.chd` or `.pbp`. A PSP
+  game stands on its own shelf as a UMD, after photos of real ones: a shell whose top is a half
+  circle and whose foot is square, a round clear window across its front showing the disc's
+  printed side (its label, from ScreenScraper's PSP system), the PSP logo and a pad moulded on the
+  foot. It comes in smoky clear plastic, which `cart_shell.txt` can change, and its label's holo
+  sheen runs in rings, the way a CD throws the light.
+- A core can draw on the GPU: PPSSPP draws with OpenGL ES on a context of its own, sharing its
+  frames with omega-zero's, which shows them as any core's.
+- A PSP game fills the screen's width by default (Fit), keeping its shape; Settings > Gameplay >
+  PSP Screen sets it to Fit, Actual (480x272) or Stretch, and a game's menu (SCREEN > Picture)
+  sets it for that game.
+- The PSP's stick is the D-pad while L2 is held, by default; a game's menu (GAMEPLAY > D-Pad as
+  Stick) makes it the D-pad until L2 is pressed again, or never, for that game.
+- RetroAchievements for PSP games, known by their disc's PARAM.SFO and EBOOT.BIN; a `.cso` is
+  read for its hash as an `.iso` is.
+- Save Backup copies PSP saves with the rest, and Sync From Backup offers a PSP save's folder as
+  one save, named for its game, and copies all of it back together.
+- A label is opaque over a clear shell: what is behind the plastic no longer shows through it.
+
 ## omega-zero 2.5.3
 
 - The cart picked on the shelf turns as it comes to the middle, to where its sway reaches on
