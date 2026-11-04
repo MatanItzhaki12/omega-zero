@@ -67,8 +67,15 @@ fn mask(text: &str) -> String {
 fn screenscraper_key() {
     println!("cargo:rerun-if-env-changed=OMEGA_SS_DEVID");
     println!("cargo:rerun-if-env-changed=OMEGA_SS_DEVPASSWORD");
-    let id = std::env::var("OMEGA_SS_DEVID").unwrap_or_default();
-    let pw = std::env::var("OMEGA_SS_DEVPASSWORD").unwrap_or_default();
+    // a space or line break pasted in with the key is not part of it
+    let id: String = std::env::var("OMEGA_SS_DEVID")
+        .unwrap_or_default()
+        .split_whitespace()
+        .collect();
+    let pw: String = std::env::var("OMEGA_SS_DEVPASSWORD")
+        .unwrap_or_default()
+        .split_whitespace()
+        .collect();
     if !id.is_empty() && !pw.is_empty() {
         println!("cargo:rustc-env=OMEGA_SS_KEY={}:{}", mask(&id), mask(&pw));
     }

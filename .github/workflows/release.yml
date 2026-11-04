@@ -85,7 +85,10 @@ jobs:
           # A key ScreenScraper turns away would only show on a console, as Cart Labels saying
           # it refused this build. A fork may have no key of its own, so a missing one only
           # warns; a key ScreenScraper refuses stops the release. A ScreenScraper that cannot be
-          # asked holds nothing up.
+          # asked holds nothing up. A space or line break pasted in with the key is not part of
+          # it: build.rs leaves it out as well.
+          OMEGA_SS_DEVID="$(printf %s "$OMEGA_SS_DEVID" | tr -d '[:space:]')"
+          OMEGA_SS_DEVPASSWORD="$(printf %s "$OMEGA_SS_DEVPASSWORD" | tr -d '[:space:]')"
           if [ -z "$OMEGA_SS_DEVID" ] || [ -z "$OMEGA_SS_DEVPASSWORD" ]; then
             echo "::warning::No ScreenScraper key: Cart Labels will say it cannot reach ScreenScraper"
             exit 0
@@ -100,7 +103,7 @@ jobs:
             --data-urlencode "devpassword=$OMEGA_SS_DEVPASSWORD" \
             -d softname=omega-zero-matan -d output=json)" || status=$?
           if [ "$code" = 403 ] || grep -qs 'Erreur de login' "$reply"; then
-            echo "::error::ScreenScraper refused OMEGA_SS_DEVID and OMEGA_SS_DEVPASSWORD"
+            echo "::error::ScreenScraper refused OMEGA_SS_DEVID and OMEGA_SS_DEVPASSWORD (${#OMEGA_SS_DEVID} and ${#OMEGA_SS_DEVPASSWORD} characters long)"
             exit 1
           fi
           if [ "$code" != 200 ]; then
