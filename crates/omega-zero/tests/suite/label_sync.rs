@@ -669,6 +669,27 @@ fn a_disc_is_asked_about_by_its_cue_sheet_then_its_serial_then_its_name_never_re
     assert!(lookups(&gone).is_empty());
 }
 
+/// A PSP image runs to gigabytes, more than the handheld holds: it is never read whole, but
+/// asked about by its game's ID, as its case prints it and as its disc keeps it, then by its
+/// name and size.
+#[test]
+fn a_psp_game_is_asked_about_by_its_id_not_by_reading_its_image() {
+    let root = tempfile::tempdir().unwrap();
+    let iso = root.path().join("Games/PSP/2040 - Tekken 6 (USA).iso");
+    touch(&iso, &vec![0u8; 64 * 1024]);
+    let mut game = cart(Platform::Psp, "2040 - Tekken 6 (USA)", iso, None);
+    game.code = "ULUS10466".into();
+    let asked = lookups(&Want::cart(&game));
+    let serials: Vec<Option<&str>> = asked.iter().map(|l| l.serial.as_deref()).collect();
+    assert_eq!(serials, [Some("ULUS-10466"), Some("ULUS10466"), None]);
+    assert!(asked
+        .iter()
+        .all(|l| l.kind == "iso" && l.crc.is_none() && l.system == 61));
+    assert_eq!(asked[2].size, 64 * 1024);
+    let url = game_url(("id", "pw"), &Account::default(), &asked[0]);
+    assert!(url.contains("serialnum=ULUS-10466"), "{url}");
+}
+
 #[test]
 fn a_snes_cart_is_asked_about_by_its_crc_and_a_copier_dump_by_its_roms_as_well() {
     let root = tempfile::tempdir().unwrap();

@@ -420,7 +420,8 @@ pub fn lookups(want: &Want) -> Vec<Lookup> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let system = system_id(want.platform);
-    if want.platform != Platform::Ps1 {
+    // a disc image is never read whole: a PSP's runs to gigabytes, more than the handheld holds
+    if !matches!(want.platform, Platform::Ps1 | Platform::Psp) {
         let Ok(bytes) = std::fs::read(&want.rom) else {
             return Vec::new();
         };
@@ -469,10 +470,19 @@ pub fn lookups(want: &Want) -> Vec<Lookup> {
     }
     let serial = Some(want.code.clone())
         .filter(|c| !c.is_empty())
-        .or_else(|| ps1::serial(&want.rom));
-    if serial.is_some() {
+        .or_else(|| match want.platform {
+            Platform::Psp => omega_store::psp::info(&want.rom).map(|sfo| sfo.id),
+            _ => ps1::serial(&want.rom),
+        });
+    // a PSP game's ID as its case prints it, ULUS-10466, and as its disc keeps it, ULUS10466
+    let printed = serial
+        .as_deref()
+        .filter(|_| want.platform == Platform::Psp)
+        .filter(|id| id.len() > 4 && !id.contains('-'))
+        .map(|id| format!("{}-{}", &id[..4], &id[4..]));
+    for serial in [printed, serial].into_iter().flatten() {
         out.push(Lookup {
-            serial,
+            serial: Some(serial),
             ..named.clone()
         });
     }

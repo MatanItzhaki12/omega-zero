@@ -251,6 +251,8 @@ pub fn core_options(
             put("ppsspp_cpu_core", "JIT");
             put("ppsspp_internal_resolution", "480x272");
             put("ppsspp_auto_frameskip", "enabled");
+            // the GPU queues no frame ahead of the one shown: a frame of input delay the less
+            put("ppsspp_inflight_frames", "No buffer");
             put("ppsspp_fast_memory", "enabled");
             put("ppsspp_texture_scaling_level", "disabled");
             put("ppsspp_button_preference", "Cross");
@@ -359,6 +361,7 @@ mod tests {
             ("ppsspp_cpu_core", "JIT"),
             ("ppsspp_internal_resolution", "480x272"),
             ("ppsspp_auto_frameskip", "enabled"),
+            ("ppsspp_inflight_frames", "No buffer"),
             ("ppsspp_button_preference", "Cross"),
         ] {
             assert!(
