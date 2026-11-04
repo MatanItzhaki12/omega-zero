@@ -47,6 +47,9 @@ fn the_psp_takes_its_images_and_holds_l2_for_the_stick() {
     assert!(!Platform::Psp.accepts(std::path::Path::new("Crash.cue")));
     assert_eq!(Platform::Psp.picture(), (480, 272));
     assert!(!Platform::Psp.rewinds());
+    // PPSSPP paces a game on a thread of its own, so a PSP game has no fast-forward
+    assert!(!Platform::Psp.fast_forwards());
+    assert!(Platform::Ps1.fast_forwards() && Platform::Gba.fast_forwards());
     assert!(Platform::Psp.stick_on_l2());
     assert!(!Platform::Ps1.stick_on_l2());
     assert_eq!(Platform::Psp.name(), "PlayStation Portable");

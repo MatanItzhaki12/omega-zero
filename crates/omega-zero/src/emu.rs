@@ -1196,6 +1196,21 @@ impl Worker {
         if dropped > 0 || starved > 0 || crate::session::trace() {
             eprintln!("omega-zero: audio: {dropped} samples dropped, {starved} starved");
         }
+        self.put_away(core);
+    }
+
+    /// The core put away, in the order libretro asks of a core that draws on the GPU: told its
+    /// context is going while it is still current here, so it deletes what it made in it, then
+    /// unloaded and let go with the context still current, and only then the context let go.
+    /// The other way round, PPSSPP was put away with no context to delete its objects in, and
+    /// the next PSP game started on what it left, whose texture names the compositor's own
+    /// textures share: the screen's thread fell on the next game's first frames.
+    fn put_away(&self, mut core: Box<dyn RetroCore>) {
+        if self.gpu.borrow().is_some() {
+            core.gpu_context_destroy();
+        }
+        drop(core);
+        *self.gpu.borrow_mut() = None;
     }
 
     fn apply(

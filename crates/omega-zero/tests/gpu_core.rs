@@ -7,6 +7,7 @@
 
 use std::ffi::{c_void, CString};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use omega_gfx::{Compositor, HeadlessSurface, Surface};
@@ -65,6 +66,14 @@ struct GpuDrawer {
     host: Option<Box<dyn GlHost>>,
     gl: Option<Gl>,
     drawn: Option<(u32, u32)>,
+    /// What happened to it as it was put away, in order.
+    ended: Arc<Mutex<Vec<&'static str>>>,
+}
+
+impl Drop for GpuDrawer {
+    fn drop(&mut self) {
+        self.ended.lock().unwrap().push("dropped");
+    }
 }
 
 // SAFETY: the function pointers are GL's, called on the emulator's thread alone
@@ -89,6 +98,9 @@ impl RetroCore for GpuDrawer {
     }
     fn gpu_context_reset(&mut self) {
         self.gl = self.host.as_deref().map(Gl::load);
+    }
+    fn gpu_context_destroy(&mut self) {
+        self.ended.lock().unwrap().push("context destroyed");
     }
     fn gpu_frame(&self) -> Option<(u32, u32)> {
         self.drawn
@@ -156,8 +168,11 @@ fn a_core_that_draws_on_the_gpu_publishes_its_frames_the_right_way_up() {
         drained.device_drain();
         std::thread::sleep(Duration::from_millis(2));
     });
+    let ended = Arc::new(Mutex::new(Vec::new()));
+    let mut drawer = GpuDrawer::default();
+    drawer.ended = ended.clone();
     let emu = EmuHandle::spawn(
-        Box::<GpuDrawer>::default(),
+        Box::new(drawer),
         PathBuf::from("gpu"),
         sink.ring(),
         None,
@@ -182,4 +197,11 @@ fn a_core_that_draws_on_the_gpu_publishes_its_frames_the_right_way_up() {
     assert_eq!(at(50, 47), [0, 255, 0], "the frame came back upside down");
     assert_eq!(at(95, 36), [0, 255, 0]);
     drop(emu);
+    // put away as libretro asks: told its context is going, then unloaded; never unloaded
+    // with no word, which left PPSSPP's next game on what the last one made
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while ended.lock().unwrap().len() < 2 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(*ended.lock().unwrap(), ["context destroyed", "dropped"]);
 }

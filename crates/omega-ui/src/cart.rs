@@ -291,6 +291,7 @@ fn face_of(cart: &Cart, scans: bool) -> CartFace {
     let (_, _, lw, lh) = s.label;
     let scan = cart.label.as_deref().filter(|_| scans);
     let label = match scan.and_then(|p| label_art(p, lw, lh)) {
+        Some(rgba) if model == CartModel::Umd => umd::with_hub(rgba, lw, lh),
         Some(rgba) => rgba,
         None if model == CartModel::Umd => umd::generated_label(&s, &label_text(cart)),
         None => generated_label(&s, &label_text(cart)),

@@ -1205,7 +1205,7 @@ impl App {
     }
 
     pub fn may_fast_forward(&self) -> bool {
-        !self.link_active() && self.state.ff_speed != 0
+        !self.link_active() && self.state.ff_speed != 0 && self.platform.fast_forwards()
     }
 
     /// Whether held X and Y are turbo A and B, as Settings > Gameplay has it.

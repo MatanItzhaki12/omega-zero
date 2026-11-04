@@ -6,9 +6,12 @@ pub fn cover(path: &Path, w: u32, h: u32) -> Option<Vec<u8>> {
         return None;
     }
 
-    let scale = (w as f32 / sw as f32).max(h as f32 / sh as f32);
-    let ox = (sw as f32 - w as f32 / scale) / 2.0;
-    let oy = (sh as f32 - h as f32 / scale) / 2.0;
+    // what the scan shows, without the clear margin a disc's scan leaves round the disc, so the
+    // disc is the face's, in the middle of it
+    let (bx, by, bw, bh) = shown_bounds(&src, sw, sh);
+    let scale = (w as f32 / bw as f32).max(h as f32 / bh as f32);
+    let ox = bx as f32 + (bw as f32 - w as f32 / scale) / 2.0;
+    let oy = by as f32 + (bh as f32 - h as f32 / scale) / 2.0;
 
     let mut out = vec![0u8; (w * h * 4) as usize];
     for y in 0..h {
@@ -22,6 +25,27 @@ pub fn cover(path: &Path, w: u32, h: u32) -> Option<Vec<u8>> {
         }
     }
     Some(out)
+}
+
+/// The part of the `sw` by `sh` RGBA `src` that is not clear, as `x, y, w, h`: all of it for a
+/// scan with nothing clear at its edges.
+fn shown_bounds(src: &[u8], sw: u32, sh: u32) -> (u32, u32, u32, u32) {
+    const SHOWN: u8 = 16;
+    let (mut x0, mut y0, mut x1, mut y1) = (sw, sh, 0, 0);
+    for y in 0..sh {
+        for x in 0..sw {
+            if src[((y * sw + x) * 4 + 3) as usize] > SHOWN {
+                x0 = x0.min(x);
+                y0 = y0.min(y);
+                x1 = x1.max(x + 1);
+                y1 = y1.max(y + 1);
+            }
+        }
+    }
+    if x1 <= x0 || y1 <= y0 {
+        return (0, 0, sw, sh);
+    }
+    (x0, y0, x1 - x0, y1 - y0)
 }
 
 /// The png at `path` as RGBA, only if it is exactly `w` by `h`.

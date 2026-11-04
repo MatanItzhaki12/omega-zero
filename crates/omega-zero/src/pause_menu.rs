@@ -454,6 +454,7 @@ impl App {
                 PauseRow::ColourCorrection => self.platform.colour_correction(),
                 PauseRow::Palette => self.platform == Platform::Gb && self.core == Core::Mgba,
                 PauseRow::Rewind => self.platform.rewinds(),
+                PauseRow::FastForward => self.platform.fast_forwards(),
                 PauseRow::Turbo => self.platform.turbo_xy(),
                 // gpSP's alone: run-ahead is for no other core
                 PauseRow::RunAhead => self.core == Core::Gpsp,

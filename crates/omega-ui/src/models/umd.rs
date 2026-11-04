@@ -125,6 +125,37 @@ pub(crate) fn generated_label(s: &Spec, title: &str) -> Vec<u8> {
     rgba
 }
 
+/// The disc's hub, seen through what a scan of its print leaves clear: its middle, which a
+/// scan cuts out. Brushed metal, darker towards the spindle, so the middle reads as the disc's
+/// and not as the shell's white.
+const HUB_METAL: [u8; 3] = [0xb6, 0xba, 0xc4];
+const HUB_SPINDLE: [u8; 3] = [0x5a, 0x5e, 0x68];
+
+/// The scan `rgba`, `w` by `h`, laid over the disc's hub where it is clear.
+pub(crate) fn with_hub(mut rgba: Vec<u8>, w: u32, h: u32) -> Vec<u8> {
+    let r = w.min(h) as f32 / 2.0;
+    for y in 0..h {
+        for x in 0..w {
+            let d = (x as f32 + 0.5 - w as f32 / 2.0).hypot(y as f32 + 0.5 - h as f32 / 2.0) / r;
+            let i = ((y * w + x) * 4) as usize;
+            let a = rgba[i + 3] as u32;
+            if a == 255 || d > 1.0 {
+                continue;
+            }
+            let hub = match d {
+                d if d < 0.1 => HUB_SPINDLE,
+                d if d < 0.13 => [0x88, 0x8c, 0x96],
+                _ => HUB_METAL,
+            };
+            for c in 0..3 {
+                rgba[i + c] = ((rgba[i + c] as u32 * a + hub[c] as u32 * (255 - a)) / 255) as u8;
+            }
+            rgba[i + 3] = 255;
+        }
+    }
+    rgba
+}
+
 /// One rounded corner of the outline, `cuts` cuts from `from` to `to` radians about `centre`,
 /// `r` units out: the corners between its ends stand a little outside the arc and the cuts
 /// between them a little inside, so the walls follow the edge the face's alpha cuts.

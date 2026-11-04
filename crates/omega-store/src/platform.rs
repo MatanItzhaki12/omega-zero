@@ -86,6 +86,12 @@ impl Platform {
         !matches!(self, Platform::Ps1 | Platform::Psp)
     }
 
+    /// Whether a game runs faster while R2 is held: not a PSP game, which PPSSPP paces on a
+    /// thread of its own whatever it is asked.
+    pub fn fast_forwards(self) -> bool {
+        self != Platform::Psp
+    }
+
     /// Whether held L2 turns the D-pad into the analog stick: the PSP's, which the handheld
     /// has none of.
     pub fn stick_on_l2(self) -> bool {

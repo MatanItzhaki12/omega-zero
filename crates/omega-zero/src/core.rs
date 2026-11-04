@@ -122,13 +122,24 @@ pub fn open_core_for(
     })
 }
 
+/// The folder a core reads its system files from: BIOS/, where a player puts a BIOS, or for
+/// PPSSPP System/, where its support files ship in System/PPSSPP/, the fonts PSP games draw
+/// their text with among them. PPSSPP looks in the system folder's PPSSPP/; given BIOS/ it found
+/// nothing, and every game's menus came up without a word on them.
+pub fn system_dir(root: &Path, core: Core) -> PathBuf {
+    match core {
+        Core::Ppsspp => root.join("System"),
+        _ => root::bios_dir(root),
+    }
+}
+
 fn open_named(
     root: &Path,
     core: Core,
     setup: Setup,
     paths: &[PathBuf],
 ) -> Option<Box<dyn RetroCore>> {
-    let bios = root::bios_dir(root);
+    let system = system_dir(root, core);
     let saves = root::saves_dir(root);
     let (serial, colour, link) = setup.handheld();
     for path in paths {
@@ -138,7 +149,7 @@ fn open_named(
         // the options are there before the core starts, for one that reads them as it does
         let options = core_options(core, serial, root::has_real_bios(root), colour);
         let early: Vec<(&str, &str)> = options.iter().map(|(k, v)| (*k, v.as_str())).collect();
-        match LibretroCore::open_with_options(path, &bios, &saves, &early) {
+        match LibretroCore::open_with_options(path, &system, &saves, &early) {
             Ok(mut opened) => {
                 apply_core_options(&mut opened, core, serial, root::has_real_bios(root), colour);
                 if let Some(player) = link {
@@ -351,6 +362,17 @@ mod tests {
         assert_eq!(stand_in(Core::Supafaust).video_size(), (256, 224));
         assert_eq!(stand_in(Core::PcsxRearmed).video_size(), (320, 240));
         assert_eq!(stand_in(Core::Ppsspp).video_size(), (480, 272));
+    }
+
+    #[test]
+    fn ppsspp_reads_its_fonts_from_system_and_the_others_their_bios_from_bios() {
+        let root = Path::new("/card");
+        assert_eq!(
+            system_dir(root, Core::Ppsspp).join("PPSSPP/flash0/font"),
+            Path::new("/card/System/PPSSPP/flash0/font")
+        );
+        assert_eq!(system_dir(root, Core::PcsxRearmed), root::bios_dir(root));
+        assert_eq!(system_dir(root, Core::Gpsp), root::bios_dir(root));
     }
 
     #[test]
