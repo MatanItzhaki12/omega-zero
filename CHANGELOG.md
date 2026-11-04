@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## omega-zero 2.6.0: PSP
+
 - PSP games, on PPSSPP 1.20.4: put them in `Games/PSP` as `.iso`, `.cso`, `.chd` or `.pbp`. A PSP
   game stands on its own shelf as a UMD, after photos of real ones: a shell whose top is a half
   circle and whose foot is square, a round clear window across its front showing the disc's
