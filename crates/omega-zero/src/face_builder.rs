@@ -22,6 +22,7 @@ impl FaceBuilder {
         let spawned = thread::Builder::new()
             .name("omega-faces".into())
             .spawn(move || {
+                crate::spawn::stand_back();
                 while let Ok(mut cart) = inbox.recv() {
                     while let Ok(newer) = inbox.try_recv() {
                         cart = newer;

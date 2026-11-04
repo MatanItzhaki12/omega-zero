@@ -3780,8 +3780,10 @@ impl App {
         };
         match std::thread::Builder::new()
             .name("omega-autosave".into())
-            .spawn(write)
-        {
+            .spawn(move || {
+                crate::spawn::stand_back();
+                write()
+            }) {
             Ok(h) => self.pending_save = Some(h),
             Err(e) => eprintln!("omega-zero: autosave: no writer thread: {e}"),
         }

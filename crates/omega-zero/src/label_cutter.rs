@@ -20,27 +20,6 @@ const MAX_WORKERS: usize = 3;
 /// room, so a boot's hundreds of faces are never all held at once on a handheld with 1 GB.
 const READY_FACES: usize = 8;
 
-/// How far the workers stand back from the shelf, the game and its sound, as a nice value: a
-/// boot that resumes a game draws its labels while the game runs, and the labels can wait.
-#[cfg(feature = "device")]
-const NICE: i32 = 10;
-
-#[cfg(feature = "device")]
-extern "C" {
-    fn setpriority(which: i32, who: u32, prio: i32) -> i32;
-}
-
-/// Lets the calling thread run only on what the rest of omega-zero leaves of the cores. Linux
-/// keeps a nice value for each thread, and `setpriority` for process 0 sets the caller's.
-fn stand_back() {
-    #[cfg(feature = "device")]
-    // SAFETY: setpriority only sets the calling thread's nice value; a refusal answers -1, and
-    // the worker then runs as it would have
-    unsafe {
-        setpriority(0, 0, NICE);
-    }
-}
-
 /// A cart to draw from its label, with the ticket it was asked under.
 struct Job {
     cart: Cart,
@@ -102,7 +81,8 @@ impl LabelCutter {
             let spawned = thread::Builder::new()
                 .name(format!("omega-cut-{i}"))
                 .spawn(move || {
-                    stand_back();
+                    // a boot that resumes a game draws its labels while the game runs
+                    crate::spawn::stand_back();
                     loop {
                         let Some(Job { cart, ticket }) = next_job(&inbox) else {
                             return;

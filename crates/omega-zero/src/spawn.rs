@@ -7,6 +7,29 @@
 
 use std::process::Command;
 
+/// How far a thread that can wait stands back from the game, its sound and the screen, as a nice
+/// value.
+#[cfg(feature = "device")]
+const NICE: i32 = 10;
+
+#[cfg(feature = "device")]
+extern "C" {
+    fn setpriority(which: i32, who: u32, prio: i32) -> i32;
+}
+
+/// Lets the calling thread run only on what the game, its sound and the screen leave of the
+/// cores: for work that can wait, such as labels, a save copied to the NAS, or a state written,
+/// which took a PSP game's frames as it ran. Linux keeps a nice value for each thread, and
+/// `setpriority` for process 0 sets the caller's.
+pub fn stand_back() {
+    #[cfg(feature = "device")]
+    // SAFETY: setpriority only sets the calling thread's nice value; a refusal answers -1, and
+    // the thread then runs as it would have
+    unsafe {
+        setpriority(0, 0, NICE);
+    }
+}
+
 #[cfg(feature = "device")]
 extern "C" {
     fn fcntl(fd: i32, cmd: i32, ...) -> i32;

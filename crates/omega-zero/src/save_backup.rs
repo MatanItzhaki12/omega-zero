@@ -233,7 +233,10 @@ impl SaveBackup {
         let shared = status.clone();
         let _ = std::thread::Builder::new()
             .name("omega-backup".into())
-            .spawn(move || run(&root, target, &rx, &shared));
+            .spawn(move || {
+                crate::spawn::stand_back();
+                run(&root, target, &rx, &shared)
+            });
         SaveBackup { tx, status }
     }
 
