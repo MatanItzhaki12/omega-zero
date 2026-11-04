@@ -125,6 +125,35 @@ fn a_playstation_game_is_handed_l2_and_r2_and_never_rewinds() {
 }
 
 #[test]
+fn held_l2_turns_a_psp_game_s_dpad_into_its_stick() {
+    let d = root_with(Platform::Psp, "Daxter");
+    let (mut s, mut now) = playing(&d, Platform::Psp, "Daxter");
+    let analog = |s: &Session| s.emu().expect("a game has a core").analog();
+
+    step(&mut s, &mut now, Some(RawEvent::Down(Btn::L2)));
+    step(&mut s, &mut now, Some(RawEvent::Down(Btn::Left)));
+    assert_eq!(
+        analog(&s),
+        (i16::MAX.wrapping_neg(), 0),
+        "L2 held, the D-pad was not the stick"
+    );
+    assert_eq!(
+        held(&s) & ButtonMask::LEFT,
+        0,
+        "the D-pad reached the game as well as the stick"
+    );
+    assert!(!rewinding(&s), "L2 rewound a PSP game");
+
+    step(&mut s, &mut now, Some(RawEvent::Up(Btn::L2)));
+    assert_eq!(analog(&s), (0, 0), "let go of, L2 left the stick held");
+    assert_ne!(
+        held(&s) & ButtonMask::LEFT,
+        0,
+        "without L2 the D-pad was not the D-pad"
+    );
+}
+
+#[test]
 fn select_and_r2_fast_forward_a_playstation_game() {
     let d = root_with(Platform::Ps1, "Ridge Racer");
     let (mut s, mut now) = playing(&d, Platform::Ps1, "Ridge Racer");

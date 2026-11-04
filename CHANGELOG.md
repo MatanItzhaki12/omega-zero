@@ -20,6 +20,15 @@
 - Save Backup copies PSP saves with the rest, and Sync From Backup offers a PSP save's folder as
   one save, named for its game, and copies all of it back together.
 - A label is opaque over a clear shell: what is behind the plastic no longer shows through it.
+- A PSP game's label is looked up on ScreenScraper by the game's ID (ULUS-10466 and the like),
+  read from the disc without reading all of it; a disc label is trimmed to its print and centred,
+  and its clear middle shows the metal hub a real UMD has.
+- A PSP game has no fast forward (PPSSPP keeps its own pace), and its L2 reaches the game's stick
+  setting rather than being taken for rewind: held L2 makes the D-pad the stick again.
+- Saving, backups and label cutting run at a lower priority than the game, so a game stutters less
+  while they work.
+- The fork is omega-zero-matan: its name, its updates (from MatanItzhaki12/omega-zero-matan), its
+  boot screens and About page say so, crediting Omega Zero by @oauramos.
 
 ## omega-zero 2.5.3
 

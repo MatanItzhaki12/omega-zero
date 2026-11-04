@@ -54,10 +54,12 @@ impl ControlsView {
 
         let mut game = Vec::new();
         if platform.game_owns_l2_r2() {
-            game.extend([
-                ("SELECT+R2", "FAST FORWARD"),
-                ("SELECT+L2+R2", "LOCK FAST FWD"),
-            ]);
+            if platform.fast_forwards() {
+                game.extend([
+                    ("SELECT+R2", "FAST FORWARD"),
+                    ("SELECT+L2+R2", "LOCK FAST FWD"),
+                ]);
+            }
         } else {
             if platform.rewinds() {
                 game.push(("L2", "REWIND"));

@@ -486,6 +486,12 @@ impl EmuHandle {
         self.shared.analog.store(packed, Ordering::Relaxed);
     }
 
+    /// The left analog stick the core is handed, x and y.
+    pub fn analog(&self) -> (i16, i16) {
+        let stick = self.shared.analog.load(Ordering::Relaxed);
+        (stick as u16 as i16, (stick >> 16) as u16 as i16)
+    }
+
     pub fn set_input(&self, mask: ButtonMask) {
         let before = self.shared.input.swap(mask.0, Ordering::Relaxed);
         crate::latency::applied(before, mask.0);

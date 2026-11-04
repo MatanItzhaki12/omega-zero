@@ -98,9 +98,10 @@ impl Platform {
         self == Platform::Psp
     }
 
-    /// Whether L2/R2 belong to the game rather than to rewind and fast-forward.
+    /// Whether L2/R2 belong to the game rather than to rewind and fast-forward: a PlayStation
+    /// game's, and a PSP game's, whose L2 turns the D-pad into the stick.
     pub fn game_owns_l2_r2(self) -> bool {
-        self == Platform::Ps1
+        matches!(self, Platform::Ps1 | Platform::Psp)
     }
 
     pub fn accepts(self, path: &Path) -> bool {
